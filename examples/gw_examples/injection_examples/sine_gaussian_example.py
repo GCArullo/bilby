@@ -27,6 +27,8 @@ injection_parameters = dict(
     hrss=1e-22,
     Q=5.0,
     frequency=200.0,
+    time_offset=0.0,
+    phase_offset=0.0,
     ra=1.375,
     dec=-1.2108,
     geocent_time=1126259642.413,
@@ -57,7 +59,7 @@ ifos.inject_signal(
 
 # Set up the prior. We will fix the "extrinsic" parameters to their true values.
 priors = bilby.core.prior.PriorDict()
-for key in ["psi", "ra", "dec", "geocent_time"]:
+for key in ["psi", "ra", "dec", "geocent_time", "time_offset", "phase_offset"]:
     priors[key] = injection_parameters[key]
 
 priors["Q"] = bilby.core.prior.Uniform(2, 50, "Q")
@@ -86,3 +88,16 @@ result = bilby.core.sampler.run_sampler(
 
 # make some plots of the outputs
 result.plot_corner()
+
+# Plot the time-domain strain in each detector (after optional filtering). Use a
+# conservative bandpass that keeps the stopband below the Nyquist frequency to
+# avoid filter-design errors for the 512 Hz sample rate.
+ifos.plot_time_domain_data(
+    outdir=outdir,
+    label=label,
+    t0=injection_parameters["geocent_time"],
+    bandpass_frequencies=(30, 180),
+)
+
+# Plot the reconstructed waveform posterior in the time and frequency domains
+result.plot_waveform_posterior(interferometers=ifos)

@@ -310,29 +310,16 @@ class Interferometer(object):
         else:
             mask = np.ones(len(frequencies), dtype=bool)
 
-        template = next(iter(waveform_polarizations.values()))
-        coherent_signal = np.zeros_like(template)
-        incoherent_signal = np.zeros_like(template)
+        signal = {}
+        for mode in waveform_polarizations.keys():
+            det_response = self.antenna_response(
+                parameters['ra'],
+                parameters['dec'],
+                parameters['geocent_time'],
+                parameters['psi'], mode)
 
-        coherent_modes = {"plus", "cross", "x", "y", "breathing", "longitudinal"}
-
-        for mode, polarization in waveform_polarizations.items():
-            if mode == self.name or mode in coherent_modes:
-                det_response = self.antenna_response(
-                    parameters['ra'],
-                    parameters['dec'],
-                    parameters['geocent_time'],
-                    parameters['psi'], mode,
-                )
-
-                mode_signal = polarization * det_response
-                if mode == self.name:
-                    incoherent_signal += mode_signal
-                else:
-                    coherent_signal += mode_signal
-
-        coherent_signal *= mask
-        incoherent_signal *= mask
+            signal[mode] = waveform_polarizations[mode] * det_response
+        signal_ifo = sum(signal.values()) * mask
 
         time_shift = self.time_delay_from_geocenter(
             parameters['ra'], parameters['dec'], parameters['geocent_time'])
@@ -342,9 +329,7 @@ class Interferometer(object):
         dt_geocent = parameters['geocent_time'] - self.strain_data.start_time
         dt = dt_geocent + time_shift
 
-        coherent_signal[mask] = coherent_signal[mask] * np.exp(-1j * 2 * np.pi * dt * frequencies)
-
-        signal_ifo = coherent_signal + incoherent_signal
+        signal_ifo[mask] = signal_ifo[mask] * np.exp(-1j * 2 * np.pi * dt * frequencies)
 
         signal_ifo[mask] *= self.calibration_model.get_calibration_factor(
             frequencies, prefix='recalib_{}_'.format(self.name), **parameters

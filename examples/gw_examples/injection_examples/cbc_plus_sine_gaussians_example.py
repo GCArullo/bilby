@@ -109,10 +109,10 @@ incoherent_sine_gaussians = {
         dict(hrss=1e-22, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
         # dict(hrss=4.0e-23, Q=9.0, frequency=115.0, time_offset= 0.03, phase_offset= 0.8),
     ],
-    # "L1": [
-    #     dict(hrss=1e-22, Q=8.0, frequency=75.0, time_offset=-0.07, phase_offset=0.0),
-    #     # dict(hrss=4.5e-23, Q=9.0, frequency=125.0, time_offset= 0.01, phase_offset= 1.2),
-    # ],
+    "L1": [
+        dict(hrss=1e-22, Q=8.0, frequency=75.0, time_offset=-0.07, phase_offset=0.0),
+        # dict(hrss=4.5e-23, Q=9.0, frequency=125.0, time_offset= 0.01, phase_offset= 1.2),
+    ],
 }
 
 #############

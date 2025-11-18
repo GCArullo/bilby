@@ -347,6 +347,195 @@ def lal_binary_black_hole(
         phi_jl=phi_jl, **waveform_kwargs)
 
 
+def cbc_plus_sine_gaussians(
+        frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
+        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, lambda_1=0.0,
+        lambda_2=0.0, eccentricity=0.0, sine_gaussian_parameters=None,
+        incoherent_sine_gaussian_parameters=None, **kwargs):
+    """A CBC waveform model augmented with a collection of sine-Gaussians.
+
+    This function evaluates a compact binary coalescence (CBC) waveform using
+    :func:`_base_lal_cbc_fd_waveform` and supplements it with an arbitrary
+    number of sine-Gaussian burst components defined through
+    ``sine_gaussian_parameters``.
+
+    Parameters
+    ----------
+    frequency_array : array-like
+        The frequencies at which the waveform is evaluated.
+    mass_1, mass_2 : float
+        Component masses of the binary in solar masses.
+    luminosity_distance : float
+        Luminosity distance in megaparsec.
+    a_1, a_2 : float
+        Dimensionless spin magnitudes of the component objects.
+    tilt_1, tilt_2 : float
+        Spin tilt angles.
+    phi_12 : float
+        Azimuthal angle between the component spins.
+    phi_jl : float
+        Azimuthal angle between the total angular momentum and the orbital
+        angular momentum.
+    theta_jn : float
+        Inclination angle between the total angular momentum and the line of
+        sight.
+    phase : float
+        Phase of the waveform at the reference frequency.
+    lambda_1, lambda_2 : float, optional
+        Tidal deformability parameters of the components.
+    eccentricity : float, optional
+        Orbital eccentricity.
+    sine_gaussian_parameters : list[dict] or None, optional
+        A list containing the parameters of each coherent sine-Gaussian
+        component. Each dictionary must define ``hrss``, ``Q``, ``frequency``,
+        ``time_offset`` and ``phase_offset``.
+    incoherent_sine_gaussian_parameters : dict[str, list[dict]] or None, optional
+        Mapping of detector names to lists of incoherent sine-Gaussian
+        components.  Each detector entry should contain a list of dictionaries
+        describing the components local to that interferometer with the same
+        mandatory keys as the coherent case (``hrss``, ``Q``, ``frequency``,
+        ``time_offset`` and ``phase_offset``).  These detector-local bursts are
+        added directly to the interferometer strain without applying antenna
+        pattern projections or polarization choices.
+    **kwargs
+        Additional keyword arguments forwarded to the underlying CBC waveform
+        generator.
+
+    Returns
+    -------
+    dict or None
+        Dictionary containing the plus and cross polarisations of the combined
+        waveform. ``None`` is returned if the CBC waveform evaluation fails and
+        waveform error catching is enabled.
+    """
+
+    waveform_kwargs = dict(
+        waveform_approximant='IMRPhenomPv2',
+        reference_frequency=50.0,
+        minimum_frequency=20.0,
+        maximum_frequency=frequency_array[-1],
+        catch_waveform_errors=False,
+        pn_spin_order=-1,
+        pn_tidal_order=-1,
+        pn_phase_order=-1,
+        pn_amplitude_order=0,
+    )
+    waveform_kwargs.update(kwargs)
+
+    base_waveform = _base_lal_cbc_fd_waveform(
+        frequency_array=frequency_array,
+        mass_1=mass_1,
+        mass_2=mass_2,
+        luminosity_distance=luminosity_distance,
+        theta_jn=theta_jn,
+        phase=phase,
+        a_1=a_1,
+        a_2=a_2,
+        tilt_1=tilt_1,
+        tilt_2=tilt_2,
+        phi_12=phi_12,
+        phi_jl=phi_jl,
+        lambda_1=lambda_1,
+        lambda_2=lambda_2,
+        eccentricity=eccentricity,
+        **waveform_kwargs,
+    )
+
+    if base_waveform is None:
+        return None
+
+    h_plus = base_waveform['plus']
+    h_cross = base_waveform['cross']
+    combined_waveform = dict(plus=h_plus, cross=h_cross)
+
+    if sine_gaussian_parameters:
+        h_plus = h_plus.copy()
+        h_cross = h_cross.copy()
+        combined_waveform['plus'] = h_plus
+        combined_waveform['cross'] = h_cross
+        for index, parameters in enumerate(sine_gaussian_parameters):
+            try:
+                hrss = parameters['hrss']
+                quality_factor = parameters['Q']
+                peak_frequency = parameters['frequency']
+                time_offset = parameters['time_offset']
+                phase_offset = parameters['phase_offset']
+            except KeyError as error:
+                missing_key = error.args[0]
+                raise KeyError(
+                    "Missing '{}' for sine-Gaussian {}. Each sine-Gaussian "
+                    "requires 'hrss', 'Q', 'frequency', 'time_offset', and "
+                    "'phase_offset'.".format(
+                        missing_key, index
+                    )
+                ) from error
+
+            sine_gaussian_waveform = sinegaussian(
+                frequency_array,
+                hrss=hrss,
+                Q=quality_factor,
+                frequency=peak_frequency,
+                time_offset=time_offset,
+                phase_offset=phase_offset,
+            )
+
+            h_plus += sine_gaussian_waveform['plus']
+            h_cross += sine_gaussian_waveform['cross']
+
+    if incoherent_sine_gaussian_parameters:
+        for detector, components in incoherent_sine_gaussian_parameters.items():
+            if not components:
+                continue
+
+            detector_waveform = np.zeros_like(h_plus, dtype=h_plus.dtype)
+
+            for index, parameters in enumerate(components):
+                try:
+                    hrss = parameters['hrss']
+                    quality_factor = parameters['Q']
+                    peak_frequency = parameters['frequency']
+                    time_offset = parameters['time_offset']
+                    phase_offset = parameters['phase_offset']
+                    if 'polarization' in parameters:
+                        raise ValueError(
+                            "Incoherent sine-Gaussians are added directly to the "
+                            "detector strain and do not support polarization "
+                            "fields."
+                        )
+                except KeyError as error:
+                    missing_key = error.args[0]
+                    raise KeyError(
+                        "Missing '{}' for incoherent sine-Gaussian {} in '{}'. "
+                        "Each sine-Gaussian requires 'hrss', 'Q', 'frequency', "
+                        "'time_offset', and 'phase_offset'.".format(
+                            missing_key, index, detector
+                        )
+                    ) from error
+
+                sine_gaussian_waveform = sinegaussian(
+                    frequency_array,
+                    hrss=hrss,
+                    Q=quality_factor,
+                    frequency=peak_frequency,
+                    time_offset=time_offset,
+                    phase_offset=phase_offset,
+                )
+
+                detector_waveform += (
+                    sine_gaussian_waveform['plus'] + sine_gaussian_waveform['cross']
+                )
+
+            # Interferometer.get_detector_response treats a mode matching the
+            # detector name as an already projected strain (antenna_response
+            # returns 1 for mode == self.name).  Storing the summed
+            # detector-local burst contribution under the detector key therefore
+            # injects it directly into the strain alongside the coherently
+            # projected CBC modes.
+            combined_waveform[detector] = detector_waveform
+
+    return combined_waveform
+
+
 def lal_binary_neutron_star(
         frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
         phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, lambda_1, lambda_2,
@@ -1148,7 +1337,14 @@ def _base_waveform_frequency_sequence(
     return dict(plus=h_plus.data.data, cross=h_cross.data.data)
 
 
-def sinegaussian(frequency_array, hrss, Q, frequency, **kwargs):
+def sinegaussian(
+        frequency_array,
+        hrss,
+        Q,
+        frequency,
+        time_offset,
+        phase_offset,
+        **kwargs):
     r"""
     A frequency-domain sine-Gaussian burst source model.
 
@@ -1179,6 +1375,15 @@ def sinegaussian(frequency_array, hrss, Q, frequency, **kwargs):
         The quality factor of the burst, determines the decay time.
     frequency: float
         The peak frequency of the burst.
+    time_offset: float
+        Relative time delay, in seconds, applied to the burst.  A positive value
+        shifts the sine-Gaussian peak to later times with respect to the CBC
+        waveform, corresponding to a multiplication by
+        :math:`e^{-2\pi i f t}` in the frequency domain.
+    phase_offset: float
+        Additional phase rotation applied uniformly across the burst in radians;
+        this provides the global phase degree of freedom for the burst model in
+        lieu of a separate ``phase`` argument.
     kwargs: dict
         UNUSED
 
@@ -1201,6 +1406,11 @@ def sinegaussian(frequency_array, hrss, Q, frequency, **kwargs):
                ((np.sqrt(np.pi) * tau) / 2.0) *
                (np.exp(-fm**2 * np.pi**2 * tau**2) -
                np.exp(-fp**2 * np.pi**2 * tau**2)))
+
+    phase = np.exp(-2j * np.pi * frequency_array * time_offset)
+    phase *= np.exp(1j * phase_offset)
+    h_plus = h_plus * phase
+    h_cross = h_cross * phase
 
     return {'plus': h_plus, 'cross': h_cross}
 

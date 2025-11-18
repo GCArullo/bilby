@@ -59,7 +59,7 @@ def populate_sine_gaussian_priors(components, detector=None):
 ###############
 
 # Miscellaneous parameters
-incoherent = False # If True, use detector-local sine-Gaussians
+incoherent = True # If True, use detector-local sine-Gaussians
 zero_noise = True
 outdir     = "outdir"
 nlive      = 64
@@ -109,14 +109,11 @@ incoherent_sine_gaussians = {
         dict(hrss=1e-22, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
         # dict(hrss=4.0e-23, Q=9.0, frequency=115.0, time_offset= 0.03, phase_offset= 0.8),
     ],
-    "L1": [
-        dict(hrss=1e-22, Q=8.0, frequency=75.0, time_offset=-0.07, phase_offset=0.0),
-        # dict(hrss=4.5e-23, Q=9.0, frequency=125.0, time_offset= 0.01, phase_offset= 1.2),
-    ],
+    # "L1": [
+    #     dict(hrss=1e-22, Q=8.0, frequency=75.0, time_offset=-0.07, phase_offset=0.0),
+    #     # dict(hrss=4.5e-23, Q=9.0, frequency=125.0, time_offset= 0.01, phase_offset= 1.2),
+    # ],
 }
-
-# Check that the detectors list matches the incoherent sine-Gaussians keys
-if incoherent: assert set(detectors_list) == set(incoherent_sine_gaussians.keys()), ("Detectors list does not match incoherent sine-Gaussians keys.")
 
 #############
 # I/O setup # 

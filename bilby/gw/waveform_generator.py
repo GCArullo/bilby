@@ -238,9 +238,8 @@ class WaveformGenerator(object):
             raise TypeError('"parameters" must be a dictionary.')
         new_parameters = parameters.copy()
         new_parameters, _ = self.parameter_conversion(new_parameters)
-        for key in self.source_parameter_keys.symmetric_difference(
-                new_parameters):
-            new_parameters.pop(key)
+        for key in set(new_parameters).difference(self.source_parameter_keys):
+            new_parameters.pop(key, None)
         new_parameters.update(self.waveform_arguments)
         return new_parameters
 

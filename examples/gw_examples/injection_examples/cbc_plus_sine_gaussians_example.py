@@ -99,18 +99,18 @@ cbc_parameters = dict(
 
 # Two representative sine-Gaussian bursts when treated coherently
 coherent_sine_gaussians = [
-    dict(hrss=1e-22, Q=8.0, frequency=70.0,  time_offset=-0.07, phase_offset=0.0),
-    # dict(hrss=5e-23, Q=9.0, frequency=120.0, time_offset=0.02, phase_offset=1.0),
+        dict(hrss=1e-22, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
+        # dict(hrss=5e-23, Q=9.0, frequency=120.0, time_offset=0.02, phase_offset=1.0),
 ]
 
 # Detector-local sine-Gaussians for the incoherent case (two bursts per detector)
 incoherent_sine_gaussians = {
     "H1": [
-        dict(hrss=8.0e-23, Q=8.0, frequency=70.0 , time_offset=-0.04, phase_offset= 0.2),
+        dict(hrss=1e-22, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
         # dict(hrss=4.0e-23, Q=9.0, frequency=115.0, time_offset= 0.03, phase_offset= 0.8),
     ],
     "L1": [
-        dict(hrss=6.0e-23, Q=8.5, frequency=75.0 , time_offset=-0.06, phase_offset=-0.2),
+        dict(hrss=1e-22, Q=8.0, frequency=75.0, time_offset=-0.07, phase_offset=0.0),
         # dict(hrss=4.5e-23, Q=9.0, frequency=125.0, time_offset= 0.01, phase_offset= 1.2),
     ],
 }

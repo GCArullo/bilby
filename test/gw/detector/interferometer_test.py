@@ -151,6 +151,47 @@ class TestInterferometer(unittest.TestCase):
             )
         )
 
+    def test_detector_local_mode_not_time_shifted(self):
+        self.ifo.antenna_response = mock.MagicMock(return_value=1)
+        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=1)
+        self.ifo.strain_data.start_time = 0
+        plus = np.ones_like(self.ifo.frequency_array)
+        detector_mode = 2 * np.ones_like(self.ifo.frequency_array)
+        response = self.ifo.get_detector_response(
+            waveform_polarizations={"plus": plus, self.ifo.name: detector_mode},
+            parameters=dict(ra=0, dec=0, geocent_time=0, psi=0),
+        )
+        expected = (
+            plus
+            * self.ifo.frequency_mask
+            * np.exp(-1j * 2 * np.pi * self.ifo.frequency_array)
+            + detector_mode * self.ifo.frequency_mask
+        )
+        self.assertTrue(np.allclose(expected, response))
+
+    def test_foreign_detector_mode_ignored_in_coherent_sum(self):
+        self.ifo.antenna_response = mock.MagicMock(return_value=1)
+        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=1)
+        self.ifo.strain_data.start_time = 0
+        plus = np.ones_like(self.ifo.frequency_array)
+        this_detector_mode = 2 * np.ones_like(self.ifo.frequency_array)
+        other_detector_mode = 4 * np.ones_like(self.ifo.frequency_array)
+        response = self.ifo.get_detector_response(
+            waveform_polarizations={
+                "plus": plus,
+                self.ifo.name: this_detector_mode,
+                "other": other_detector_mode,
+            },
+            parameters=dict(ra=0, dec=0, geocent_time=0, psi=0),
+        )
+        expected = (
+            plus
+            * self.ifo.frequency_mask
+            * np.exp(-1j * 2 * np.pi * self.ifo.frequency_array)
+            + this_detector_mode * self.ifo.frequency_mask
+        )
+        self.assertTrue(np.allclose(expected, response))
+
     def test_inject_signal_from_waveform_polarizations_correct_injection(self):
         original_strain = self.ifo.strain_data.frequency_domain_strain
         self.ifo.get_detector_response = lambda x, params: x["plus"] + x["cross"]

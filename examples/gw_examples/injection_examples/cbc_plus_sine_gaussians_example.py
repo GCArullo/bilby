@@ -9,32 +9,23 @@ local burst components that are added directly to each interferometer's
 strain.
 """
 
-import argparse
-
 import bilby
 from bilby.core.utils.random import seed
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--incoherent",
-    action="store_true",
-    help="Add detector-specific sine-Gaussian bursts instead of coherent ones.",
-)
-args = parser.parse_args()
-
 # Sets seed of bilby's generator "rng" to "123" to ensure reproducibility
-seed(123)
+# seed(123)
 
 # Set the duration and sampling frequency of the data segment that we're going
 # to inject the signal into
 DURATION = 4.0
 SAMPLING_FREQUENCY = 1024.0
 
+flag_incoherent = False
+
 # Specify the output directory and the name of the simulation.
 outdir = "outdir"
 label = (
-    "cbc_plus_sine_gaussians_incoherent" if args.incoherent else "cbc_plus_sine_gaussians"
+    "cbc_plus_sine_gaussians_incoherent" if flag_incoherent else "cbc_plus_sine_gaussians"
 )
 bilby.core.utils.setup_logger(outdir=outdir, label=label)
 
@@ -79,7 +70,6 @@ incoherent_sine_gaussians = {
     ],
 }
 
-
 def flatten_sine_gaussians(components, detector=None):
     """Translate sine-Gaussian dicts into flat parameter names."""
 
@@ -101,11 +91,12 @@ def flatten_sine_gaussians(components, detector=None):
 # Build the injection parameters in the sampling space so they are converted by
 # the waveform generator into the structured input expected by the source model.
 injection_parameters = cbc_parameters.copy()
-if args.incoherent:
-    for detector, components in incoherent_sine_gaussians.items():
-        injection_parameters.update(flatten_sine_gaussians(components, detector=detector))
-else:
-    injection_parameters.update(flatten_sine_gaussians(coherent_sine_gaussians))
+
+# if flag_incoherent:
+#     for detector, components in incoherent_sine_gaussians.items():
+#         injection_parameters.update(flatten_sine_gaussians(components, detector=detector))
+# else:
+#     injection_parameters.update(flatten_sine_gaussians(coherent_sine_gaussians))
 
 # Fixed arguments passed into the source model
 waveform_arguments = dict(
@@ -114,15 +105,23 @@ waveform_arguments = dict(
     minimum_frequency=20.0,
 )
 
-waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
+# waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
+#     duration=DURATION,
+#     sampling_frequency=SAMPLING_FREQUENCY,
+#     frequency_domain_source_model=bilby.gw.source.cbc_plus_sine_gaussians,
+#     parameter_conversion=bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters,
+#     waveform_arguments=waveform_arguments,
+# )
+
+waveform_generator = bilby.gw.WaveformGenerator(
     duration=DURATION,
     sampling_frequency=SAMPLING_FREQUENCY,
-    frequency_domain_source_model=bilby.gw.source.cbc_plus_sine_gaussians,
-    parameter_conversion=bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters,
+    frequency_domain_source_model=bilby.gw.source.lal_binary_black_hole,
+    parameter_conversion=bilby.gw.conversion.convert_to_lal_binary_black_hole_parameters,
     waveform_arguments=waveform_arguments,
 )
 
-ifos = bilby.gw.detector.InterferometerList(["H1", "L1", "V1"])
+ifos = bilby.gw.detector.InterferometerList(["H1", "L1"])
 ifos.set_strain_data_from_power_spectral_densities(
     sampling_frequency=SAMPLING_FREQUENCY,
     duration=DURATION,
@@ -135,53 +134,59 @@ ifos.inject_signal(
 
 # Priors: fix extrinsic parameters to the injected values and place simple
 # uniforms on the remaining CBC and sine-Gaussian parameters.
-priors = bilby.gw.prior.BBHPriorDict()
+# priors = bilby.gw.prior.BBHPriorDict()
+priors = bilby.gw.prior.BBHPriorDict(dictionary={})
 for fixed_key in ["psi", "ra", "dec", "geocent_time", "theta_jn"]:
     priors[fixed_key] = injection_parameters[fixed_key]
 
-priors["luminosity_distance"] = bilby.core.prior.UniformSourceFrame(
-    name="luminosity_distance",
-    minimum=500,
-    maximum=2000,
-    unit="Mpc",
-)
-priors["mass_1"] = bilby.core.prior.Uniform(25, 45, name="mass_1", unit="$M_\odot$")
-priors["mass_2"] = bilby.core.prior.Uniform(20, 40, name="mass_2", unit="$M_\odot$")
 priors["a_1"] = bilby.core.prior.Uniform(0, 0.8, name="a_1")
-priors["a_2"] = bilby.core.prior.Uniform(0, 0.8, name="a_2")
-priors["tilt_1"] = bilby.core.prior.Sine(name="tilt_1")
-priors["tilt_2"] = bilby.core.prior.Sine(name="tilt_2")
-priors["phi_12"] = bilby.core.prior.Uniform(
-    minimum=0, maximum=2 * bilby.core.utils.np.pi, boundary="periodic", name="phi_12"
-)
-priors["phi_jl"] = bilby.core.prior.Uniform(
-    minimum=0, maximum=2 * bilby.core.utils.np.pi, boundary="periodic", name="phi_jl"
-)
-priors["phase"] = bilby.core.prior.Uniform(
-    minimum=0, maximum=2 * bilby.core.utils.np.pi, boundary="periodic", name="phase"
-)
+# priors["a_1"]    = injection_parameters["a_1"]
 
+priors["luminosity_distance"] = injection_parameters["luminosity_distance"]
+priors["mass_1"]              = injection_parameters["mass_1"]
+priors["mass_2"]              = injection_parameters["mass_2"]
+priors["a_2"]                 = injection_parameters["a_2"]
+priors["tilt_1"]              = injection_parameters["tilt_1"]
+priors["tilt_2"]              = injection_parameters["tilt_2"]
+priors["phi_12"]              = injection_parameters["phi_12"]
+priors["phi_jl"]              = injection_parameters["phi_jl"]
+priors["phase"]               = injection_parameters["phase"]
+
+# priors["mass_1"] = bilby.core.prior.Uniform(25, 45, name="mass_1", unit="$M_\odot$")
+# priors["mass_2"] = bilby.core.prior.Uniform(20, 40, name="mass_2", unit="$M_\odot$")
+# priors["a_2"]    = bilby.core.prior.Uniform(0, 0.8, name="a_2")
+# priors["tilt_1"] = bilby.core.prior.Sine(name="tilt_1")
+# priors["tilt_2"] = bilby.core.prior.Sine(name="tilt_2")
+# priors["phi_12"] = bilby.core.prior.Uniform(
+#     minimum=0, maximum=2 * bilby.core.utils.np.pi, boundary="periodic", name="phi_12"
+# )
+# priors["phi_jl"] = bilby.core.prior.Uniform(
+#     minimum=0, maximum=2 * bilby.core.utils.np.pi, boundary="periodic", name="phi_jl"
+# )
+# priors["phase"] = bilby.core.prior.Uniform(
+#     minimum=0, maximum=2 * bilby.core.utils.np.pi, boundary="periodic", name="phase"
+# )
 
 def add_sine_gaussian_priors(prefix, component):
-    priors[f"{prefix}hrss"] = bilby.core.prior.Uniform(
-        minimum=0.5 * component["hrss"], maximum=1.5 * component["hrss"], name=f"{prefix}hrss"
-    )
     priors[f"{prefix}Q"] = bilby.core.prior.Uniform(
         minimum=5.0, maximum=15.0, name=f"{prefix}Q"
     )
-    priors[f"{prefix}frequency"] = bilby.core.prior.Uniform(
-        minimum=40, maximum=200, name=f"{prefix}frequency", unit="Hz"
-    )
-    priors[f"{prefix}time_offset"] = bilby.core.prior.Uniform(
-        minimum=-0.1, maximum=0.1, name=f"{prefix}time_offset", unit="s"
-    )
-    priors[f"{prefix}phase_offset"] = bilby.core.prior.Uniform(
-        minimum=-bilby.core.utils.np.pi,
-        maximum=bilby.core.utils.np.pi,
-        name=f"{prefix}phase_offset",
-        boundary="periodic",
-    )
-
+    # priors[f"{prefix}frequency"] = bilby.core.prior.Uniform(
+    #     minimum=40, maximum=200, name=f"{prefix}frequency", unit="Hz"
+    # )
+    # priors[f"{prefix}time_offset"] = bilby.core.prior.Uniform(
+    #     minimum=-0.1, maximum=0.1, name=f"{prefix}time_offset", unit="s"
+    # )
+    # priors[f"{prefix}phase_offset"] = bilby.core.prior.Uniform(
+    #     minimum=-bilby.core.utils.np.pi,
+    #     maximum=bilby.core.utils.np.pi,
+    #     name=f"{prefix}phase_offset",
+    #     boundary="periodic",
+    # )
+    priors[f"{prefix}hrss"]         = injection_parameters[f"{prefix}hrss"]
+    priors[f"{prefix}frequency"]    = injection_parameters[f"{prefix}frequency"]
+    priors[f"{prefix}time_offset"]  = injection_parameters[f"{prefix}time_offset"]
+    priors[f"{prefix}phase_offset"] = injection_parameters[f"{prefix}phase_offset"]
 
 def populate_sine_gaussian_priors(components, detector=None):
     for index, component in enumerate(components):
@@ -190,12 +195,11 @@ def populate_sine_gaussian_priors(components, detector=None):
             prefix += f"{detector}_"
         add_sine_gaussian_priors(prefix, component)
 
-
-if args.incoherent:
-    for detector, components in incoherent_sine_gaussians.items():
-        populate_sine_gaussian_priors(components, detector=detector)
-else:
-    populate_sine_gaussian_priors(coherent_sine_gaussians)
+# if flag_incoherent:
+#     for detector, components in incoherent_sine_gaussians.items():
+#         populate_sine_gaussian_priors(components, detector=detector)
+# else:
+#     populate_sine_gaussian_priors(coherent_sine_gaussians)
 
 # Initialise the likelihood by passing in the interferometer data (IFOs) and the
 # waveform generator
@@ -209,7 +213,7 @@ result = bilby.run_sampler(
     likelihood=likelihood,
     priors=priors,
     sampler="dynesty",
-    nlive=500,
+    nlive=200,
     walks=10,
     nact=5,
     injection_parameters=injection_parameters,

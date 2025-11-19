@@ -1,5 +1,6 @@
 import unittest
 import logging
+from unittest import mock
 import pytest
 
 import bilby
@@ -112,6 +113,161 @@ class TestLalBBH(unittest.TestCase):
             self.frequency_array, PhenomXPrecVersion=102, **self.parameters
         )
         self.assertFalse(np.all(out_v223["plus"] == out_v102["plus"]))
+
+
+class TestCBCPlusSineGaussians(unittest.TestCase):
+    def setUp(self):
+        self.frequency_array = bilby.core.utils.create_frequency_series(2048, 4)
+        self.parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            a_1=0.4,
+            tilt_1=0.2,
+            phi_12=1.0,
+            a_2=0.8,
+            tilt_2=2.7,
+            phi_jl=2.9,
+            theta_jn=0.3,
+            phase=0.0,
+        )
+        self.waveform_kwargs = dict(
+            waveform_approximant="IMRPhenomPv2",
+            reference_frequency=50.0,
+            minimum_frequency=20.0,
+        )
+        self.sine_gaussian = dict(hrss=1e-22, Q=9.0, frequency=120.0, time_offset=0.0, phase_offset=0.0)
+
+    def tearDown(self):
+        del self.frequency_array
+        del self.parameters
+        del self.waveform_kwargs
+        del self.sine_gaussian
+
+    def test_matches_cbc_when_no_sine_gaussians(self):
+        kwargs = dict(self.parameters)
+        kwargs.update(self.waveform_kwargs)
+
+        base = bilby.gw.source.lal_binary_black_hole(
+            self.frequency_array, **kwargs
+        )
+        combined = bilby.gw.source.cbc_plus_sine_gaussians(
+            self.frequency_array,
+            sine_gaussian_parameters=[],
+            **kwargs,
+        )
+
+        for polarisation in ["plus", "cross"]:
+            self.assertTrue(np.allclose(base[polarisation], combined[polarisation]))
+
+    def test_adds_sine_gaussian_contribution(self):
+        kwargs = dict(self.parameters)
+        kwargs.update(self.waveform_kwargs)
+
+        base = bilby.gw.source.lal_binary_black_hole(
+            self.frequency_array, **kwargs
+        )
+        sine_waveform = bilby.gw.source.sinegaussian(
+            self.frequency_array, **self.sine_gaussian
+        )
+        combined = bilby.gw.source.cbc_plus_sine_gaussians(
+            self.frequency_array,
+            sine_gaussian_parameters=[self.sine_gaussian],
+            **kwargs,
+        )
+
+        self.assertTrue(
+            np.allclose(base["plus"] + sine_waveform["plus"], combined["plus"])
+        )
+        self.assertTrue(
+            np.allclose(base["cross"] + sine_waveform["cross"], combined["cross"])
+        )
+
+    def test_combination_respects_time_and_phase_offsets(self):
+        kwargs = dict(self.parameters)
+        kwargs.update(self.waveform_kwargs)
+
+        offset_parameters = dict(self.sine_gaussian, time_offset=0.001, phase_offset=0.5)
+        base = bilby.gw.source.lal_binary_black_hole(
+            self.frequency_array, **kwargs
+        )
+        offset_waveform = bilby.gw.source.sinegaussian(
+            self.frequency_array, **offset_parameters
+        )
+        combined = bilby.gw.source.cbc_plus_sine_gaussians(
+            self.frequency_array,
+            sine_gaussian_parameters=[offset_parameters],
+            **kwargs,
+        )
+
+        self.assertTrue(
+            np.allclose(base["plus"] + offset_waveform["plus"], combined["plus"])
+        )
+        self.assertTrue(
+            np.allclose(base["cross"] + offset_waveform["cross"], combined["cross"])
+        )
+
+    def test_applies_time_and_phase_offsets(self):
+        time_offset = 0.002
+        phase_offset = 0.3
+        base = bilby.gw.source.sinegaussian(
+            self.frequency_array,
+            **self.sine_gaussian,
+        )
+        shifted = bilby.gw.source.sinegaussian(
+            self.frequency_array,
+            **dict(self.sine_gaussian, time_offset=time_offset, phase_offset=phase_offset),
+        )
+
+        phase = np.exp(-2j * np.pi * self.frequency_array * time_offset) * np.exp(1j * phase_offset)
+        self.assertTrue(np.allclose(shifted["plus"], base["plus"] * phase))
+        self.assertTrue(np.allclose(shifted["cross"], base["cross"] * phase))
+
+    def test_incoherent_components_generate_detector_modes(self):
+        base_plus = np.ones_like(self.frequency_array, dtype=complex)
+        base_cross = 1j * np.ones_like(self.frequency_array, dtype=complex)
+
+        with mock.patch("bilby.gw.source._base_lal_cbc_fd_waveform", return_value=dict(plus=base_plus, cross=base_cross)):
+            h1_parameters = dict(self.sine_gaussian, hrss=2e-22, time_offset=0.005, phase_offset=0.1)
+            l1_parameters = dict(self.sine_gaussian, hrss=4e-22, time_offset=-0.002, phase_offset=-0.3)
+
+            waveform = bilby.gw.source.cbc_plus_sine_gaussians(
+                self.frequency_array,
+                sine_gaussian_parameters=[],
+                incoherent_sine_gaussian_parameters=dict(H1=[h1_parameters], L1=[l1_parameters]),
+                **self.parameters,
+            )
+
+        self.assertIn("plus", waveform)
+        self.assertIn("cross", waveform)
+        self.assertTrue(np.allclose(waveform["plus"], base_plus))
+        self.assertTrue(np.allclose(waveform["cross"], base_cross))
+        self.assertIn("H1", waveform)
+        self.assertIn("L1", waveform)
+
+        expected_h1_waveform = bilby.gw.source.sinegaussian(self.frequency_array, **h1_parameters)
+        expected_l1_waveform = bilby.gw.source.sinegaussian(self.frequency_array, **l1_parameters)
+
+        expected_h1 = expected_h1_waveform["plus"] + expected_h1_waveform["cross"]
+        expected_l1 = expected_l1_waveform["plus"] + expected_l1_waveform["cross"]
+
+        self.assertTrue(np.allclose(waveform["H1"], expected_h1))
+        self.assertTrue(np.allclose(waveform["L1"], expected_l1))
+
+    def test_incoherent_component_invalid_polarization_raises(self):
+        base_plus = np.ones_like(self.frequency_array, dtype=complex)
+        base_cross = 1j * np.ones_like(self.frequency_array, dtype=complex)
+
+        with mock.patch("bilby.gw.source._base_lal_cbc_fd_waveform", return_value=dict(plus=base_plus, cross=base_cross)):
+            parameters = dict(self.sine_gaussian, polarization="linear")
+
+            with self.assertRaisesRegex(ValueError, "do not support polarization"):
+                bilby.gw.source.cbc_plus_sine_gaussians(
+                    self.frequency_array,
+                    sine_gaussian_parameters=[],
+                    incoherent_sine_gaussian_parameters=dict(H1=[parameters]),
+                    **self.parameters,
+                )
 
 
 class TestGWSignalBBH(unittest.TestCase):

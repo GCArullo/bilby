@@ -7,6 +7,7 @@ import os
 import sys
 import multiprocessing
 import pickle
+import re
 
 import numpy as np
 from pandas import DataFrame, Series
@@ -280,6 +281,158 @@ def convert_to_lal_binary_black_hole_parameters(parameters):
                   if key not in original_keys]
 
     return converted_parameters, added_keys
+
+
+def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
+    """Extend CBC parameters with sine-Gaussian burst specifications.
+
+    This helper wraps :func:`convert_to_lal_binary_black_hole_parameters` and
+    aggregates parameters describing additional sine-Gaussian components into a
+    structure that can be consumed by
+    :func:`bilby.gw.source.cbc_plus_sine_gaussians`.
+
+    Parameters
+    ----------
+    parameters : dict
+        Dictionary containing the standard CBC parameters as well as optional
+        entries describing coherent and/or incoherent sine-Gaussian components.
+        Coherent components use keys of the form ``sine_gaussian_<index>_<field>``
+        where ``field`` is one of ``hrss``, ``Q``, ``frequency``, ``time_offset``
+        or ``phase_offset``.  Incoherent components use keys of the form
+        ``sine_gaussian_<index>_<detector>_<field>`` where ``detector`` is the
+        interferometer name and ``field`` matches the coherent set.
+
+    Returns
+    -------
+    tuple(dict, list)
+        The converted parameter dictionary and the list of keys appended during
+        conversion.
+    """
+
+    converted_parameters, added_keys = convert_to_lal_binary_black_hole_parameters(parameters)
+
+    sine_gaussian_pattern = re.compile(
+        r"sine_gaussian_(\d+)_(hrss|Q|frequency|time_offset|phase_offset)"
+    )
+    incoherent_pattern = re.compile(
+        r"sine_gaussian_(\d+)_([A-Za-z0-9]+)_(hrss|Q|frequency|time_offset|phase_offset)"
+    )
+    grouped_parameters = {}
+    incoherent_grouped_parameters = {}
+    unsupported_polarization_pattern = re.compile(
+        r"sine_gaussian_(\d+)_([A-Za-z0-9]+)_polarization"
+    )
+
+    for key in list(converted_parameters.keys()):
+        match = sine_gaussian_pattern.fullmatch(key)
+        if match is not None:
+            index = int(match.group(1))
+            field = match.group(2)
+            grouped_parameters.setdefault(index, {})[field] = converted_parameters.pop(key)
+            continue
+
+        incoherent_match = incoherent_pattern.fullmatch(key)
+        if incoherent_match is None:
+            continue
+
+        index = int(incoherent_match.group(1))
+        detector = incoherent_match.group(2)
+        field = incoherent_match.group(3)
+        incoherent_grouped_parameters.setdefault(index, {})\
+            .setdefault(detector, {})[field] = converted_parameters.pop(key)
+
+        continue
+
+    unsupported_polarization_keys = [
+        key for key in converted_parameters
+        if unsupported_polarization_pattern.fullmatch(key) is not None
+    ]
+    if unsupported_polarization_keys:
+        raise KeyError(
+            "Polarization fields are not supported for incoherent sine-Gaussian "
+            "components: {}".format(
+                ", ".join(sorted(unsupported_polarization_keys))
+            )
+        )
+
+    if grouped_parameters:
+        sine_gaussian_parameters = []
+        required_fields = {"hrss", "Q", "frequency", "time_offset", "phase_offset"}
+        for index in sorted(grouped_parameters):
+            parameter_set = grouped_parameters[index]
+            missing_fields = required_fields.difference(parameter_set)
+            if missing_fields:
+                raise KeyError(
+                    "Sine-Gaussian {} is missing required parameters: {}".format(
+                        index, ", ".join(sorted(missing_fields))
+                    )
+                )
+            sine_gaussian_parameters.append({
+                "hrss": parameter_set["hrss"],
+                "Q": parameter_set["Q"],
+                "frequency": parameter_set["frequency"],
+                "time_offset": parameter_set["time_offset"],
+                "phase_offset": parameter_set["phase_offset"],
+            })
+
+        converted_parameters["sine_gaussian_parameters"] = sine_gaussian_parameters
+        added_keys = list(added_keys) + ["sine_gaussian_parameters"]
+
+    if incoherent_grouped_parameters:
+        incoherent_parameters = {}
+        required_fields = {"hrss", "Q", "frequency", "time_offset", "phase_offset"}
+        for index in sorted(incoherent_grouped_parameters):
+            for detector, parameter_set in incoherent_grouped_parameters[index].items():
+                missing_fields = required_fields.difference(parameter_set)
+                if missing_fields:
+                    raise KeyError(
+                        "Incoherent sine-Gaussian {} for detector '{}' is missing "
+                        "required parameters: {}".format(
+                            index, detector, ", ".join(sorted(missing_fields))
+                        )
+                    )
+
+                component = dict(
+                    hrss=parameter_set["hrss"],
+                    Q=parameter_set["Q"],
+                    frequency=parameter_set["frequency"],
+                    time_offset=parameter_set["time_offset"],
+                    phase_offset=parameter_set["phase_offset"],
+                )
+
+                incoherent_parameters.setdefault(detector, []).append(component)
+
+        converted_parameters["incoherent_sine_gaussian_parameters"] = incoherent_parameters
+        added_keys = list(added_keys) + ["incoherent_sine_gaussian_parameters"]
+
+    return converted_parameters, added_keys
+
+
+def convert_to_cbc_plus_sine_gaussian_parameters_dict(parameters):
+    """Return only the converted CBC + sine-Gaussian parameters.
+
+    The main conversion helper :func:`convert_to_cbc_plus_sine_gaussian_parameters`
+    returns both the converted dictionary and a list of keys appended during the
+    conversion.  When specifying a conversion function inside a prior
+    configuration file we often only want the dictionary.  This thin wrapper
+    performs the conversion and discards the metadata so that it can be used in
+    contexts that expect a single dictionary output.
+
+    Parameters
+    ----------
+    parameters : dict
+        Dictionary containing the standard CBC parameters as well as optional
+        ``sine_gaussian_*`` entries.
+
+    Returns
+    -------
+    dict
+        The converted parameter dictionary ready to be consumed by
+        :func:`bilby.gw.source.cbc_plus_sine_gaussians`.
+    """
+
+    converted_parameters, _ = convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+    return converted_parameters
 
 
 def convert_to_lal_binary_neutron_star_parameters(parameters):
@@ -1633,6 +1786,10 @@ def _generate_all_cbc_parameters(sample, defaults, base_conversion,
                                  likelihood=None, priors=None, npool=1):
     """Generate all cbc parameters, helper function for BBH/BNS"""
     output_sample = sample.copy()
+    if isinstance(sample, DataFrame):
+        sample_keys = set(sample.columns)
+    else:
+        sample_keys = set(sample.keys())
 
     waveform_defaults = defaults
     for key in waveform_defaults:
@@ -1689,13 +1846,33 @@ def _generate_all_cbc_parameters(sample, defaults, base_conversion,
                     .format(type(output_sample))
                 )
         compute_snrs(output_sample, likelihood, npool=npool)
+    conversion_hint_keys = {
+        "mass": {
+            "mass_1", "mass_2", "chirp_mass", "total_mass", "mass_ratio",
+            "symmetric_mass_ratio", "mass_1_source", "mass_2_source",
+            "chirp_mass_source", "total_mass_source",
+        },
+        "spin": {
+            "a_1", "a_2", "tilt_1", "tilt_2", "phi_12", "phi_jl",
+            "spin_1z", "spin_2z",
+        },
+        "source frame": {
+            "redshift", "comoving_distance", "luminosity_distance",
+        },
+    }
+    cbc_hint_keys = conversion_hint_keys["mass"] | conversion_hint_keys["spin"]
+
     for key, func in zip(["mass", "spin", "source frame"], [
             generate_mass_parameters, generate_spin_parameters,
             generate_source_frame_parameters]):
         try:
             output_sample = func(output_sample)
         except KeyError as e:
-            logger.info(
+            hint_keys = conversion_hint_keys.get(key, set())
+            has_hint_keys = bool(hint_keys & sample_keys)
+            has_cbc_context = bool(cbc_hint_keys & sample_keys)
+            log = logger.info if (has_hint_keys and has_cbc_context) else logger.debug
+            log(
                 "Generation of {} parameters failed with message {}".format(
                     key, e))
 
@@ -1730,6 +1907,53 @@ def generate_all_bbh_parameters(sample, likelihood=None, priors=None, npool=1):
         sample, defaults=waveform_defaults,
         base_conversion=convert_to_lal_binary_black_hole_parameters,
         likelihood=likelihood, priors=priors, npool=npool)
+    return output_sample
+
+
+def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, priors=None, npool=1):
+    """Generate all CBC parameters including sine-Gaussian components.
+
+    This mirrors :func:`generate_all_bbh_parameters` while additionally
+    aggregating any ``sine_gaussian_*`` inputs into the structured collections
+    consumed by :func:`bilby.gw.source.cbc_plus_sine_gaussians`.
+
+    Parameters
+    ----------
+    sample : dict or pandas.DataFrame
+        Samples to convert. Entries following the naming scheme
+        ``sine_gaussian_<index>_<field>`` are bundled into the
+        ``sine_gaussian_parameters`` list while entries of the form
+        ``sine_gaussian_<index>_<detector>_<field>`` are grouped into the
+        detector-specific incoherent collections.
+    likelihood : bilby.gw.likelihood.GravitationalWaveTransient, optional
+        Likelihood used for sampling. Passed through to
+        :func:`_generate_all_cbc_parameters`.
+    priors : dict, optional
+        Priors to use when filling in fixed values.
+    npool : int, optional
+        Number of processes for any pool-based operations.
+
+    Returns
+    -------
+    dict or pandas.DataFrame
+        The converted samples augmented with the standard CBC parameters and a
+        ``sine_gaussian_parameters`` entry and an
+        ``incoherent_sine_gaussian_parameters`` mapping when applicable.
+    """
+
+    waveform_defaults = {
+        'reference_frequency': 50.0,
+        'waveform_approximant': 'IMRPhenomPv2',
+        'minimum_frequency': 20.0,
+    }
+    output_sample = _generate_all_cbc_parameters(
+        sample,
+        defaults=waveform_defaults,
+        base_conversion=convert_to_cbc_plus_sine_gaussian_parameters,
+        likelihood=likelihood,
+        priors=priors,
+        npool=npool,
+    )
     return output_sample
 
 

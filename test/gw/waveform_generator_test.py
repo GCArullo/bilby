@@ -42,6 +42,12 @@ def dummy_func_array_return_value_2(
     return dict(plus=np.array(array), cross=np.array(array))
 
 
+def dummy_optional_lambda_waveform(
+    frequency_array, mass_1, mass_2, lambda_1=0, lambda_2=0, **kwargs
+):
+    return dict(plus=np.zeros_like(frequency_array), cross=np.zeros_like(frequency_array))
+
+
 class TestWaveformGeneratorInstantiationWithoutOptionalParameters(unittest.TestCase):
     def setUp(self):
         self.waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
@@ -118,6 +124,7 @@ class TestWaveformGeneratorInstantiationWithoutOptionalParameters(unittest.TestC
 
     def test_duration(self):
         self.assertEqual(self.waveform_generator.duration, 1)
+
 
     def test_sampling_frequency(self):
         self.assertEqual(self.waveform_generator.sampling_frequency, 4096)
@@ -507,6 +514,19 @@ class TestFrequencyDomainStrainMethod(unittest.TestCase):
         self.assertFalse(
             np.array_equal(original_waveform["plus"], new_waveform["plus"])
         )
+
+
+class TestWaveformGeneratorOptionalParameters(unittest.TestCase):
+    def test_missing_optional_source_parameters_are_ignored(self):
+        waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
+            1, 4096, frequency_domain_source_model=dummy_optional_lambda_waveform
+        )
+        parameters = dict(mass_1=30, mass_2=30, distance=500)
+
+        waveform = waveform_generator.frequency_domain_strain(parameters=parameters)
+
+        self.assertIn("plus", waveform)
+        self.assertIn("cross", waveform)
 
 
 class TestTimeDomainStrainMethod(unittest.TestCase):

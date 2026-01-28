@@ -19,7 +19,6 @@ tilt_1 = Sine(name='tilt_1')
 tilt_2 = Sine(name='tilt_2')
 phi_12 = Uniform(name='phi_12', minimum=0, maximum=2 * np.pi, boundary='periodic')
 phi_jl = Uniform(name='phi_jl', minimum=0, maximum=2 * np.pi, boundary='periodic')
-geocent_time = Uniform(name='geocent_time', minimum=1384767016.0, maximum=1384767020.0)
 
 # Detector-local burst parameters for component 0
 sine_gaussian_0_H1_hrss = LogUniform(name='sine_gaussian_0_H1_hrss', minimum=1e-24, maximum=1e-20)

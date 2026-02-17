@@ -60,6 +60,8 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def log_likelihood(self, parameters=None):
         parameters = _fallback_to_parameters(self, parameters)
+        parameters = parameters.copy()
+        parameters.update(self.get_sky_frame_parameters(parameters))
 
         if self.infer_nu and "nu" in parameters:
             self.parameters["nu"] = parameters["nu"]

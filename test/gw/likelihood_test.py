@@ -180,6 +180,34 @@ class TestStudentTGWTransient(unittest.TestCase):
 
         self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
 
+    def test_time_reference_agrees_with_default(self):
+        default_likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+        )
+        h1_time_likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+            time_reference="H1",
+        )
+
+        ifo = bilby.gw.detector.get_empty_interferometer("H1")
+        time_delay = ifo.time_delay_from_geocenter(
+            ra=self.parameters["ra"],
+            dec=self.parameters["dec"],
+            time=self.parameters["geocent_time"],
+        )
+        parameters = self.parameters.copy()
+        parameters.pop("geocent_time")
+        parameters["H1_time"] = self.parameters["geocent_time"] + time_delay
+
+        self.assertEqual(
+            h1_time_likelihood.log_likelihood(parameters),
+            default_likelihood.log_likelihood(self.parameters),
+        )
+
 class TestGWTransient(unittest.TestCase):
     def setUp(self):
         bilby.core.utils.random.seed(500)

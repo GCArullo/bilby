@@ -208,6 +208,25 @@ class TestStudentTGWTransient(unittest.TestCase):
             default_likelihood.log_likelihood(self.parameters),
         )
 
+    def test_log_likelihood_uses_stored_sky_parameters_as_fallback(self):
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+        )
+        likelihood.parameters = self.parameters.copy()
+
+        sampled_parameters = {
+            key: value
+            for key, value in self.parameters.items()
+            if key not in {"ra", "dec", "geocent_time"}
+        }
+
+        self.assertEqual(
+            likelihood.log_likelihood(sampled_parameters),
+            likelihood.log_likelihood(self.parameters),
+        )
+
 class TestGWTransient(unittest.TestCase):
     def setUp(self):
         bilby.core.utils.random.seed(500)

@@ -7,7 +7,6 @@ one can modify for the study of injected CBC events.
 This will take many hours to run.
 """
 import bilby
-import numpy as np
 from bilby.core.utils import random
 
 # Sets seed of bilby's generator "rng" to "123" to ensure reproducibility
@@ -76,6 +75,14 @@ ifos.set_strain_data_from_power_spectral_densities(
 ifos.inject_signal(
     waveform_generator=waveform_generator, parameters=injection_parameters
 )
+
+time_delay = ifos[0].time_delay_from_geocenter(
+    injection_parameters["ra"],
+    injection_parameters["dec"],
+    injection_parameters["geocent_time"],
+)
+
+injection_parameters["H1_time"] = injection_parameters["geocent_time"] + time_delay
 
 # For this analysis, we implement the standard BBH priors defined, except for
 # the definition of the time prior, which is defined as uniform about the

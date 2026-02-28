@@ -306,7 +306,14 @@ class PriorDict(dict):
                     "Unable to parse prior, bad entry: {} "
                     "= {} of type {}".format(key, val, type(val))
                 )
+        self._set_default_prior_names(dictionary)
         self.update(dictionary)
+
+    @staticmethod
+    def _set_default_prior_names(dictionary):
+        for key, val in dictionary.items():
+            if isinstance(val, Prior) and val.name is None:
+                val.name = key
 
     def convert_floats_to_delta_functions(self):
         """Convert all float parameters to delta functions"""
@@ -315,6 +322,7 @@ class PriorDict(dict):
                 continue
             elif isinstance(self[key], float) or isinstance(self[key], int):
                 self[key] = DeltaFunction(self[key])
+                self[key].name = key
                 logger.debug("{} converted to delta function prior.".format(key))
             else:
                 logger.debug(

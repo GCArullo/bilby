@@ -141,7 +141,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         return band_masks
 
-    def log_likelihood(self, parameters=None):
+    def _resolve_likelihood_parameters(self, parameters=None):
 
         parameters = _fallback_to_parameters(self, parameters)
         if parameters is self.parameters:
@@ -151,10 +151,69 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             merged_parameters.update(parameters)
             parameters = merged_parameters
         parameters.update(self.get_sky_frame_parameters(parameters))
+        return parameters
+
+    def _get_active_nu_values(self, parameters, update_state=False):
 
         nu_values = self._get_nu_values(parameters)
-        if self.infer_nu                       : self._store_nu_values(nu_values)
-        if not self._valid_nu_values(nu_values): return np.nan_to_num(-np.inf)
+        if update_state and self.infer_nu:
+            self._store_nu_values(nu_values)
+        if not self._valid_nu_values(nu_values):
+            return None
+        return nu_values
+
+    def _compute_scale2(self, power_spectral_density):
+
+        # Bilby's frequency-domain convention gives Var(Re n_k) = Var(Im n_k) = S_n(f_k) T / 4.
+        return power_spectral_density * self.waveform_generator.duration / 4.0
+
+    def _compute_detector_log_likelihood(
+        self,
+        interferometer,
+        nu_values,
+        parameters=None,
+        waveform_polarizations=None,
+    ):
+
+        mask = interferometer.frequency_mask
+        scale2 = self._compute_scale2(interferometer.power_spectral_density_array[mask])
+        if np.any(scale2 <= 0) or not np.all(np.isfinite(scale2)):
+            return -np.inf
+
+        if waveform_polarizations is None:
+            residual = interferometer.frequency_domain_strain[mask]
+        else:
+            h_f = interferometer.get_detector_response(waveform_polarizations, parameters)
+            residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+
+        abs2 = residual.real ** 2 + residual.imag ** 2
+        band_masks = self._get_frequency_band_masks(interferometer)
+
+        logl = 0.0
+        for nu, band_mask in zip(nu_values, band_masks):
+            if not np.any(band_mask):
+                continue
+
+            band_scale2 = scale2[band_mask]
+            band_abs2 = abs2[band_mask]
+            const = (
+                gammaln((nu + 2.0) / 2.0)
+                - gammaln(nu / 2.0)
+                - np.log(nu * np.pi * band_scale2)
+            )
+
+            logl += np.sum(
+                const - 0.5 * (nu + 2.0) * np.log1p(band_abs2 / (nu * band_scale2))
+            )
+
+        return float(logl)
+
+    def log_likelihood(self, parameters=None):
+
+        parameters = self._resolve_likelihood_parameters(parameters)
+        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        if nu_values is None:
+            return np.nan_to_num(-np.inf)
 
         # waveform polarizations (dict: 'plus','cross')
         pols = self.waveform_generator.frequency_domain_strain(parameters)
@@ -163,46 +222,95 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         logl = 0.0
         for ifo in self.interferometers:
-            # detector response h(f) in this interferometer
-            h_f = ifo.get_detector_response(pols, parameters)
-
-            # data d(f), PSD S_n(f), mask to the analysis band
-            mask = ifo.frequency_mask
-
-            d_f  = ifo.frequency_domain_strain
-            psd  = ifo.power_spectral_density_array
-            r    = d_f[mask] - h_f[mask]
-
-            band_masks = self._get_frequency_band_masks(ifo)
-
-            # Effective complex variance per bin under Gaussian noise:
-            # E[|r|^2] ~ (Sn/2) * (duration) in common GW conventions.
-            # Bilby stores frequency domain strain consistent with its inner product;
-            # using Sn/2 here is a standard choice for complex bins.
-            scale2 = psd[mask] / 2.0
-
-            if np.any(scale2 <= 0) or not np.all(np.isfinite(scale2)): return np.nan_to_num(-np.inf)
-
-            # For complex residuals, treat Re/Im as 2D Student-t, see:
-            # https://en.wikipedia.org/wiki/Multivariate_t-distribution
-            # log p(r) = const - ((nu+2)/2) * log(1 + |r|^2/(nu*scale2))
-            # with const = log Γ((nu+2)/2) - log Γ(nu/2) - log(νπ scale2)
-            abs2 = r.real ** 2 + r.imag ** 2
-
-            for nu, band_mask in zip(nu_values, band_masks):
-
-                if not np.any(band_mask): continue
-
-                band_scale2 = scale2[band_mask]
-                band_abs2   =   abs2[band_mask]
-                const = (
-                    gammaln((nu + 2.0) / 2.0)
-                    - gammaln(nu / 2.0)
-                    - np.log(nu * np.pi * band_scale2)
-                )
-
-                logl += np.sum(
-                    const - 0.5 * (nu + 2.0) * np.log1p(band_abs2 / (nu * band_scale2))
-                )
+            detector_logl = self._compute_detector_log_likelihood(
+                interferometer=ifo,
+                nu_values=nu_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+            )
+            if not np.isfinite(detector_logl):
+                return np.nan_to_num(-np.inf)
+            logl += detector_logl
 
         return float(logl)
+
+    def noise_log_likelihood(self):
+
+        nu_values = self._get_active_nu_values(self.parameters.copy(), update_state=False)
+        if nu_values is None:
+            return np.nan_to_num(-np.inf)
+
+        logl = 0.0
+        for ifo in self.interferometers:
+            detector_logl = self._compute_detector_log_likelihood(
+                interferometer=ifo,
+                nu_values=nu_values,
+            )
+            if not np.isfinite(detector_logl):
+                return np.nan_to_num(-np.inf)
+            logl += detector_logl
+
+        return float(logl)
+
+    def log_likelihood_ratio(self, parameters=None):
+
+        parameters = self._resolve_likelihood_parameters(parameters)
+        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        if nu_values is None:
+            return np.nan_to_num(-np.inf)
+
+        pols = self.waveform_generator.frequency_domain_strain(parameters)
+        if pols is None:
+            return np.nan_to_num(-np.inf)
+
+        signal_logl = 0.0
+        noise_logl = 0.0
+        for ifo in self.interferometers:
+            detector_signal_logl = self._compute_detector_log_likelihood(
+                interferometer=ifo,
+                nu_values=nu_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+            )
+            detector_noise_logl = self._compute_detector_log_likelihood(
+                interferometer=ifo,
+                nu_values=nu_values,
+            )
+            if not np.isfinite(detector_signal_logl) or not np.isfinite(detector_noise_logl):
+                return np.nan_to_num(-np.inf)
+            signal_logl += detector_signal_logl
+            noise_logl += detector_noise_logl
+
+        return float(signal_logl - noise_logl)
+
+    def compute_per_detector_log_likelihood(self, parameters=None):
+
+        parameters = self._resolve_likelihood_parameters(parameters)
+        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        if nu_values is None:
+            for interferometer in self.interferometers:
+                parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(-np.inf)
+            return parameters.copy()
+
+        pols = self.waveform_generator.frequency_domain_strain(parameters)
+        if pols is None:
+            for interferometer in self.interferometers:
+                parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(-np.inf)
+            return parameters.copy()
+
+        for interferometer in self.interferometers:
+            detector_signal_logl = self._compute_detector_log_likelihood(
+                interferometer=interferometer,
+                nu_values=nu_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+            )
+            detector_noise_logl = self._compute_detector_log_likelihood(
+                interferometer=interferometer,
+                nu_values=nu_values,
+            )
+            parameters[f"{interferometer.name}_log_likelihood"] = float(
+                detector_signal_logl - detector_noise_logl
+            )
+
+        return parameters.copy()

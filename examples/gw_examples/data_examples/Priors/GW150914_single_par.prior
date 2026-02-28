@@ -1,8 +1,8 @@
 chirp_mass          = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=25, maximum=35, unit='$M_{\odot}$')
 
 #L1_time             = Uniform(name='L1_time', minimum=1126259462.39, maximum=1126259462.43)
-#azimuth             = Uniform(minimum=0, maximum=6.283185307179586, name=None, latex_label='$\\epsilon$', unit=None, boundary='periodic')
-#zenith              = Sine(minimum=0, maximum=3.141592653589793, name=None, latex_label='$\\kappa$', unit=None, boundary=None)
+#azimuth             = Uniform(minimum=0, maximum=6.283185307179586, name='azimuth', latex_label='$\\epsilon$', unit=None, boundary='periodic')
+#zenith              = Sine(minimum=0, maximum=3.141592653589793, name='zenith', latex_label='$\\kappa$', unit=None, boundary=None)
 
 geocent_time        = Uniform(name='geocent_time', minimum=1126259462.40, maximum=1126259462.42)
 ##dec                 = Cosine(name='dec')

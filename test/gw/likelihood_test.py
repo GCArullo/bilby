@@ -150,6 +150,49 @@ class TestStudentTGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(calculated, float(manual), 7)
 
+    def test_multiband_log_likelihood_matches_direct_calculation(self):
+        band_nus = [6.0, 12.0, 20.0]
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=band_nus,
+            num_frequency_bands=len(band_nus),
+        )
+        likelihood.parameters = self.parameters.copy()
+
+        calculated = likelihood.log_likelihood()
+
+        pols = self.waveform_generator.frequency_domain_strain(self.parameters)
+        manual = 0.0
+        band_edges = likelihood._frequency_band_edges
+        for ifo in self.interferometers:
+            h_f = ifo.get_detector_response(pols, self.parameters)
+            mask = ifo.frequency_mask
+            frequencies = ifo.frequency_array[mask]
+            r = ifo.frequency_domain_strain[mask] - h_f[mask]
+            scale2 = ifo.power_spectral_density_array[mask] / 2.0
+            abs2 = r.real ** 2 + r.imag ** 2
+
+            for band_index, nu in enumerate(band_nus):
+                lower = band_edges[band_index]
+                upper = band_edges[band_index + 1]
+                if band_index == len(band_nus) - 1:
+                    band_mask = (frequencies >= lower) & (frequencies <= upper)
+                else:
+                    band_mask = (frequencies >= lower) & (frequencies < upper)
+
+                const = (
+                    gammaln((nu + 2.0) / 2.0)
+                    - gammaln(nu / 2.0)
+                    - np.log(nu * np.pi * scale2[band_mask])
+                )
+                manual += np.sum(
+                    const
+                    - 0.5 * (nu + 2.0) * np.log1p(abs2[band_mask] / (nu * scale2[band_mask]))
+                )
+
+        self.assertAlmostEqual(calculated, float(manual), 7)
+
     def test_infer_nu_uses_parameter_dict(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
@@ -168,6 +211,30 @@ class TestStudentTGWTransient(unittest.TestCase):
         logl_nu30 = likelihood.log_likelihood()
         self.assertNotEqual(logl_nu5, logl_nu30)
 
+    def test_infer_nu_uses_per_band_parameters(self):
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+            infer_nu=True,
+            num_frequency_bands=2,
+        )
+        self.assertIn("nu_1", likelihood.parameters)
+        self.assertIn("nu_2", likelihood.parameters)
+
+        likelihood.parameters = self.parameters.copy()
+        likelihood.parameters["nu_1"] = 4.0
+        likelihood.parameters["nu_2"] = 30.0
+
+        np.testing.assert_allclose(likelihood.nu, np.array([4.0, 30.0]))
+
+        logl_split = likelihood.log_likelihood()
+        likelihood.parameters["nu_1"] = 30.0
+        likelihood.parameters["nu_2"] = 4.0
+        logl_swapped = likelihood.log_likelihood()
+
+        self.assertNotEqual(logl_split, logl_swapped)
+
     def test_invalid_nu_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
@@ -177,6 +244,20 @@ class TestStudentTGWTransient(unittest.TestCase):
         )
         likelihood.parameters = self.parameters.copy()
         likelihood.parameters["nu"] = -1
+
+        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+
+    def test_invalid_per_band_nu_returns_negative_infinity(self):
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+            infer_nu=True,
+            num_frequency_bands=2,
+        )
+        likelihood.parameters = self.parameters.copy()
+        likelihood.parameters["nu_1"] = 8.0
+        likelihood.parameters["nu_2"] = -1.0
 
         self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
 

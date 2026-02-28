@@ -1,18 +1,29 @@
-chirp_mass   = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=25, maximum=35, unit='$M_{\odot}$')
-geocent_time = Uniform(name='geocent_time', minimum=1126259462.40, maximum=1126259462.42)
+chirp_mass          = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=25, maximum=35, unit='$M_{\odot}$')
 
-mass_ratio = 0.977647
-mass_1 = Constraint(name='mass_1', minimum=10, maximum=80)
-mass_2 = Constraint(name='mass_2', minimum=10, maximum=80)
-a_1 = 0.0
-a_2 = 0.0
-tilt_1 = 0.0
-tilt_2 = 0.0
-phi_12 = 0.0
-phi_jl = 0.0
+#L1_time             = Uniform(name='L1_time', minimum=1126259462.39, maximum=1126259462.43)
+#azimuth             = Uniform(minimum=0, maximum=6.283185307179586, name=None, latex_label='$\\epsilon$', unit=None, boundary='periodic')
+#zenith              = Sine(minimum=0, maximum=3.141592653589793, name=None, latex_label='$\\kappa$', unit=None, boundary=None)
+
+geocent_time        = Uniform(name='geocent_time', minimum=1126259462.40, maximum=1126259462.42)
+##dec                 = Cosine(name='dec')
+#ra                  = Uniform(name='ra', minimum=0, maximum=2 * np.pi, boundary='periodic')
+dec                 = -1.2232
+ra                  = 2.19432
+
+mass_ratio          = 0.977647
+mass_1              = Constraint(name='mass_1', minimum=10, maximum=80)
+mass_2              = Constraint(name='mass_2', minimum=10, maximum=80)
+
+a_1                 = 0.0
+a_2                 = 0.0
+tilt_1              = 0.0
+tilt_2              = 0.0
+phi_12              = 0.0
+phi_jl              = 0.0
+
 luminosity_distance = 412.066
-dec = -1.2232
-ra = 2.19432
-theta_jn = 1.89694
-psi = 0.532268
-phase = 5.30408
+theta_jn            = 1.89694
+phase               = 5.30408
+
+
+psi                 = 0.532268

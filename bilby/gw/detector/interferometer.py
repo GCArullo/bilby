@@ -172,6 +172,29 @@ class Interferometer(object):
             self.power_spectral_density, sampling_frequency=sampling_frequency,
             duration=duration, start_time=start_time)
 
+    def set_strain_data_from_power_spectral_density_student_t(
+            self, sampling_frequency, duration, nu, start_time=0):
+        """ Set the `Interferometer.strain_data` from a Student-t power spectral density draw
+
+        Parameters
+        ==========
+        sampling_frequency: float
+            The sampling frequency (in Hz)
+        duration: float
+            The data duration (in s)
+        nu: float
+            Student-t degrees of freedom used to generate the noise
+        start_time: float
+            The GPS start-time of the data
+        """
+        self.strain_data.set_from_power_spectral_density_student_t(
+            self.power_spectral_density,
+            sampling_frequency=sampling_frequency,
+            duration=duration,
+            nu=nu,
+            start_time=start_time,
+        )
+
     def set_strain_data_from_frame_file(
             self, frame_file, sampling_frequency, duration, start_time=0,
             channel=None, buffer_time=1):

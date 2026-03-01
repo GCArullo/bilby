@@ -364,3 +364,45 @@ class PowerSpectralDensity(object):
         out_of_bounds = (frequencies < min(self.frequency_array)) | (frequencies > max(self.frequency_array))
         frequency_domain_strain[out_of_bounds] = 0 * (1 + 1j)
         return frequency_domain_strain, frequencies
+
+    def get_student_t_noise_realisation(self, sampling_frequency, duration, nu):
+        """
+        Generate frequency-domain Student-t noise scaled to the power spectral density.
+
+        Parameters
+        ==========
+        sampling_frequency: float
+            sampling frequency of noise
+        duration: float
+            duration of noise
+        nu: float
+            Student-t degrees of freedom. Must be positive and finite.
+
+        Returns
+        =======
+        array_like: frequency domain strain of this noise realisation
+        array_like: frequencies related to the frequency domain strain
+        """
+        if not np.isfinite(nu) or nu <= 0:
+            raise ValueError("nu must be positive and finite")
+
+        # Draw Student-t noise as a Gaussian scale mixture in each frequency bin:
+        #   z_k ~ N_C(0, 1),   u_k ~ chi^2_nu / nu,
+        #   n_k = sqrt(S_n(f_k)) z_k / sqrt(u_k).
+        # Marginalizing over u_k gives a complex Student-t residual with degrees
+        # of freedom nu and PSD scale S_n(f_k). The DC bin and, when present, the
+        # Nyquist bin have only one real degree of freedom in an rfft, so we set
+        # their mixing to infinity to force those components to zero here.
+        white_noise, frequencies = utils.create_white_noise(sampling_frequency, duration)
+        mixing = np.sqrt(utils.random.rng.chisquare(df=nu, size=len(frequencies)) / nu)
+        mixing[0] = np.inf
+        if len(mixing) > 1 and frequencies[-1] == sampling_frequency / 2:
+            mixing[-1] = np.inf
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            white_noise = white_noise / mixing
+            frequency_domain_strain = self.__power_spectral_density_interpolated(frequencies) ** 0.5 * white_noise
+
+        out_of_bounds = (frequencies < min(self.frequency_array)) | (frequencies > max(self.frequency_array))
+        frequency_domain_strain[out_of_bounds] = 0 * (1 + 1j)
+        return frequency_domain_strain, frequencies

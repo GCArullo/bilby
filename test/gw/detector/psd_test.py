@@ -298,5 +298,43 @@ class TestPowerSpectralDensityEquals(unittest.TestCase):
         self.assertNotEqual(self.psd_from_array_1, self.psd_from_array_2)
 
 
+class TestStudentTNoiseRealisation(unittest.TestCase):
+    def setUp(self):
+        self.sampling_frequency = 1024
+        self.duration = 64
+        self.frequency_array = np.linspace(0, self.sampling_frequency / 2, 513)
+        self.psd_level = 3.0
+        self.psd = bilby.gw.detector.PowerSpectralDensity(
+            frequency_array=self.frequency_array,
+            psd_array=np.full_like(self.frequency_array, self.psd_level),
+        )
+
+    def test_invalid_nu_raises(self):
+        with self.assertRaises(ValueError):
+            self.psd.get_student_t_noise_realisation(
+                sampling_frequency=self.sampling_frequency,
+                duration=self.duration,
+                nu=-1,
+            )
+
+    def test_student_t_whitened_power_matches_expected_mean(self):
+        nu = 7.0
+        bilby.core.utils.random.seed(1234)
+
+        strain, frequencies = self.psd.get_student_t_noise_realisation(
+            sampling_frequency=self.sampling_frequency,
+            duration=self.duration,
+            nu=nu,
+        )
+
+        mask = (frequencies > 0) & (frequencies < self.sampling_frequency / 2)
+        scale2 = self.psd_level * self.duration / 4.0
+        whitened_power = np.abs(strain[mask]) ** 2 / scale2
+
+        expected_mean = 2.0 * nu / (nu - 2.0)
+        self.assertAlmostEqual(np.mean(whitened_power), expected_mean, delta=0.12)
+        self.assertGreater(np.quantile(whitened_power, 0.995), 12.0)
+
+
 if __name__ == "__main__":
     unittest.main()

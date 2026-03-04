@@ -21,6 +21,18 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         infer_nu=False,
         num_frequency_bands=1,
         detector_dependent_nu=False,
+        time_marginalization=False,
+        distance_marginalization=False,
+        phase_marginalization=False,
+        calibration_marginalization=False,
+        priors=None,
+        distance_marginalization_lookup_table=None,
+        calibration_lookup_table=None,
+        number_of_response_curves=1000,
+        starting_index=0,
+        jitter_time=True,
+        reference_frame="sky",
+        time_reference="geocenter",
         **kwargs,
     ):
         """
@@ -47,9 +59,23 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             Passed to GravitationalWaveTransient. (Note: time/distance/phase marginalization in
             the base class assumes Gaussian structure; leave those False unless you re-derive them.)
         """
+        # Keep the base-likelihood kwargs explicit so tools such as bilby_pipe
+        # can discover and forward them when this class is selected by dotted path.
         super().__init__(
             interferometers=interferometers,
             waveform_generator=waveform_generator,
+            time_marginalization=time_marginalization,
+            distance_marginalization=distance_marginalization,
+            phase_marginalization=phase_marginalization,
+            calibration_marginalization=calibration_marginalization,
+            priors=priors,
+            distance_marginalization_lookup_table=distance_marginalization_lookup_table,
+            calibration_lookup_table=calibration_lookup_table,
+            number_of_response_curves=number_of_response_curves,
+            starting_index=starting_index,
+            jitter_time=jitter_time,
+            reference_frame=reference_frame,
+            time_reference=time_reference,
             **kwargs,
         )
 

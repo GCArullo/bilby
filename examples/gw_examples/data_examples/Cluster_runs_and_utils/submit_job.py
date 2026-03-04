@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 
-LABEL_PREFIX = "GW231123_geocentric_frame_t_Student"
+LABEL_PREFIX = "GW231123_t_Student"
 OUTDIR_BASE = "/home/gregorio.carullo/GW231123/t_Student/Runs"
 WEBDIR_BASE = "/home/gregorio.carullo/public_html/GW231123/t_Student/Runs"
 DEFAULT_DETECTORS = ("H1", "L1")
@@ -170,8 +170,8 @@ def prepare_run(
 ) -> Path:
     mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
     label = f"{LABEL_PREFIX}{mode_suffix}_N{band_count}"
-    run_outdir = f"{OUTDIR_BASE}/geocentric_frame_student{mode_suffix}_N{band_count}"
-    run_webdir = f"{WEBDIR_BASE}/geocentric_frame_student{mode_suffix}_N{band_count}"
+    run_outdir = f"{OUTDIR_BASE}/student{mode_suffix}_N{band_count}"
+    run_webdir = f"{WEBDIR_BASE}/student{mode_suffix}_N{band_count}"
     prior_path = (prior_dir / f"GW231123{mode_suffix}_N{band_count}.prior").resolve()
     ini_path = (ini_dir / f"GW231123_t_student{mode_suffix}_N{band_count}.ini").resolve()
 

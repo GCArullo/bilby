@@ -21,7 +21,6 @@ __NU_PRIORS__
 dec = Cosine(name='dec')
 ra = Uniform(name='ra', minimum=0, maximum=2 * np.pi, boundary='periodic')
 
-# Edit to try and avoid likelihood crash: did not work
 #azimuth = Uniform(minimum=0, maximum=6.283185307179586, name=None, latex_label='$\\epsilon$', unit=None, boundary='periodic')
 #zenith  = Sine(minimum=0, maximum=3.141592653589793, name=None, latex_label='$\\kappa$', unit=None, boundary=None)
 #L1_time = Uniform(minimum=1384782888.5342772, maximum=1384782888.734277, name='L1_time', latex_label='$t_L$', unit='$s$', boundary=None)

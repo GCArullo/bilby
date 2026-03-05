@@ -33,7 +33,15 @@ import bilby
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-POSTERIOR_PATH = SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5"
+DEFAULT_POSTERIOR_PATH = (
+    SCRIPT_DIR
+    / "Data"
+    / "LVK_run"
+    / "bilby-NRSur7dq4"
+    / "samples"
+    / "posterior_samples.h5"
+)
+LOCAL_POSTERIOR_PATH = SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5"
 INI_TEMPLATE_PATH = SCRIPT_DIR / "GW231123_t_student_template.ini"
 PRIOR_TEMPLATE_PATH = SCRIPT_DIR / "GW231123_template.prior"
 DEFAULT_STAGING_RANDOM_SEED = 12345
@@ -130,6 +138,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--local-posterior",
+        action="store_true",
+        help=(
+            "Use the legacy local posterior path "
+            "Cluster_runs_and_utils/LVK_posterior/posterior_samples.h5. "
+            "By default, the posterior is read from "
+            "Cluster_runs_and_utils/Data/LVK_run/bilby-NRSur7dq4/samples/."
+        ),
+    )
+    parser.add_argument(
         "--student-only",
         action="store_true",
         help="Generate only the Student-t hypothesis run.",
@@ -171,6 +189,25 @@ def load_template(path: Path) -> str:
     if not path.is_file():
         raise FileNotFoundError(f"Missing template: {path}")
     return path.read_text(encoding="utf-8")
+
+
+def resolve_posterior_path(args: argparse.Namespace) -> Path:
+    if args.local_posterior:
+        posterior_path = LOCAL_POSTERIOR_PATH
+    else:
+        posterior_path = DEFAULT_POSTERIOR_PATH
+    if not posterior_path.is_file():
+        if args.local_posterior:
+            raise FileNotFoundError(
+                f"Requested local posterior not found: {posterior_path}"
+            )
+        raise FileNotFoundError(
+            "Default posterior not found at "
+            f"{DEFAULT_POSTERIOR_PATH}. "
+            "Pass --local-posterior to use "
+            f"{LOCAL_POSTERIOR_PATH} instead."
+        )
+    return posterior_path
 
 
 def parse_template_value(raw_value: str):
@@ -421,6 +458,7 @@ def stage_injection_bundle(
     base_dir: Path,
     args: argparse.Namespace,
     template_settings: dict[str, object],
+    posterior_path: Path,
 ) -> dict[str, object]:
     stage_dir = ensure_dir(base_dir / "staged_data")
     data_dir = ensure_dir(stage_dir / "data")
@@ -435,7 +473,7 @@ def stage_injection_bundle(
     bilby.core.utils.random.seed(staging_seed)
 
     injection_parameters, maxl_log_likelihood, maxl_index = (
-        load_maximum_likelihood_injection(POSTERIOR_PATH)
+        load_maximum_likelihood_injection(posterior_path)
     )
     noise_nu, likelihood_nu, effective_detector_dependent_nu = resolve_nu_configuration(
         raw_nu_injection=args.nu_injection,
@@ -443,7 +481,7 @@ def stage_injection_bundle(
         num_frequency_bands=args.num_frequency_bands,
         detector_dependent_nu=args.detector_dependent_nu,
     )
-    psds = load_psds(POSTERIOR_PATH, template_settings["detectors"])
+    psds = load_psds(posterior_path, template_settings["detectors"])
     interferometers = build_interferometers(
         psds,
         template_settings,
@@ -481,6 +519,7 @@ def stage_injection_bundle(
         likelihood_nu=likelihood_nu,
         num_frequency_bands=args.num_frequency_bands,
         detector_dependent_nu=effective_detector_dependent_nu,
+        posterior_path=str(posterior_path.resolve()),
         waveform_approximant=template_settings["waveform_approximant"],
         sampling_seed=staging_seed,
         injection_parameters=injection_parameters,
@@ -720,7 +759,13 @@ def prepare_runs(args: argparse.Namespace) -> list[Path]:
     ini_template = load_template(INI_TEMPLATE_PATH)
     prior_template = load_template(PRIOR_TEMPLATE_PATH)
     template_settings = read_template_settings(ini_template)
-    bundle = stage_injection_bundle(base_dir, args, template_settings)
+    posterior_path = resolve_posterior_path(args)
+    bundle = stage_injection_bundle(
+        base_dir,
+        args,
+        template_settings,
+        posterior_path,
+    )
 
     ini_paths = []
     for hypothesis in hypothesis_list(args):

@@ -662,7 +662,7 @@ def render_ini(
     rendered = replace_line(
         rendered,
         "additional-transfer-paths",
-        f"['{stage_dir.resolve()}']",
+        f"[{stage_dir.resolve()}]",
     )
 
     sampler_kwargs = dict(template_settings["sampler_kwargs"])

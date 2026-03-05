@@ -5,7 +5,9 @@
 The generated ini/prior files are rendered from the same GW231123 template files
 used for the real-data analyses in this directory. Only the path- and
 injection-specific settings are replaced, so the resulting configs stay as close
-as possible to the production templates.
+as possible to the production templates. The staged simulated noise is always
+Student-t; --gaussian-only/--student-only only choose which recovery likelihood
+jobs are generated.
 """
 
 from __future__ import annotations
@@ -150,12 +152,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--student-only",
         action="store_true",
-        help="Generate only the Student-t hypothesis run.",
+        help=(
+            "Generate only the Student-t likelihood recovery run. "
+            "This does not change the injected noise model."
+        ),
     )
     parser.add_argument(
         "--gaussian-only",
         action="store_true",
-        help="Generate only the Gaussian hypothesis run.",
+        help=(
+            "Generate only the Gaussian likelihood recovery run. "
+            "This does not change the injected noise model."
+        ),
     )
     parser.add_argument(
         "--submit",

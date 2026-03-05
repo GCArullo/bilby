@@ -4,7 +4,10 @@ from ..core import utils
 from ..core.series import CoupledTimeAndFrequencySeries
 from ..core.utils import PropertyAccessor
 from ..core.utils import logger
-from .conversion import convert_to_lal_binary_black_hole_parameters
+from .conversion import (
+    convert_to_cbc_plus_sine_gaussian_parameters,
+    convert_to_lal_binary_black_hole_parameters,
+)
 from .utils import lalsim_GetApproximantFromString
 
 
@@ -66,7 +69,7 @@ class WaveformGenerator(object):
         self.time_domain_source_model = time_domain_source_model
         self.source_parameter_keys = self._parameters_from_source_model()
         if parameter_conversion is None:
-            self.parameter_conversion = convert_to_lal_binary_black_hole_parameters
+            self.parameter_conversion = self._get_default_parameter_conversion()
         else:
             self.parameter_conversion = parameter_conversion
         if waveform_arguments is not None:
@@ -77,6 +80,16 @@ class WaveformGenerator(object):
             self.parameters = parameters
         self._cache = dict(parameters=None, waveform=None, model=None)
         logger.info(f"Waveform generator instantiated: {self}")
+
+    def _get_default_parameter_conversion(self):
+        source_model = (
+            self.frequency_domain_source_model
+            if self.frequency_domain_source_model is not None
+            else self.time_domain_source_model
+        )
+        if getattr(source_model, "__name__", "") == "cbc_plus_sine_gaussians":
+            return convert_to_cbc_plus_sine_gaussian_parameters
+        return convert_to_lal_binary_black_hole_parameters
 
     def __repr__(self):
         if self.frequency_domain_source_model is not None:

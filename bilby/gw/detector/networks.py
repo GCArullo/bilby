@@ -110,7 +110,8 @@ class InterferometerList(list):
             )
 
     def set_strain_data_from_power_spectral_densities_student_t(
-        self, sampling_frequency, duration, nu, start_time=0
+        self, sampling_frequency, duration, nu, start_time=0,
+        num_frequency_bands=1,
     ):
         """Set the detector data from Student-t PSD draws.
 
@@ -120,11 +121,16 @@ class InterferometerList(list):
             The sampling frequency (in Hz)
         duration: float
             The data duration (in s)
-        nu: float or dict
+        nu: float, array-like, or dict
             Student-t degrees of freedom. A scalar is shared across detectors;
-            a dict may be supplied to set detector-specific values.
+            an array-like may be supplied to set per-band values; a dict may
+            be supplied to set detector-specific values (with scalar or
+            per-band values).
         start_time: float
             The GPS start-time of the data
+        num_frequency_bands: int
+            Number of contiguous frequency bands used when drawing Student-t
+            noise in each detector.
         """
         for interferometer in self:
             if isinstance(nu, dict):
@@ -136,6 +142,7 @@ class InterferometerList(list):
                 duration=duration,
                 nu=detector_nu,
                 start_time=start_time,
+                num_frequency_bands=num_frequency_bands,
             )
 
     def set_strain_data_from_zero_noise(

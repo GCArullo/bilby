@@ -211,9 +211,19 @@ class TestInterferometerList(unittest.TestCase):
     )
     def test_set_strain_data_from_power_spectral_density_student_t_shared_nu(self, m):
         self.ifo_list.set_strain_data_from_power_spectral_densities_student_t(
-            sampling_frequency=123, duration=6.2, nu=8.0, start_time=3
+            sampling_frequency=123,
+            duration=6.2,
+            nu=8.0,
+            start_time=3,
+            num_frequency_bands=4,
         )
-        m.assert_called_with(sampling_frequency=123, duration=6.2, nu=8.0, start_time=3)
+        m.assert_called_with(
+            sampling_frequency=123,
+            duration=6.2,
+            nu=8.0,
+            start_time=3,
+            num_frequency_bands=4,
+        )
         self.assertEqual(len(self.ifo_list), m.call_count)
 
     @mock.patch.object(
@@ -225,11 +235,24 @@ class TestInterferometerList(unittest.TestCase):
             duration=6.2,
             nu={self.ifo1.name: 5.0, self.ifo2.name: 9.0},
             start_time=3,
+            num_frequency_bands=2,
         )
         self.assertEqual(len(self.ifo_list), m.call_count)
         expected_calls = [
-            mock.call(sampling_frequency=123, duration=6.2, nu=5.0, start_time=3),
-            mock.call(sampling_frequency=123, duration=6.2, nu=9.0, start_time=3),
+            mock.call(
+                sampling_frequency=123,
+                duration=6.2,
+                nu=5.0,
+                start_time=3,
+                num_frequency_bands=2,
+            ),
+            mock.call(
+                sampling_frequency=123,
+                duration=6.2,
+                nu=9.0,
+                start_time=3,
+                num_frequency_bands=2,
+            ),
         ]
         m.assert_has_calls(expected_calls, any_order=False)
 

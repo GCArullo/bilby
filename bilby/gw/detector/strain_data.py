@@ -641,7 +641,7 @@ class InterferometerStrainData(object):
 
     def set_from_power_spectral_density_student_t(
             self, power_spectral_density, sampling_frequency, duration,
-            nu, start_time=0):
+            nu, start_time=0, num_frequency_bands=1):
         """ Set the `frequency_domain_strain` using a Student-t noise realization
 
         Parameters
@@ -652,10 +652,12 @@ class InterferometerStrainData(object):
             The sampling frequency (in Hz)
         duration: float
             The data duration (in s)
-        nu: float
+        nu: float or array-like
             Student-t degrees of freedom used to generate the noise
         start_time: float
             The GPS start-time of the data
+        num_frequency_bands: int
+            Number of contiguous frequency bands for the Student-t noise model.
         """
 
         self._times_and_frequencies = CoupledTimeAndFrequencySeries(
@@ -667,7 +669,10 @@ class InterferometerStrainData(object):
         )
         frequency_domain_strain, frequency_array = (
             power_spectral_density.get_student_t_noise_realisation(
-                self.sampling_frequency, self.duration, nu=nu
+                self.sampling_frequency,
+                self.duration,
+                nu=nu,
+                num_frequency_bands=num_frequency_bands,
             )
         )
 

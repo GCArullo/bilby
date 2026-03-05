@@ -317,6 +317,15 @@ class TestStudentTNoiseRealisation(unittest.TestCase):
                 nu=-1,
             )
 
+    def test_invalid_per_band_nu_shape_raises(self):
+        with self.assertRaises(ValueError):
+            self.psd.get_student_t_noise_realisation(
+                sampling_frequency=self.sampling_frequency,
+                duration=self.duration,
+                nu=[3.0, 5.0],
+                num_frequency_bands=3,
+            )
+
     def test_student_t_whitened_power_matches_expected_mean(self):
         nu = 7.0
         bilby.core.utils.random.seed(1234)
@@ -334,6 +343,28 @@ class TestStudentTNoiseRealisation(unittest.TestCase):
         expected_mean = 2.0 * nu / (nu - 2.0)
         self.assertAlmostEqual(np.mean(whitened_power), expected_mean, delta=0.12)
         self.assertGreater(np.quantile(whitened_power, 0.995), 12.0)
+
+    def test_per_band_nu_changes_whitened_power_between_bands(self):
+        bilby.core.utils.random.seed(1234)
+        strain, frequencies = self.psd.get_student_t_noise_realisation(
+            sampling_frequency=self.sampling_frequency,
+            duration=self.duration,
+            nu=[3.5, 40.0],
+            num_frequency_bands=2,
+        )
+
+        active_mask = (frequencies > 0) & (frequencies < self.sampling_frequency / 2)
+        active_frequencies = frequencies[active_mask]
+        edges = np.linspace(active_frequencies[0], active_frequencies[-1], 3)
+        low_band_mask = active_mask & (frequencies >= edges[0]) & (frequencies < edges[1])
+        high_band_mask = active_mask & (frequencies >= edges[1]) & (frequencies <= edges[2])
+
+        scale2 = self.psd_level * self.duration / 4.0
+        low_band_power = np.abs(strain[low_band_mask]) ** 2 / scale2
+        high_band_power = np.abs(strain[high_band_mask]) ** 2 / scale2
+
+        self.assertGreater(np.mean(low_band_power), np.mean(high_band_power))
+        self.assertGreater(np.quantile(low_band_power, 0.995), np.quantile(high_band_power, 0.995))
 
 
 if __name__ == "__main__":

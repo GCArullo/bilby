@@ -35,17 +35,22 @@ import bilby
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+INI_TEMPLATE_PATH = (
+    SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
+)
+PRIOR_TEMPLATE_PATH = SCRIPT_DIR / "Prior_templates" / "GW231123_template.prior"
 DEFAULT_POSTERIOR_PATH = (
+    SCRIPT_DIR / "LVK_posteriors" / "GW231123" / "posterior_samples.h5"
+)
+LEGACY_POSTERIOR_PATHS = (
+    SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5",
     SCRIPT_DIR
     / "Data"
     / "LVK_run"
     / "bilby-NRSur7dq4"
     / "samples"
-    / "posterior_samples.h5"
+    / "posterior_samples.h5",
 )
-LOCAL_POSTERIOR_PATH = SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5"
-INI_TEMPLATE_PATH = SCRIPT_DIR / "GW231123_t_student_template.ini"
-PRIOR_TEMPLATE_PATH = SCRIPT_DIR / "GW231123_template.prior"
 DEFAULT_STAGING_RANDOM_SEED = 12345
 
 INJECTION_KEYS = (
@@ -143,10 +148,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--local-posterior",
         action="store_true",
         help=(
-            "Use the legacy local posterior path "
-            "Cluster_runs_and_utils/LVK_posterior/posterior_samples.h5. "
-            "By default, the posterior is read from "
-            "Cluster_runs_and_utils/Data/LVK_run/bilby-NRSur7dq4/samples/."
+            "Use a legacy posterior layout if available (first existing file in "
+            "Cluster_runs_and_utils/LVK_posterior/posterior_samples.h5 or "
+            "Cluster_runs_and_utils/Data/LVK_run/bilby-NRSur7dq4/samples/"
+            "posterior_samples.h5). By default, the posterior is read from "
+            "Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5."
         ),
     )
     parser.add_argument(
@@ -201,19 +207,23 @@ def load_template(path: Path) -> str:
 
 def resolve_posterior_path(args: argparse.Namespace) -> Path:
     if args.local_posterior:
-        posterior_path = LOCAL_POSTERIOR_PATH
+        for legacy_path in LEGACY_POSTERIOR_PATHS:
+            if legacy_path.is_file():
+                return legacy_path
+        checked_legacy = "\n".join(f"  - {path}" for path in LEGACY_POSTERIOR_PATHS)
+        raise FileNotFoundError(
+            "Requested --local-posterior, but no legacy posterior was found. "
+            f"Checked:\n{checked_legacy}"
+        )
     else:
         posterior_path = DEFAULT_POSTERIOR_PATH
     if not posterior_path.is_file():
-        if args.local_posterior:
-            raise FileNotFoundError(
-                f"Requested local posterior not found: {posterior_path}"
-            )
+        legacy_locations = ", ".join(str(path) for path in LEGACY_POSTERIOR_PATHS)
         raise FileNotFoundError(
             "Default posterior not found at "
             f"{DEFAULT_POSTERIOR_PATH}. "
-            "Pass --local-posterior to use "
-            f"{LOCAL_POSTERIOR_PATH} instead."
+            "Pass --local-posterior to use a legacy path if present "
+            f"({legacy_locations})."
         )
     return posterior_path
 

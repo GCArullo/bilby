@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
-"""Generate and optionally submit Student-t bilby_pipe runs."""
+"""Generate and optionally submit Student-t bilby_pipe runs.
+
+Optionally, Gaussian-likelihood runs can be generated and submitted alongside
+the Student-t runs.
+"""
 
 from __future__ import annotations
 
@@ -32,8 +36,8 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         outdir_base="/home/gregorio.carullo/GW231123/t_Student/Runs",
         webdir_base="/home/gregorio.carullo/public_html/GW231123/t_Student/Runs",
         file_prefix="GW231123",
-        ini_template="GW231123_t_student_template.ini",
-        prior_template="GW231123_template.prior",
+        ini_template="Initialisation_file_templates/GW231123_t_student_template.ini",
+        prior_template="Prior_templates/GW231123_template.prior",
         detectors=("H1", "L1"),
     ),
     "GW230814": EventDefaults(
@@ -41,8 +45,8 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         outdir_base="/home/gregorio.carullo/GW230814/t_Student_pSEOB/Runs",
         webdir_base="/home/gregorio.carullo/public_html/GW230814/t_Student_pSEOB/Runs",
         file_prefix="GW230814",
-        ini_template="GW230814_t_student_pSEOB_template.ini",
-        prior_template="GW230814_template.prior",
+        ini_template="Initialisation_file_templates/GW230814_t_student_pSEOB_template.ini",
+        prior_template="Prior_templates/GW230814_template.prior",
         detectors=("L1",),
     ),
 }
@@ -62,7 +66,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Generate bilby_pipe ini/prior files for Student-t runs and optionally "
-            "submit them."
+            "submit them. Gaussian runs can also be added."
         )
     )
     parser.add_argument(
@@ -98,6 +102,14 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Generate files but do not call bilby_pipe.",
+    )
+    parser.add_argument(
+        "--add-gaussian",
+        action="store_true",
+        help=(
+            "Also generate and submit Gaussian-likelihood runs for each requested "
+            "band count."
+        ),
     )
     parser.add_argument(
         "--detector-dependent-nu",
@@ -206,9 +218,12 @@ def render_prior(
     prior_template: str,
     band_count: int,
     *,
+    include_nu_priors: bool = True,
     detector_dependent_nu: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
 ) -> str:
+    if not include_nu_priors:
+        return prior_template.replace("__NU_PRIORS__", "")
     return prior_template.replace(
         "__NU_PRIORS__",
         build_nu_priors(
@@ -219,9 +234,20 @@ def render_prior(
     )
 
 
+def replace_line(text: str, key: str, value: str) -> str:
+    lines = text.splitlines()
+    prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{key}={value}"
+            return "\n".join(lines) + "\n"
+    raise ValueError(f"Unable to find config key '{key}' in template")
+
+
 def render_ini(
     ini_template: str,
     *,
+    hypothesis: str,
     label: str,
     outdir: str,
     webdir: str,
@@ -240,11 +266,28 @@ def render_ini(
     rendered = ini_template
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
+
+    if hypothesis == "student":
+        rendered = replace_line(
+            rendered,
+            "likelihood-type",
+            "bilby.gw.likelihood.StudentTGravitationalWaveTransient",
+        )
+    elif hypothesis == "gaussian":
+        rendered = replace_line(
+            rendered,
+            "likelihood-type",
+            "bilby.gw.likelihood.GravitationalWaveTransient",
+        )
+        rendered = replace_line(rendered, "extra-likelihood-kwargs", "None")
+    else:
+        raise ValueError(f"Unknown hypothesis '{hypothesis}'")
     return rendered
 
 
 def prepare_run(
     *,
+    hypothesis: str,
     band_count: int,
     ini_template: str,
     prior_template: str,
@@ -257,20 +300,36 @@ def prepare_run(
     webdir_base: str,
     file_prefix: str,
 ) -> Path:
-    mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
-    label = f"{label_prefix}{mode_suffix}_N{band_count}"
-    run_outdir = f"{outdir_base}/student{mode_suffix}_N{band_count}"
-    run_webdir = f"{webdir_base}/student{mode_suffix}_N{band_count}"
-    prior_path = (prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}.prior").resolve()
-    ini_path = (
-        ini_dir / f"{file_prefix}_t_student{mode_suffix}_N{band_count}.ini"
-    ).resolve()
+    if hypothesis == "student":
+        mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
+        label = f"{label_prefix}{mode_suffix}_N{band_count}"
+        run_outdir = f"{outdir_base}/student{mode_suffix}_N{band_count}"
+        run_webdir = f"{webdir_base}/student{mode_suffix}_N{band_count}"
+        prior_path = (
+            prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}.prior"
+        ).resolve()
+        ini_path = (
+            ini_dir / f"{file_prefix}_t_student{mode_suffix}_N{band_count}.ini"
+        ).resolve()
+        include_nu_priors = True
+        run_detector_dependent_nu = detector_dependent_nu
+    elif hypothesis == "gaussian":
+        label = f"{label_prefix}_gaussian_N{band_count}"
+        run_outdir = f"{outdir_base}/gaussian_N{band_count}"
+        run_webdir = f"{webdir_base}/gaussian_N{band_count}"
+        prior_path = (prior_dir / f"{file_prefix}_gaussian_N{band_count}.prior").resolve()
+        ini_path = (ini_dir / f"{file_prefix}_gaussian_N{band_count}.ini").resolve()
+        include_nu_priors = False
+        run_detector_dependent_nu = False
+    else:
+        raise ValueError(f"Unknown hypothesis '{hypothesis}'")
 
     prior_path.write_text(
         render_prior(
             prior_template,
             band_count,
-            detector_dependent_nu=detector_dependent_nu,
+            include_nu_priors=include_nu_priors,
+            detector_dependent_nu=run_detector_dependent_nu,
             detectors=detectors,
         ),
         encoding="utf-8",
@@ -278,17 +337,18 @@ def prepare_run(
     ini_path.write_text(
         render_ini(
             ini_template,
+            hypothesis=hypothesis,
             label=label,
             outdir=run_outdir,
             webdir=run_webdir,
             prior_file=prior_path,
             band_count=band_count,
-            detector_dependent_nu=detector_dependent_nu,
+            detector_dependent_nu=run_detector_dependent_nu,
         ),
         encoding="utf-8",
     )
 
-    print(f"Prepared N={band_count}:")
+    print(f"Prepared {hypothesis} N={band_count}:")
     print(f"  prior: {prior_path}")
     print(f"  ini:   {ini_path}")
     return ini_path
@@ -329,23 +389,28 @@ def main() -> int:
         band_counts = range(1, args.num_frequency_bands + 1)
     else:
         band_counts = [args.num_frequency_bands]
+    hypotheses = ["student"]
+    if args.add_gaussian:
+        hypotheses.append("gaussian")
 
     for band_count in band_counts:
-        ini_path = prepare_run(
-            band_count=band_count,
-            ini_template=ini_template,
-            prior_template=prior_template,
-            ini_dir=ini_dir,
-            prior_dir=prior_dir,
-            detector_dependent_nu=args.detector_dependent_nu,
-            detectors=detectors,
-            label_prefix=label_prefix,
-            outdir_base=outdir_base,
-            webdir_base=webdir_base,
-            file_prefix=file_prefix,
-        )
-        if not args.dry_run:
-            submit_run(ini_path)
+        for hypothesis in hypotheses:
+            ini_path = prepare_run(
+                hypothesis=hypothesis,
+                band_count=band_count,
+                ini_template=ini_template,
+                prior_template=prior_template,
+                ini_dir=ini_dir,
+                prior_dir=prior_dir,
+                detector_dependent_nu=args.detector_dependent_nu,
+                detectors=detectors,
+                label_prefix=label_prefix,
+                outdir_base=outdir_base,
+                webdir_base=webdir_base,
+                file_prefix=file_prefix,
+            )
+            if not args.dry_run:
+                submit_run(ini_path)
 
     return 0
 

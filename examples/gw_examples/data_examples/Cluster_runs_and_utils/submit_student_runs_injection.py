@@ -35,6 +35,7 @@ import bilby
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_BASE_DIR = Path("/home/gregorio.carullo/GW231123/t_Student/bilby_pipe_injection_runs")
 INI_TEMPLATE_PATH = (
     SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
 )
@@ -76,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-dir",
-        default=str(SCRIPT_DIR / "bilby_pipe_injection_runs"),
+        default=str(DEFAULT_BASE_DIR),
         help=(
             "Root directory where staged data, generated ini/prior files, and "
             "run/web folders are written."

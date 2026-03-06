@@ -504,7 +504,6 @@ def stage_injection_bundle(
     stage_dir = ensure_dir(base_dir / "staged_data")
     data_dir = ensure_dir(stage_dir / "data")
     psd_dir = ensure_dir(stage_dir / "psds")
-    calibration_dir = ensure_dir(stage_dir / "calibration")
 
     template_seed = template_settings.get("sampling_seed")
     staging_seed = (
@@ -551,21 +550,8 @@ def stage_injection_bundle(
         )
         frequencies, psd_array = psds[detector]
         write_psd(psd_path, frequencies, psd_array)
-        data_paths[detector] = str(data_path.relative_to(base_dir))
-        psd_paths[detector] = str(psd_path.relative_to(base_dir))
-
-    calibration_paths = {}
-    calibration_envelopes = template_settings.get("spline_calibration_envelope_dict")
-    if calibration_envelopes:
-        for detector, source in calibration_envelopes.items():
-            source_path = Path(str(source)).expanduser()
-            if not source_path.is_file():
-                raise FileNotFoundError(
-                    f"Calibration envelope for {detector} not found: {source_path}"
-                )
-            destination = calibration_dir / source_path.name
-            shutil.copy2(source_path, destination)
-            calibration_paths[detector] = str(destination.relative_to(base_dir))
+        data_paths[detector] = str(data_path.resolve())
+        psd_paths[detector] = str(psd_path.resolve())
 
     metadata = dict(
         maxl_index=maxl_index,
@@ -580,7 +566,6 @@ def stage_injection_bundle(
         injection_parameters=injection_parameters,
         data_paths=data_paths,
         psd_paths=psd_paths,
-        calibration_paths=calibration_paths,
     )
     metadata_path = stage_dir / f"{args.label_prefix}_metadata.json"
     metadata_path.write_text(
@@ -593,7 +578,6 @@ def stage_injection_bundle(
         metadata_path=metadata_path,
         data_paths=data_paths,
         psd_paths=psd_paths,
-        calibration_paths=calibration_paths,
         likelihood_nu=likelihood_nu,
         detector_dependent_nu=effective_detector_dependent_nu,
     )
@@ -682,7 +666,6 @@ def render_ini(
     prior_path: Path,
     data_paths: dict[str, str],
     psd_paths: dict[str, str],
-    calibration_paths: dict[str, str],
     stage_dir: Path,
     hypothesis: str,
 ) -> str:
@@ -708,17 +691,11 @@ def render_ini(
             quote_values=True,
         ),
     )
-    if calibration_paths:
-        rendered = replace_line(
-            rendered,
-            "spline-calibration-envelope-dict",
-            format_ini_dict(calibration_paths),
-        )
     rendered = replace_line(rendered, "psd-dict", format_ini_dict(psd_paths))
     rendered = replace_line(
         rendered,
         "additional-transfer-paths",
-        f"[{stage_dir.name}]",
+        f"[{stage_dir.resolve()}]",
     )
 
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
@@ -810,7 +787,6 @@ def write_run_files(
             prior_path=prior_path,
             data_paths=bundle["data_paths"],
             psd_paths=bundle["psd_paths"],
-            calibration_paths=bundle["calibration_paths"],
             stage_dir=bundle["stage_dir"],
             hypothesis=hypothesis,
         ),

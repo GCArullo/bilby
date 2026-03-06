@@ -9,6 +9,7 @@ the Student-t runs.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -196,6 +197,14 @@ def resolve_path(path: Path | None, default_path: Path) -> Path:
     return path.expanduser().resolve()
 
 
+def determine_submit_directory(outdir_base: str, webdir_base: str) -> Path:
+    return Path(
+        os.path.commonpath(
+            [str(Path(outdir_base).resolve()), str(Path(webdir_base).resolve())]
+        )
+    )
+
+
 def load_template(path: Path) -> str:
     if not path.is_file():
         raise FileNotFoundError(f"Missing template: {path}")
@@ -370,8 +379,12 @@ def prepare_run(
     return ini_path
 
 
-def submit_run(ini_path: Path) -> None:
-    subprocess.run(["bilby_pipe", str(ini_path), "--submit"], check=True)
+def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
+    subprocess.run(
+        ["bilby_pipe", str(ini_path), "--submit"],
+        check=True,
+        cwd=submit_directory,
+    )
 
 
 def main() -> int:
@@ -396,6 +409,7 @@ def main() -> int:
         args.working_directory,
         script_dir / defaults.working_directory,
     )
+    submit_directory = determine_submit_directory(outdir_base, webdir_base)
 
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
@@ -431,7 +445,7 @@ def main() -> int:
                 working_directory=working_directory,
             )
             if not args.dry_run:
-                submit_run(ini_path)
+                submit_run(ini_path, submit_directory=submit_directory)
 
     return 0
 

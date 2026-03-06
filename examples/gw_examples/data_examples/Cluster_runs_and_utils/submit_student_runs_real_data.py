@@ -27,6 +27,7 @@ class EventDefaults:
     file_prefix: str
     ini_template: str
     prior_template: str
+    working_directory: str
     detectors: tuple[str, ...]
 
 
@@ -38,6 +39,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         file_prefix="GW231123",
         ini_template="Initialisation_file_templates/GW231123_t_student_template.ini",
         prior_template="Prior_templates/GW231123_template.prior",
+        working_directory="LVK_posteriors/GW231123",
         detectors=("H1", "L1"),
     ),
     "GW230814": EventDefaults(
@@ -47,6 +49,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         file_prefix="GW230814",
         ini_template="Initialisation_file_templates/GW230814_t_student_pSEOB_template.ini",
         prior_template="Prior_templates/GW230814_template.prior",
+        working_directory="LVK_posteriors/GW230814",
         detectors=("L1",),
     ),
 }
@@ -141,6 +144,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help=(
             "Optional path to the prior template containing __NU_PRIORS__. "
             "If omitted, the selected event default is used."
+        ),
+    )
+    parser.add_argument(
+        "--working-directory",
+        type=Path,
+        default=None,
+        help=(
+            "Base directory used to resolve event-specific relative paths in the "
+            "template. Defaults to the selected event under LVK_posteriors."
         ),
     )
     parser.add_argument(
@@ -254,6 +266,7 @@ def render_ini(
     prior_file: Path,
     band_count: int,
     detector_dependent_nu: bool,
+    working_directory: Path,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -262,6 +275,7 @@ def render_ini(
         "__PRIOR_FILE__": str(prior_file),
         "__NUM_FREQUENCY_BANDS__": str(band_count),
         "__DETECTOR_DEPENDENT_NU__": str(detector_dependent_nu),
+        "__WORKING_DIRECTORY__": str(working_directory),
     }
     rendered = ini_template
     for placeholder, value in replacements.items():
@@ -299,6 +313,7 @@ def prepare_run(
     outdir_base: str,
     webdir_base: str,
     file_prefix: str,
+    working_directory: Path,
 ) -> Path:
     if hypothesis == "student":
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -344,6 +359,7 @@ def prepare_run(
             prior_file=prior_path,
             band_count=band_count,
             detector_dependent_nu=run_detector_dependent_nu,
+            working_directory=working_directory,
         ),
         encoding="utf-8",
     )
@@ -376,6 +392,10 @@ def main() -> int:
     webdir_base = args.webdir_base or defaults.webdir_base
     file_prefix = args.file_prefix or defaults.file_prefix
     detectors = tuple(args.detectors) if args.detectors else defaults.detectors
+    working_directory = resolve_path(
+        args.working_directory,
+        script_dir / defaults.working_directory,
+    )
 
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
@@ -408,6 +428,7 @@ def main() -> int:
                 outdir_base=outdir_base,
                 webdir_base=webdir_base,
                 file_prefix=file_prefix,
+                working_directory=working_directory,
             )
             if not args.dry_run:
                 submit_run(ini_path)

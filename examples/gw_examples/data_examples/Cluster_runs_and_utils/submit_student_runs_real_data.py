@@ -7,13 +7,45 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 
-LABEL_PREFIX = "GW231123_t_Student"
-OUTDIR_BASE = "/home/gregorio.carullo/GW231123/t_Student/Runs"
-WEBDIR_BASE = "/home/gregorio.carullo/public_html/GW231123/t_Student/Runs"
 DEFAULT_DETECTORS = ("H1", "L1")
+DEFAULT_EVENT = "GW231123"
+
+
+@dataclass(frozen=True)
+class EventDefaults:
+    label_prefix: str
+    outdir_base: str
+    webdir_base: str
+    file_prefix: str
+    ini_template: str
+    prior_template: str
+    detectors: tuple[str, ...]
+
+
+EVENT_DEFAULTS: dict[str, EventDefaults] = {
+    "GW231123": EventDefaults(
+        label_prefix="GW231123_t_Student",
+        outdir_base="/home/gregorio.carullo/GW231123/t_Student/Runs",
+        webdir_base="/home/gregorio.carullo/public_html/GW231123/t_Student/Runs",
+        file_prefix="GW231123",
+        ini_template="GW231123_t_student_template.ini",
+        prior_template="GW231123_template.prior",
+        detectors=("H1", "L1"),
+    ),
+    "GW230814": EventDefaults(
+        label_prefix="GW230814_t_Student_pSEOB",
+        outdir_base="/home/gregorio.carullo/GW230814/t_Student_pSEOB/Runs",
+        webdir_base="/home/gregorio.carullo/public_html/GW230814/t_Student_pSEOB/Runs",
+        file_prefix="GW230814",
+        ini_template="GW230814_t_student_pSEOB_template.ini",
+        prior_template="GW230814_template.prior",
+        detectors=("L1",),
+    ),
+}
 
 def positive_int(value: str) -> int:
     try:
@@ -32,6 +64,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "Generate bilby_pipe ini/prior files for Student-t runs and optionally "
             "submit them."
         )
+    )
+    parser.add_argument(
+        "--event",
+        choices=sorted(EVENT_DEFAULTS.keys()),
+        default=DEFAULT_EVENT,
+        help=(
+            "Event defaults to use for template paths, output prefixes, and "
+            "detectors. Default: GW231123."
+        ),
     )
     parser.add_argument(
         "num_frequency_bands",
@@ -66,11 +107,49 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     parser.add_argument(
         "--detectors",
         nargs="+",
-        default=list(DEFAULT_DETECTORS),
+        default=None,
         help=(
             "Detector names used when building detector-dependent nu priors. "
-            "Defaults to H1 L1."
+            "Defaults to the selected event."
         ),
+    )
+    parser.add_argument(
+        "--ini-template",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to the Student-t ini template. "
+            "If omitted, the selected event default is used."
+        ),
+    )
+    parser.add_argument(
+        "--prior-template",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to the prior template containing __NU_PRIORS__. "
+            "If omitted, the selected event default is used."
+        ),
+    )
+    parser.add_argument(
+        "--label-prefix",
+        default=None,
+        help="Optional run label prefix override.",
+    )
+    parser.add_argument(
+        "--outdir-base",
+        default=None,
+        help="Optional base outdir override.",
+    )
+    parser.add_argument(
+        "--webdir-base",
+        default=None,
+        help="Optional base webdir override.",
+    )
+    parser.add_argument(
+        "--file-prefix",
+        default=None,
+        help="Optional filename prefix for generated ini/prior files.",
     )
     parser.add_argument(
         "--ini-dir",
@@ -85,6 +164,12 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help="Directory where generated prior files are written.",
     )
     return parser
+
+
+def resolve_path(path: Path | None, default_path: Path) -> Path:
+    if path is None:
+        return default_path.resolve()
+    return path.expanduser().resolve()
 
 
 def load_template(path: Path) -> str:
@@ -167,13 +252,19 @@ def prepare_run(
     prior_dir: Path,
     detector_dependent_nu: bool,
     detectors: list[str] | tuple[str, ...],
+    label_prefix: str,
+    outdir_base: str,
+    webdir_base: str,
+    file_prefix: str,
 ) -> Path:
     mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
-    label = f"{LABEL_PREFIX}{mode_suffix}_N{band_count}"
-    run_outdir = f"{OUTDIR_BASE}/student{mode_suffix}_N{band_count}"
-    run_webdir = f"{WEBDIR_BASE}/student{mode_suffix}_N{band_count}"
-    prior_path = (prior_dir / f"GW231123{mode_suffix}_N{band_count}.prior").resolve()
-    ini_path = (ini_dir / f"GW231123_t_student{mode_suffix}_N{band_count}.ini").resolve()
+    label = f"{label_prefix}{mode_suffix}_N{band_count}"
+    run_outdir = f"{outdir_base}/student{mode_suffix}_N{band_count}"
+    run_webdir = f"{webdir_base}/student{mode_suffix}_N{band_count}"
+    prior_path = (prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}.prior").resolve()
+    ini_path = (
+        ini_dir / f"{file_prefix}_t_student{mode_suffix}_N{band_count}.ini"
+    ).resolve()
 
     prior_path.write_text(
         render_prior(
@@ -211,8 +302,20 @@ def main() -> int:
     script_dir = Path(__file__).resolve().parent
     args = build_argument_parser(script_dir).parse_args()
 
-    ini_template_path = script_dir / "GW231123_t_student_template.ini"
-    prior_template_path = script_dir / "GW231123_template.prior"
+    defaults = EVENT_DEFAULTS[args.event]
+    ini_template_path = resolve_path(
+        args.ini_template,
+        script_dir / defaults.ini_template,
+    )
+    prior_template_path = resolve_path(
+        args.prior_template,
+        script_dir / defaults.prior_template,
+    )
+    label_prefix = args.label_prefix or defaults.label_prefix
+    outdir_base = args.outdir_base or defaults.outdir_base
+    webdir_base = args.webdir_base or defaults.webdir_base
+    file_prefix = args.file_prefix or defaults.file_prefix
+    detectors = tuple(args.detectors) if args.detectors else defaults.detectors
 
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
@@ -235,7 +338,11 @@ def main() -> int:
             ini_dir=ini_dir,
             prior_dir=prior_dir,
             detector_dependent_nu=args.detector_dependent_nu,
-            detectors=args.detectors,
+            detectors=detectors,
+            label_prefix=label_prefix,
+            outdir_base=outdir_base,
+            webdir_base=webdir_base,
+            file_prefix=file_prefix,
         )
         if not args.dry_run:
             submit_run(ini_path)

@@ -39,6 +39,7 @@ import bilby
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = getpass.getuser()
+DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
 INI_TEMPLATE_PATH = (
     SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
 )
@@ -94,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory where staged data, generated ini/prior files, and "
             "run/web folders are written. Defaults to "
-            "<home-dir>/GW231123/t_Student/bilby_pipe_injection_runs."
+            "<home-dir>/GW231123/t_Student/Runs_injections."
         ),
     )
     parser.add_argument(
@@ -819,12 +820,7 @@ def write_run_files(
 
 def prepare_runs(args: argparse.Namespace) -> list[Path]:
     if args.base_dir is None:
-        base_dir = (
-            args.home_dir.expanduser()
-            / "GW231123"
-            / "t_Student"
-            / "bilby_pipe_injection_runs"
-        )
+        base_dir = args.home_dir.expanduser() / DEFAULT_BASE_SUBDIR
     else:
         base_dir = args.base_dir.expanduser().resolve()
     base_dir = ensure_dir(base_dir)

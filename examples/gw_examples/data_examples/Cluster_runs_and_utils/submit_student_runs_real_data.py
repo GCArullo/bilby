@@ -9,6 +9,7 @@ the Student-t runs.
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
 import subprocess
 import sys
@@ -18,13 +19,14 @@ from pathlib import Path
 
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
+DEFAULT_HOME_DIR = Path.home()
+DEFAULT_ACCOUNTING_USER = getpass.getuser()
 
 
 @dataclass(frozen=True)
 class EventDefaults:
     label_prefix: str
-    outdir_base: str
-    webdir_base: str
+    run_subdir: str
     file_prefix: str
     ini_template: str
     prior_template: str
@@ -35,8 +37,7 @@ class EventDefaults:
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
     "GW231123": EventDefaults(
         label_prefix="GW231123_t_Student",
-        outdir_base="/home/gregorio.carullo/GW231123/t_Student/Runs",
-        webdir_base="/home/gregorio.carullo/public_html/GW231123/t_Student/Runs",
+        run_subdir="GW231123/t_Student/Runs",
         file_prefix="GW231123",
         ini_template="Initialisation_file_templates/GW231123_t_student_template.ini",
         prior_template="Prior_templates/GW231123_template.prior",
@@ -45,8 +46,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
     ),
     "GW230814": EventDefaults(
         label_prefix="GW230814_t_Student_pSEOB",
-        outdir_base="/home/gregorio.carullo/GW230814/t_Student_pSEOB/Runs",
-        webdir_base="/home/gregorio.carullo/public_html/GW230814/t_Student_pSEOB/Runs",
+        run_subdir="GW230814/t_Student_pSEOB/Runs",
         file_prefix="GW230814",
         ini_template="Initialisation_file_templates/GW230814_t_student_pSEOB_template.ini",
         prior_template="Prior_templates/GW230814_template.prior",
@@ -157,6 +157,23 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--home-dir",
+        type=Path,
+        default=DEFAULT_HOME_DIR,
+        help=(
+            "Base home directory used to build default output paths when "
+            "--outdir-base/--webdir-base are not provided."
+        ),
+    )
+    parser.add_argument(
+        "--accounting-user",
+        default=DEFAULT_ACCOUNTING_USER,
+        help=(
+            "Value written into accounting-user in the generated ini files. "
+            f"Default: {DEFAULT_ACCOUNTING_USER}."
+        ),
+    )
+    parser.add_argument(
         "--label-prefix",
         default=None,
         help="Optional run label prefix override.",
@@ -203,6 +220,13 @@ def determine_submit_directory(outdir_base: str, webdir_base: str) -> Path:
             [str(Path(outdir_base).resolve()), str(Path(webdir_base).resolve())]
         )
     )
+
+
+def default_output_bases(home_dir: Path, run_subdir: str) -> tuple[str, str]:
+    resolved_home = home_dir.expanduser()
+    outdir_base = resolved_home / run_subdir
+    webdir_base = resolved_home / "public_html" / run_subdir
+    return str(outdir_base), str(webdir_base)
 
 
 def load_template(path: Path) -> str:
@@ -276,6 +300,7 @@ def render_ini(
     band_count: int,
     detector_dependent_nu: bool,
     working_directory: Path,
+    accounting_user: str,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -289,6 +314,7 @@ def render_ini(
     rendered = ini_template
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
+    rendered = replace_line(rendered, "accounting-user", accounting_user)
 
     if hypothesis == "student":
         rendered = replace_line(
@@ -323,6 +349,7 @@ def prepare_run(
     webdir_base: str,
     file_prefix: str,
     working_directory: Path,
+    accounting_user: str,
 ) -> Path:
     if hypothesis == "student":
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -369,6 +396,7 @@ def prepare_run(
             band_count=band_count,
             detector_dependent_nu=run_detector_dependent_nu,
             working_directory=working_directory,
+            accounting_user=accounting_user,
         ),
         encoding="utf-8",
     )
@@ -401,8 +429,12 @@ def main() -> int:
         script_dir / defaults.prior_template,
     )
     label_prefix = args.label_prefix or defaults.label_prefix
-    outdir_base = args.outdir_base or defaults.outdir_base
-    webdir_base = args.webdir_base or defaults.webdir_base
+    default_outdir_base, default_webdir_base = default_output_bases(
+        args.home_dir,
+        defaults.run_subdir,
+    )
+    outdir_base = args.outdir_base or default_outdir_base
+    webdir_base = args.webdir_base or default_webdir_base
     file_prefix = args.file_prefix or defaults.file_prefix
     detectors = tuple(args.detectors) if args.detectors else defaults.detectors
     working_directory = resolve_path(
@@ -443,6 +475,7 @@ def main() -> int:
                 webdir_base=webdir_base,
                 file_prefix=file_prefix,
                 working_directory=working_directory,
+                accounting_user=args.accounting_user,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

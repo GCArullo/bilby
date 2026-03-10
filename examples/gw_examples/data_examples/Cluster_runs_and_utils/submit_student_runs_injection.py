@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import getpass
 import json
 import os
 import re
@@ -36,7 +37,8 @@ import bilby
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_BASE_DIR = Path("/home/gregorio.carullo/GW231123/t_Student/bilby_pipe_injection_runs")
+DEFAULT_HOME_DIR = Path.home()
+DEFAULT_ACCOUNTING_USER = getpass.getuser()
 INI_TEMPLATE_PATH = (
     SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
 )
@@ -77,11 +79,30 @@ INJECTION_KEYS = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--home-dir",
+        type=Path,
+        default=DEFAULT_HOME_DIR,
+        help=(
+            "Base home directory used to build the default --base-dir when "
+            "--base-dir is not provided."
+        ),
+    )
+    parser.add_argument(
         "--base-dir",
-        default=str(DEFAULT_BASE_DIR),
+        type=Path,
+        default=None,
         help=(
             "Root directory where staged data, generated ini/prior files, and "
-            "run/web folders are written."
+            "run/web folders are written. Defaults to "
+            "<home-dir>/GW231123/t_Student/bilby_pipe_injection_runs."
+        ),
+    )
+    parser.add_argument(
+        "--accounting-user",
+        default=DEFAULT_ACCOUNTING_USER,
+        help=(
+            "Value written into accounting-user in the generated ini files. "
+            f"Default: {DEFAULT_ACCOUNTING_USER}."
         ),
     )
     parser.add_argument(
@@ -681,6 +702,7 @@ def render_ini(
     for placeholder, value in placeholders.items():
         rendered = rendered.replace(placeholder, value)
 
+    rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = replace_line(
@@ -796,7 +818,16 @@ def write_run_files(
 
 
 def prepare_runs(args: argparse.Namespace) -> list[Path]:
-    base_dir = ensure_dir(Path(args.base_dir).expanduser().resolve())
+    if args.base_dir is None:
+        base_dir = (
+            args.home_dir.expanduser()
+            / "GW231123"
+            / "t_Student"
+            / "bilby_pipe_injection_runs"
+        )
+    else:
+        base_dir = args.base_dir.expanduser().resolve()
+    base_dir = ensure_dir(base_dir)
     ini_template = load_template(INI_TEMPLATE_PATH)
     prior_template = load_template(PRIOR_TEMPLATE_PATH)
     template_settings = read_template_settings(ini_template)

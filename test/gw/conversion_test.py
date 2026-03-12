@@ -691,15 +691,46 @@ class TestGenerateAllParameters(unittest.TestCase):
             container = values.copy()
             if isinstance(container, pd.DataFrame):
                 for key, value in sg_parameters.items():
-                    container[key] = value
+                    if key == "sine_gaussian_0_frequency":
+                        container[key] = np.linspace(
+                            value,
+                            value + len(container) - 1,
+                            len(container),
+                        )
+                    else:
+                        container[key] = value
             else:
                 container.update(sg_parameters)
-            converted = bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters(container)
+            converted = bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters(
+                container
+            )
 
             self.assertIn("sine_gaussian_parameters", converted)
             components = converted["sine_gaussian_parameters"]
             if isinstance(converted, pd.DataFrame):
-                components = components.iloc[0]
+                first_components = components.iloc[0]
+                last_components = components.iloc[-1]
+                self.assertEqual(
+                    first_components[0],
+                    dict(
+                        hrss=1e-22,
+                        Q=9.0,
+                        frequency=120.0,
+                        time_offset=0.01,
+                        phase_offset=0.1,
+                    ),
+                )
+                self.assertEqual(
+                    last_components[0],
+                    dict(
+                        hrss=1e-22,
+                        Q=9.0,
+                        frequency=120.0 + len(converted) - 1,
+                        time_offset=0.01,
+                        phase_offset=0.1,
+                    ),
+                )
+                components = first_components
             self.assertEqual(len(components), 2)
             for index, expected in enumerate((
                 dict(hrss=1e-22, Q=9.0, frequency=120.0, time_offset=0.01, phase_offset=0.1),

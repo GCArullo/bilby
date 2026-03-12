@@ -385,11 +385,11 @@ def cbc_plus_sine_gaussians(
         Tidal deformability parameters of the components.
     eccentricity : float, optional
         Orbital eccentricity.
-    sine_gaussian_parameters : list[dict] or None, optional
+    sine_gaussian_parameters : list[dict] or dict or None, optional
         A list containing the parameters of each coherent sine-Gaussian
         component. Each dictionary must define ``hrss``, ``Q``, ``frequency``,
         ``time_offset`` and ``phase_offset``.
-    incoherent_sine_gaussian_parameters : dict[str, list[dict]] or None, optional
+    incoherent_sine_gaussian_parameters : dict[str, list[dict] | dict] or None, optional
         Mapping of detector names to lists of incoherent sine-Gaussian
         components.  Each detector entry should contain a list of dictionaries
         describing the components local to that interferometer with the same
@@ -448,6 +448,9 @@ def cbc_plus_sine_gaussians(
     h_cross = base_waveform['cross']
     combined_waveform = dict(plus=h_plus, cross=h_cross)
 
+    if isinstance(sine_gaussian_parameters, dict):
+        sine_gaussian_parameters = [sine_gaussian_parameters]
+
     if sine_gaussian_parameters:
         h_plus = h_plus.copy()
         h_cross = h_cross.copy()
@@ -484,6 +487,8 @@ def cbc_plus_sine_gaussians(
 
     if incoherent_sine_gaussian_parameters:
         for detector, components in incoherent_sine_gaussian_parameters.items():
+            if isinstance(components, dict):
+                components = [components]
             if not components:
                 continue
 

@@ -183,6 +183,29 @@ class TestCBCPlusSineGaussians(unittest.TestCase):
             np.allclose(base["cross"] + sine_waveform["cross"], combined["cross"])
         )
 
+    def test_accepts_single_sine_gaussian_dict(self):
+        kwargs = dict(self.parameters)
+        kwargs.update(self.waveform_kwargs)
+
+        combined_from_dict = bilby.gw.source.cbc_plus_sine_gaussians(
+            self.frequency_array,
+            sine_gaussian_parameters=self.sine_gaussian,
+            **kwargs,
+        )
+        combined_from_list = bilby.gw.source.cbc_plus_sine_gaussians(
+            self.frequency_array,
+            sine_gaussian_parameters=[self.sine_gaussian],
+            **kwargs,
+        )
+
+        for polarisation in ["plus", "cross"]:
+            self.assertTrue(
+                np.allclose(
+                    combined_from_dict[polarisation],
+                    combined_from_list[polarisation],
+                )
+            )
+
     def test_combination_respects_time_and_phase_offsets(self):
         kwargs = dict(self.parameters)
         kwargs.update(self.waveform_kwargs)

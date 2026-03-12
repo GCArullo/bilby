@@ -355,9 +355,20 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
             )
         )
 
+    required_fields = {"hrss", "Q", "frequency", "time_offset", "phase_offset"}
+    is_dataframe = isinstance(converted_parameters, DataFrame)
+
+    def _row_values(value):
+        if isinstance(value, Series):
+            return value.tolist()
+        return [value] * len(converted_parameters)
+
     if grouped_parameters:
-        sine_gaussian_parameters = []
-        required_fields = {"hrss", "Q", "frequency", "time_offset", "phase_offset"}
+        if is_dataframe:
+            sine_gaussian_parameters = [[] for _ in range(len(converted_parameters))]
+        else:
+            sine_gaussian_parameters = []
+
         for index in sorted(grouped_parameters):
             parameter_set = grouped_parameters[index]
             missing_fields = required_fields.difference(parameter_set)
@@ -367,20 +378,45 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
                         index, ", ".join(sorted(missing_fields))
                     )
                 )
-            sine_gaussian_parameters.append({
-                "hrss": parameter_set["hrss"],
-                "Q": parameter_set["Q"],
-                "frequency": parameter_set["frequency"],
-                "time_offset": parameter_set["time_offset"],
-                "phase_offset": parameter_set["phase_offset"],
-            })
+
+            if is_dataframe:
+                row_values = zip(
+                    _row_values(parameter_set["hrss"]),
+                    _row_values(parameter_set["Q"]),
+                    _row_values(parameter_set["frequency"]),
+                    _row_values(parameter_set["time_offset"]),
+                    _row_values(parameter_set["phase_offset"]),
+                )
+                for row_components, (hrss, quality_factor, frequency, time_offset, phase_offset) in zip(
+                    sine_gaussian_parameters, row_values
+                ):
+                    row_components.append(
+                        dict(
+                            hrss=hrss,
+                            Q=quality_factor,
+                            frequency=frequency,
+                            time_offset=time_offset,
+                            phase_offset=phase_offset,
+                        )
+                    )
+            else:
+                sine_gaussian_parameters.append({
+                    "hrss": parameter_set["hrss"],
+                    "Q": parameter_set["Q"],
+                    "frequency": parameter_set["frequency"],
+                    "time_offset": parameter_set["time_offset"],
+                    "phase_offset": parameter_set["phase_offset"],
+                })
 
         converted_parameters["sine_gaussian_parameters"] = sine_gaussian_parameters
         added_keys = list(added_keys) + ["sine_gaussian_parameters"]
 
     if incoherent_grouped_parameters:
-        incoherent_parameters = {}
-        required_fields = {"hrss", "Q", "frequency", "time_offset", "phase_offset"}
+        if is_dataframe:
+            incoherent_parameters = [dict() for _ in range(len(converted_parameters))]
+        else:
+            incoherent_parameters = {}
+
         for index in sorted(incoherent_grouped_parameters):
             for detector, parameter_set in incoherent_grouped_parameters[index].items():
                 missing_fields = required_fields.difference(parameter_set)
@@ -392,15 +428,36 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
                         )
                     )
 
-                component = dict(
-                    hrss=parameter_set["hrss"],
-                    Q=parameter_set["Q"],
-                    frequency=parameter_set["frequency"],
-                    time_offset=parameter_set["time_offset"],
-                    phase_offset=parameter_set["phase_offset"],
-                )
+                if is_dataframe:
+                    row_values = zip(
+                        _row_values(parameter_set["hrss"]),
+                        _row_values(parameter_set["Q"]),
+                        _row_values(parameter_set["frequency"]),
+                        _row_values(parameter_set["time_offset"]),
+                        _row_values(parameter_set["phase_offset"]),
+                    )
+                    for row_components, (hrss, quality_factor, frequency, time_offset, phase_offset) in zip(
+                        incoherent_parameters, row_values
+                    ):
+                        row_components.setdefault(detector, []).append(
+                            dict(
+                                hrss=hrss,
+                                Q=quality_factor,
+                                frequency=frequency,
+                                time_offset=time_offset,
+                                phase_offset=phase_offset,
+                            )
+                        )
+                else:
+                    component = dict(
+                        hrss=parameter_set["hrss"],
+                        Q=parameter_set["Q"],
+                        frequency=parameter_set["frequency"],
+                        time_offset=parameter_set["time_offset"],
+                        phase_offset=parameter_set["phase_offset"],
+                    )
 
-                incoherent_parameters.setdefault(detector, []).append(component)
+                    incoherent_parameters.setdefault(detector, []).append(component)
 
         converted_parameters["incoherent_sine_gaussian_parameters"] = incoherent_parameters
         added_keys = list(added_keys) + ["incoherent_sine_gaussian_parameters"]

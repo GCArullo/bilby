@@ -1926,9 +1926,11 @@ class ResultList(list):
             result.label += '_combined'
 
         self.check_consistent_sampler()
-        self.check_consistent_data()
+        data_is_consistent = self.check_consistent_data()
         self.check_consistent_parameters()
         self.check_consistent_priors()
+        if data_is_consistent:
+            result.log_noise_evidence = self._combined_log_noise_evidence()
 
         # check which kind of sampler was used: MCMC or Nested Sampling
         if result._nested_samples is not None:
@@ -2066,16 +2068,64 @@ class ResultList(list):
             msg = "Inconsistent parameters between results"
             self._error_or_warning_consistency(msg)
 
-    def check_consistent_data(self):
-        if not np.allclose(
+    def _has_consistent_log_noise_evidence(self):
+        return np.allclose(
             [res.log_noise_evidence for res in self],
             self[0].log_noise_evidence,
             atol=1e-8,
             rtol=0.0,
             equal_nan=True,
-        ):
-            msg = "Inconsistent data between results"
-            self._error_or_warning_consistency(msg)
+        )
+
+    @staticmethod
+    def _canonical_likelihood_meta_data(result):
+        likelihood_meta_data = getattr(result, "meta_data", {}).get("likelihood", None)
+        if likelihood_meta_data is None:
+            return None
+        try:
+            return json.dumps(
+                likelihood_meta_data,
+                cls=BilbyJsonEncoder,
+                sort_keys=True,
+            )
+        except (TypeError, ValueError):
+            return None
+
+    def _has_consistent_likelihood_meta_data(self):
+        serialized_meta_data = [
+            self._canonical_likelihood_meta_data(result)
+            for result in self
+        ]
+        if any(item is None for item in serialized_meta_data):
+            return False
+        return np.all(
+            [
+                meta_data == serialized_meta_data[0]
+                for meta_data in serialized_meta_data[1:]
+            ]
+        )
+
+    def _combined_log_noise_evidence(self):
+        log_noise_evidences = np.array(
+            [res.log_noise_evidence for res in self],
+            dtype=float,
+        )
+        if np.all(np.isnan(log_noise_evidences)):
+            return np.nan
+        return float(np.nanmean(log_noise_evidences))
+
+    def check_consistent_data(self):
+        if self._has_consistent_log_noise_evidence():
+            return True
+        if self._has_consistent_likelihood_meta_data():
+            logger.info(
+                "log_noise_evidence differs between results, but likelihood "
+                "metadata is consistent. Treating the runs as equivalent data."
+            )
+            return True
+        msg = "Inconsistent data between results"
+        self._error_or_warning_consistency(msg)
+        return False
 
     def check_consistent_sampler(self):
         if not np.all([res.sampler == self[0].sampler for res in self]):

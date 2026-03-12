@@ -488,6 +488,22 @@ class Sampler(object):
                 f"Cannot sample from priors with keys: {self.search_parameter_keys}."
             )
             raise
+
+        if self.likelihood.has_parameter_dependent_noise_likelihood(
+            self.search_parameter_keys
+        ):
+            message = (
+                "Noise likelihood depends on sampled parameters, so "
+                "log_likelihood_ratio cannot be used consistently. "
+                "Disabling use_ratio."
+            )
+            if self.use_ratio is True:
+                logger.warning(message)
+            elif self.use_ratio is None:
+                logger.info(message)
+            self.use_ratio = False
+            return
+
         if self.use_ratio is False:
             logger.debug("use_ratio set to False")
             return

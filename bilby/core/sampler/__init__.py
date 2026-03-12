@@ -324,12 +324,16 @@ def run_sampler(
         # Convert sampling time into seconds
         result.sampling_time = result.sampling_time.total_seconds()
 
+        result.log_noise_evidence = likelihood.noise_log_evidence(
+            priors=priors,
+            sampler=sampler,
+            result=result,
+            npool=npool,
+        )
         if sampler.use_ratio:
-            result.log_noise_evidence = likelihood.noise_log_likelihood()
             result.log_bayes_factor = result.log_evidence
             result.log_evidence = result.log_bayes_factor + result.log_noise_evidence
         else:
-            result.log_noise_evidence = likelihood.noise_log_likelihood()
             result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
 
         if None not in [result.injection_parameters, conversion_function]:

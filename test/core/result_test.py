@@ -766,6 +766,34 @@ class TestResultListError(unittest.TestCase):
         with self.assertRaises(bilby.result.ResultListError):
             self.nested_results.combine()
 
+    def test_combine_inconsistent_noise_evidence_with_consistent_likelihood_metadata(self):
+        likelihood_meta_data = dict(
+            likelihood_class="StudentTGravitationalWaveTransient",
+            infer_nu=True,
+            num_frequency_bands=1,
+            interferometers=dict(H1=dict(name="H1"), L1=dict(name="L1")),
+        )
+        for result in self.nested_results:
+            result.meta_data = dict(likelihood=likelihood_meta_data)
+
+        self.nested_results[1].log_noise_evidence = 15
+
+        combined = self.nested_results.combine()
+
+        self.assertAlmostEqual(combined.log_noise_evidence, 14.0)
+
+    def test_combine_inconsistent_noise_evidence_with_inconsistent_likelihood_metadata(self):
+        self.nested_results[0].meta_data = dict(
+            likelihood=dict(likelihood_class="StudentTGravitationalWaveTransient")
+        )
+        self.nested_results[1].meta_data = dict(
+            likelihood=dict(likelihood_class="HyperbolicGravitationalWaveTransient")
+        )
+        self.nested_results[1].log_noise_evidence = 15
+
+        with self.assertRaises(bilby.result.ResultListError):
+            self.nested_results.combine()
+
     def test_combine_data_all_nan_consistent(self):
         self.nested_results[0].log_noise_evidence = np.nan
         self.nested_results[1].log_noise_evidence = np.nan

@@ -1,9 +1,28 @@
+from copy import deepcopy
+
 import numpy as np
 from scipy.special import gammaln
 
-from ...core.likelihood import _fallback_to_parameters
+from ...core.likelihood import Likelihood, _fallback_to_parameters
+from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .base import GravitationalWaveTransient
+
+
+class _StudentTNoiseOnlyLikelihood(Likelihood):
+    """Auxiliary likelihood for marginalizing the Student-t noise evidence."""
+
+    def __init__(self, student_likelihood):
+        super().__init__(parameters=student_likelihood._get_default_nu_parameter_dict())
+        self.student_likelihood = student_likelihood
+
+    def log_likelihood(self, parameters=None):
+        parameters = _fallback_to_parameters(self, parameters)
+        return self.student_likelihood._noise_log_likelihood_from_parameters(parameters)
+
+    def noise_log_likelihood(self):
+        return 0.0
+
 
 class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     """
@@ -33,6 +52,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         jitter_time=True,
         reference_frame="sky",
         time_reference="geocenter",
+        noise_evidence_nlive=None,
+        dlogz_noise=0.1,
+        dlogZ_noise=None,
         **kwargs,
     ):
         """
@@ -55,6 +77,13 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             If True, allow a distinct `nu` value for each interferometer (and for each
             frequency band if `num_frequency_bands > 1`). If False, the same `nu`
             values are shared by all detectors.
+        noise_evidence_nlive : int, optional
+            Number of live points to use when the noise evidence requires an
+            auxiliary nested-sampling run. If not provided, use the internal
+            low-dimensional heuristic.
+        dlogz_noise, dlogZ_noise : float, optional
+            Stopping criterion for the auxiliary nested-sampling run used to
+            evaluate the noise evidence. `dlogZ_noise` is accepted as an alias.
         kwargs :
             Passed to GravitationalWaveTransient. (Note: time/distance/phase marginalization in
             the base class assumes Gaussian structure; leave those False unless you re-derive them.)
@@ -85,6 +114,13 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         self._fixed_nu             = self._coerce_nu_array(nu)
         self.infer_nu              = bool(infer_nu)
         self._frequency_band_edges = self._create_frequency_band_edges()
+        self.noise_evidence_nlive  = self._validate_noise_evidence_nlive(
+            noise_evidence_nlive
+        )
+        self.dlogz_noise           = self._resolve_dlogz_noise(
+            dlogz_noise=dlogz_noise,
+            dlogZ_noise=dlogZ_noise,
+        )
 
         if not self._valid_nu_values(self._fixed_nu): raise ValueError("All nu values must be positive and finite")
 
@@ -140,6 +176,24 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             for index in range(1, self.num_frequency_bands + 1)
         ]
 
+    @property
+    def noise_parameter_keys(self):
+        if not self.infer_nu:
+            return []
+        return list(self.nu_parameter_keys)
+
+    @property
+    def meta_data(self):
+        meta_data = super().meta_data
+        meta_data.update(
+            likelihood_class=self.__class__,
+            nu=self._fixed_nu.tolist(),
+            infer_nu=self.infer_nu,
+            detector_dependent_nu=self.detector_dependent_nu,
+            num_frequency_bands=self.num_frequency_bands,
+        )
+        return meta_data
+
     def _validate_num_frequency_bands(self, num_frequency_bands):
 
         try                                   : num_frequency_bands = int(num_frequency_bands)
@@ -148,6 +202,34 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if num_frequency_bands < 1:  raise ValueError("num_frequency_bands must be a positive integer")
 
         return num_frequency_bands
+
+    @staticmethod
+    def _validate_noise_evidence_nlive(noise_evidence_nlive):
+        if noise_evidence_nlive is None:
+            return None
+        try:
+            noise_evidence_nlive = int(noise_evidence_nlive)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("noise_evidence_nlive must be a positive integer") from exc
+        if noise_evidence_nlive < 1:
+            raise ValueError("noise_evidence_nlive must be a positive integer")
+        return noise_evidence_nlive
+
+    @staticmethod
+    def _resolve_dlogz_noise(dlogz_noise, dlogZ_noise):
+        if dlogZ_noise is not None:
+            if dlogz_noise != 0.1 and dlogz_noise != dlogZ_noise:
+                raise ValueError(
+                    "Received both dlogz_noise and dlogZ_noise with different values"
+                )
+            dlogz_noise = dlogZ_noise
+        try:
+            dlogz_noise = float(dlogz_noise)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("dlogz_noise must be a positive float") from exc
+        if dlogz_noise <= 0:
+            raise ValueError("dlogz_noise must be a positive float")
+        return dlogz_noise
 
     def _coerce_nu_array(self, nu):
 
@@ -336,6 +418,55 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         return float(logl)
 
+    def _noise_log_likelihood_from_parameters(self, parameters):
+
+        nu_values = self._get_active_nu_values(parameters, update_state=False)
+        if nu_values is None:
+            return np.nan_to_num(-np.inf)
+
+        logl = 0.0
+        for ifo in self.interferometers:
+            detector_logl = self._compute_detector_log_likelihood(
+                interferometer=ifo,
+                nu_values=self._get_interferometer_nu_values(ifo, nu_values),
+            )
+            if not np.isfinite(detector_logl):
+                return np.nan_to_num(-np.inf)
+            logl += detector_logl
+
+        return float(logl)
+
+    def _get_default_nu_parameter_dict(self):
+
+        if self.parameters is None:
+            parameters = dict()
+        else:
+            parameters = self.parameters.copy()
+
+        nu_values = self._get_nu_values(parameters)
+        return {
+            key: float(value)
+            for key, value in zip(self.nu_parameter_keys, np.ravel(nu_values))
+        }
+
+    def _get_noise_evidence_priors(self, priors):
+
+        if priors is None:
+            priors = PriorDict()
+        elif not isinstance(priors, PriorDict):
+            priors = PriorDict(priors)
+
+        default_nu_parameters = self._get_default_nu_parameter_dict()
+        noise_priors = PriorDict()
+
+        for key, value in default_nu_parameters.items():
+            if key in priors:
+                noise_priors[key] = deepcopy(priors[key])
+            else:
+                noise_priors[key] = DeltaFunction(peak=value, name=key)
+
+        return noise_priors
+
     def log_likelihood(self, parameters=None):
 
         parameters = self._resolve_likelihood_parameters(parameters)
@@ -363,22 +494,49 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def noise_log_likelihood(self):
+        return self._noise_log_likelihood_from_parameters(self.parameters.copy())
 
-        nu_values = self._get_active_nu_values(self.parameters.copy(), update_state=False)
-        if nu_values is None:
-            return np.nan_to_num(-np.inf)
+    def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
 
-        logl = 0.0
-        for ifo in self.interferometers:
-            detector_logl = self._compute_detector_log_likelihood(
-                interferometer=ifo,
-                nu_values=self._get_interferometer_nu_values(ifo, nu_values),
+        if priors is None:
+            sampled_parameters = []
+        elif isinstance(priors, PriorDict):
+            sampled_parameters = priors.non_fixed_keys
+        else:
+            sampled_parameters = PriorDict(priors).non_fixed_keys
+
+        if not self.has_parameter_dependent_noise_likelihood(sampled_parameters):
+            return self.noise_log_likelihood()
+
+        noise_priors = self._get_noise_evidence_priors(priors)
+        if len(noise_priors.non_fixed_keys) == 0:
+            return self._noise_log_likelihood_from_parameters(
+                self._get_default_nu_parameter_dict()
             )
-            if not np.isfinite(detector_logl):
-                return np.nan_to_num(-np.inf)
-            logl += detector_logl
 
-        return float(logl)
+        from ...core.sampler import run_sampler
+
+        noise_result = run_sampler(
+            likelihood=_StudentTNoiseOnlyLikelihood(self),
+            priors=noise_priors,
+            label=f"{getattr(self, 'label', 'label')}_noise",
+            outdir=getattr(self, "outdir", "outdir"),
+            sampler="dynesty",
+            use_ratio=False,
+            plot=False,
+            save=False,
+            npool=npool,
+            nlive=(
+                self.noise_evidence_nlive
+                if self.noise_evidence_nlive is not None
+                else max(100, 25 * len(noise_priors.non_fixed_keys))
+            ),
+            dlogz=self.dlogz_noise,
+            print_progress=False,
+            check_point=False,
+            resume=False,
+        )
+        return float(noise_result.log_evidence)
 
     def log_likelihood_ratio(self, parameters=None):
 

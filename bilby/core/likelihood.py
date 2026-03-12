@@ -126,6 +126,22 @@ class Likelihood:
         """
         return np.nan
 
+    @property
+    def noise_parameter_keys(self):
+        """list: Sampled parameters that enter the noise-only likelihood."""
+        return []
+
+    def has_parameter_dependent_noise_likelihood(self, sampled_parameters=None):
+        """Whether the noise term depends on any sampled parameters."""
+        noise_parameter_keys = set(self.noise_parameter_keys)
+        if sampled_parameters is None:
+            return len(noise_parameter_keys) > 0
+        return any(key in noise_parameter_keys for key in sampled_parameters)
+
+    def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+        """Return the log evidence for the noise hypothesis."""
+        return self.noise_log_likelihood()
+
     def log_likelihood_ratio(self, parameters=None):
         """Difference between log likelihood and noise log likelihood
 

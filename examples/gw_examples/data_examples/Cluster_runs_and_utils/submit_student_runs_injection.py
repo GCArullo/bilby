@@ -856,6 +856,9 @@ def render_ini(
         "additional-transfer-paths",
         f"[{stage_dir.resolve()}]",
     )
+    if args.test_injection:
+        rendered = replace_line(rendered, "reference-frame", "sky")
+        rendered = replace_line(rendered, "time-reference", "geocenter")
 
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = args.nlive

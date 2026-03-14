@@ -75,6 +75,20 @@ INJECTION_KEYS = (
     "ra",
     "dec",
 )
+TEST_INJECTION_FIXED_KEYS = (
+    "a_1",
+    "a_2",
+    "tilt_1",
+    "tilt_2",
+    "phi_12",
+    "phi_jl",
+    "luminosity_distance",
+    "theta_jn",
+    "psi",
+    "phase",
+    "ra",
+    "dec",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -193,6 +207,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Generate only the Gaussian likelihood recovery run. "
             "This does not change the injected noise model."
+        ),
+    )
+    parser.add_argument(
+        "--test-injection",
+        action="store_true",
+        help=(
+            "Generate the standard staged injection runs, but edit the standard "
+            "prior template to fix the maximum-likelihood injection parameters "
+            "read by this script. In this mode, only nu (for Student-t runs) "
+            "and chirp_mass are sampled."
         ),
     )
     parser.add_argument(
@@ -602,6 +626,9 @@ def stage_injection_bundle(
         psd_paths=psd_paths,
         likelihood_nu=likelihood_nu,
         detector_dependent_nu=effective_detector_dependent_nu,
+        injection_parameters=injection_parameters,
+        maxl_index=maxl_index,
+        maxl_log_likelihood=maxl_log_likelihood,
     )
 
 
@@ -621,6 +648,33 @@ def replace_line(text: str, key: str, value: str) -> str:
             lines[index] = f"{key}={value}"
             return "\n".join(lines) + "\n"
     raise ValueError(f"Unable to find config key '{key}' in template")
+
+
+def replace_or_append_prior_line(
+    text: str,
+    key: str,
+    line: str,
+    *,
+    insert_after: str | None = None,
+) -> str:
+    lines = text.splitlines()
+    prefix = f"{key} ="
+    for index, existing in enumerate(lines):
+        if existing.startswith(prefix):
+            lines[index] = line
+            return "\n".join(lines) + "\n"
+    if insert_after is not None:
+        anchor = f"{insert_after} ="
+        for index, existing in enumerate(lines):
+            if existing.startswith(anchor):
+                lines.insert(index + 1, line)
+                return "\n".join(lines) + "\n"
+    lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def format_prior_value(value: float) -> str:
+    return repr(float(value))
 
 
 def build_nu_priors(
@@ -663,6 +717,7 @@ def render_prior(
     detectors: tuple[str, ...],
     num_frequency_bands: int,
     detector_dependent_nu: bool,
+    bundle: dict[str, object],
 ) -> str:
     nu_prior_block = build_nu_priors(
         args,
@@ -671,7 +726,39 @@ def render_prior(
         num_frequency_bands=num_frequency_bands,
         detector_dependent_nu=detector_dependent_nu,
     )
-    return prior_template.replace("__NU_PRIORS__", nu_prior_block)
+    rendered = prior_template.replace("__NU_PRIORS__", nu_prior_block)
+    if not args.test_injection:
+        return rendered
+
+    injection_parameters = bundle["injection_parameters"]
+    mass_ratio = injection_parameters["mass_2"] / injection_parameters["mass_1"]
+    rendered = replace_or_append_prior_line(
+        rendered,
+        "mass_ratio",
+        (
+            "mass_ratio = DeltaFunction("
+            f"name='mass_ratio', peak={format_prior_value(mass_ratio)})"
+        ),
+    )
+    for key in TEST_INJECTION_FIXED_KEYS:
+        rendered = replace_or_append_prior_line(
+            rendered,
+            key,
+            (
+                f"{key} = DeltaFunction("
+                f"name='{key}', peak={format_prior_value(injection_parameters[key])})"
+            ),
+        )
+    rendered = replace_or_append_prior_line(
+        rendered,
+        "geocent_time",
+        (
+            "geocent_time = DeltaFunction("
+            f"name='geocent_time', peak={format_prior_value(injection_parameters['geocent_time'])})"
+        ),
+        insert_after="ra",
+    )
+    return rendered
 
 
 def render_ini(
@@ -793,6 +880,7 @@ def write_run_files(
             detectors=template_settings["detectors"],
             num_frequency_bands=args.num_frequency_bands,
             detector_dependent_nu=bundle["detector_dependent_nu"],
+            bundle=bundle,
         ),
         encoding="utf-8",
     )

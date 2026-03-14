@@ -108,8 +108,12 @@ class CompactBinaryCoalescenceResult(CoreResult):
     @property
     def waveform_generator_meta_data(self):
         """ Dict of metadata for reconstructing the waveform generator. """
-        return self.__get_from_nested_meta_data(
-            'likelihood', 'waveform_generator_meta_data')
+        try:
+            meta_data = self.__get_from_nested_meta_data(
+                'likelihood', 'waveform_generator_meta_data')
+        except AttributeError:
+            return dict()
+        return dict() if meta_data is None else meta_data
 
     @property
     def reference_frequency(self):

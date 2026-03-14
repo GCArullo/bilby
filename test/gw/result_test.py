@@ -194,6 +194,9 @@ class TestCBCResult(BaseCBCResultTest):
         with self.assertRaises(AttributeError):
             self.result.waveform_generator_class
 
+    def test_waveform_generator_meta_data_defaults_to_empty_dict(self):
+        self.assertEqual(self.result.waveform_generator_meta_data, {})
+
     def test_interferometer_names(self):
         self.assertEqual(
             self.result.interferometers,

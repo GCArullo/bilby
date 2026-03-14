@@ -702,6 +702,13 @@ class Sampler(object):
 
         logger.debug("Checking cached data")
         if self.cached_result:
+            if (
+                isinstance(getattr(self.cached_result, "meta_data", None), dict)
+                and self.cached_result.meta_data.get("noise_evidence_pending", False)
+            ):
+                logger.debug("Cached result has deferred noise evidence pending")
+                self.cached_result = None
+                return
             check_keys = ["search_parameter_keys", "fixed_parameter_keys"]
             use_cache = True
             for key in check_keys:

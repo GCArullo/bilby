@@ -142,6 +142,11 @@ class Likelihood:
         """Return the log evidence for the noise hypothesis."""
         return self.noise_log_likelihood()
 
+    @property
+    def defer_noise_evidence(self):
+        """Override automatic deferral of noise evidence evaluation if needed."""
+        return None
+
     def log_likelihood_ratio(self, parameters=None):
         """Difference between log likelihood and noise log likelihood
 

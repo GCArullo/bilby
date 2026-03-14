@@ -6,7 +6,7 @@ import os
 import json
 import parameterized
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import bilby
 from bilby.core.result import ResultError, FileLoadError
@@ -621,6 +621,134 @@ class TestResult(unittest.TestCase):
 
         # so should a result loaded from cache
         assert isinstance(cached_result, NotAResult)
+
+
+class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def init_outdir(self, tmp_path):
+        self.outdir = str(tmp_path / "test")
+
+    def test_free_noise_parameter_evidence_runs_after_plotting(self):
+        order = []
+        save_states = []
+
+        class DeferredNoiseLikelihood(bilby.Likelihood):
+            def __init__(self):
+                super().__init__(parameters={"x": None})
+                self.meta_data = {"likelihood_class": "DeferredNoiseLikelihood"}
+
+            def log_likelihood(self, parameters=None):
+                return -1.0
+
+            def noise_log_likelihood(self):
+                return -2.0
+
+            @property
+            def noise_parameter_keys(self):
+                return ["x"]
+
+            def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+                order.append("noise")
+                return -3.0
+
+        def build_result(meta_data, priors, label, outdir):
+            result = bilby.core.result.Result(
+                label=label,
+                outdir=outdir,
+                sampler="fake",
+                search_parameter_keys=["x"],
+                priors=priors,
+                meta_data=meta_data,
+                log_evidence=12.3,
+                log_evidence_err=0.4,
+                use_ratio=True,
+            )
+
+            def save_side_effect(*args, **kwargs):
+                order.append(f"save_{len(save_states) + 1}")
+                save_states.append(
+                    dict(
+                        pending=result.meta_data.get("noise_evidence_pending"),
+                        log_noise_evidence=result.log_noise_evidence,
+                        log_evidence=result.log_evidence,
+                        log_bayes_factor=result.log_bayes_factor,
+                    )
+                )
+
+            def samples_to_posterior_side_effect(*args, **kwargs):
+                order.append("posterior")
+                result.posterior = pd.DataFrame(dict(x=[0.5]))
+                result._posterior = result.posterior
+
+            def plot_side_effect(*args, **kwargs):
+                order.append("plot")
+
+            result.save_to_file = MagicMock(side_effect=save_side_effect)
+            result.samples_to_posterior = MagicMock(
+                side_effect=samples_to_posterior_side_effect
+            )
+            result.plot_corner = MagicMock(side_effect=plot_side_effect)
+            return result
+
+        class FakeSampler:
+            def __init__(
+                self,
+                likelihood,
+                priors,
+                outdir,
+                label,
+                injection_parameters,
+                meta_data,
+                use_ratio,
+                plot,
+                result_class,
+                npool,
+                **kwargs,
+            ):
+                self.cached_result = None
+                self.use_ratio = True
+                self.result = build_result(
+                    meta_data=meta_data,
+                    priors=priors,
+                    label=label,
+                    outdir=outdir,
+                )
+
+            def run_sampler(self):
+                order.append("run")
+                return self.result
+
+        likelihood = DeferredNoiseLikelihood()
+        priors = bilby.core.prior.PriorDict(
+            dict(x=bilby.core.prior.Uniform(0, 1, "x"))
+        )
+
+        with patch("bilby.core.sampler.get_sampler_class", return_value=FakeSampler):
+            result = bilby.run_sampler(
+                likelihood=likelihood,
+                priors=priors,
+                sampler="fake",
+                outdir=self.outdir,
+                label="label",
+                plot=True,
+                save="json",
+            )
+
+        self.assertEqual(
+            order,
+            ["run", "save_1", "posterior", "save_2", "plot", "noise", "save_3"],
+        )
+        self.assertTrue(np.isnan(save_states[0]["log_noise_evidence"]))
+        self.assertTrue(np.isnan(save_states[0]["log_evidence"]))
+        self.assertEqual(save_states[0]["log_bayes_factor"], 12.3)
+        self.assertTrue(save_states[0]["pending"])
+        self.assertTrue(save_states[1]["pending"])
+        self.assertIsNone(save_states[2]["pending"])
+        self.assertEqual(result.log_noise_evidence, -3.0)
+        self.assertEqual(result.log_bayes_factor, 12.3)
+        self.assertEqual(result.log_evidence, 9.3)
+        self.assertNotIn("noise_evidence_pending", result.meta_data)
 
 
 class TestResultListError(unittest.TestCase):

@@ -122,6 +122,53 @@ def get_sampler_class(sampler):
     return IMPLEMENTED_SAMPLERS[sampler.lower()].load()
 
 
+def _should_defer_noise_evidence(likelihood, priors):
+    defer_noise_evidence = getattr(likelihood, "defer_noise_evidence", None)
+    if defer_noise_evidence is not None:
+        return bool(defer_noise_evidence)
+    return likelihood.has_parameter_dependent_noise_likelihood(
+        sampled_parameters=priors.non_fixed_keys
+    )
+
+
+def _set_result_noise_evidence_pending(result, pending):
+    meta_data = (getattr(result, "meta_data", None) or dict()).copy()
+    if pending:
+        meta_data["noise_evidence_pending"] = True
+    else:
+        meta_data.pop("noise_evidence_pending", None)
+    result.meta_data = meta_data
+
+
+def _prepare_result_for_deferred_noise_evidence(result, sampler):
+    _set_result_noise_evidence_pending(result=result, pending=True)
+    result.log_noise_evidence = float("nan")
+    if sampler.use_ratio:
+        result.log_bayes_factor = result.log_evidence
+        result.log_evidence = float("nan")
+    else:
+        result.log_bayes_factor = float("nan")
+
+
+def _set_result_evidence(result, likelihood, priors, sampler, npool):
+    result.log_noise_evidence = likelihood.noise_log_evidence(
+        priors=priors,
+        sampler=sampler,
+        result=result,
+        npool=npool,
+    )
+    if sampler.use_ratio:
+        if (
+            getattr(result, "log_bayes_factor", None) is None
+            or result.log_bayes_factor != result.log_bayes_factor
+        ):
+            result.log_bayes_factor = result.log_evidence
+        result.log_evidence = result.log_bayes_factor + result.log_noise_evidence
+    else:
+        result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
+    _set_result_noise_evidence_pending(result=result, pending=False)
+
+
 if command_line_args.sampler_help:
     sampler = command_line_args.sampler_help
     if sampler in IMPLEMENTED_SAMPLERS:
@@ -306,6 +353,10 @@ def run_sampler(
         logger.warning("Using cached result")
         result = sampler.cached_result
     else:
+        defer_noise_evidence = _should_defer_noise_evidence(
+            likelihood=likelihood,
+            priors=priors,
+        )
         # Run the sampler
         start_time = datetime.datetime.now()
         if command_line_args.bilby_test_mode:
@@ -324,17 +375,19 @@ def run_sampler(
         # Convert sampling time into seconds
         result.sampling_time = result.sampling_time.total_seconds()
 
-        result.log_noise_evidence = likelihood.noise_log_evidence(
-            priors=priors,
-            sampler=sampler,
-            result=result,
-            npool=npool,
-        )
-        if sampler.use_ratio:
-            result.log_bayes_factor = result.log_evidence
-            result.log_evidence = result.log_bayes_factor + result.log_noise_evidence
+        if defer_noise_evidence:
+            _prepare_result_for_deferred_noise_evidence(
+                result=result,
+                sampler=sampler,
+            )
         else:
-            result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
+            _set_result_evidence(
+                result=result,
+                likelihood=likelihood,
+                priors=priors,
+                sampler=sampler,
+                npool=npool,
+            )
 
         if None not in [result.injection_parameters, conversion_function]:
             result.injection_parameters = conversion_function(
@@ -366,6 +419,19 @@ def run_sampler(
 
     if plot:
         result.plot_corner()
+    if (
+        not sampler.cached_result
+        and _should_defer_noise_evidence(likelihood=likelihood, priors=priors)
+    ):
+        _set_result_evidence(
+            result=result,
+            likelihood=likelihood,
+            priors=priors,
+            sampler=sampler,
+            npool=npool,
+        )
+        if save:
+            result.save_to_file(overwrite=True, extension=save, gzip=gzip, outdir=outdir)
     logger.info(f"Summary of results:\n{result}")
     return result
 

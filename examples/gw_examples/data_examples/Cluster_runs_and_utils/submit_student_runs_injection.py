@@ -57,6 +57,8 @@ LEGACY_POSTERIOR_PATHS = (
     / "posterior_samples.h5",
 )
 DEFAULT_STAGING_RANDOM_SEED = 12345
+TEST_INJECTION_CHIRP_MASS_CREDIBLE_INTERVAL = 0.99
+TEST_INJECTION_NU_MAX = 100.0
 
 INJECTION_KEYS = (
     "mass_1",
@@ -442,6 +444,33 @@ def load_maximum_likelihood_injection(posterior_path: Path) -> tuple[dict, float
     return maxl_parameters, maxl_log_likelihood, maxl_index
 
 
+def load_test_injection_chirp_mass_bounds(
+    posterior_path: Path,
+    credible_interval: float = TEST_INJECTION_CHIRP_MASS_CREDIBLE_INTERVAL,
+) -> tuple[float, float]:
+    if not 0 < credible_interval < 1:
+        raise ValueError("credible_interval must lie strictly between 0 and 1")
+
+    tail_probability = 0.5 * (1 - credible_interval)
+    with h5py.File(posterior_path, "r") as posterior_file:
+        posterior_samples = posterior_file["C00:NRSur7dq4/posterior_samples"]
+        dtype_names = posterior_samples.dtype.names or ()
+        if "chirp_mass" in dtype_names:
+            chirp_mass_samples = np.asarray(posterior_samples["chirp_mass"][:], dtype=float)
+        else:
+            mass_1 = np.asarray(posterior_samples["mass_1"][:], dtype=float)
+            mass_2 = np.asarray(posterior_samples["mass_2"][:], dtype=float)
+            chirp_mass_samples = bilby.gw.conversion.component_masses_to_chirp_mass(
+                mass_1, mass_2
+            )
+
+    lower, upper = np.quantile(
+        chirp_mass_samples,
+        [tail_probability, 1 - tail_probability],
+    )
+    return float(lower), float(upper)
+
+
 def load_psds(
     posterior_path: Path,
     detectors: tuple[str, ...],
@@ -629,6 +658,9 @@ def stage_injection_bundle(
         injection_parameters=injection_parameters,
         maxl_index=maxl_index,
         maxl_log_likelihood=maxl_log_likelihood,
+        test_injection_chirp_mass_bounds=load_test_injection_chirp_mass_bounds(
+            posterior_path
+        ),
     )
 
 
@@ -688,6 +720,12 @@ def build_nu_priors(
     if not include_nu_prior:
         return ""
 
+    nu_maximum = (
+        min(args.nu_max, TEST_INJECTION_NU_MAX)
+        if args.test_injection
+        else args.nu_max
+    )
+
     if detector_dependent_nu:
         if num_frequency_bands == 1:
             keys = [f"nu_{detector}" for detector in detectors]
@@ -704,7 +742,7 @@ def build_nu_priors(
             keys = [f"nu_{index}" for index in range(1, num_frequency_bands + 1)]
 
     return "\n".join(
-        f"{key} = Uniform(name='{key}', minimum={args.nu_min}, maximum={args.nu_max})"
+        f"{key} = Uniform(name='{key}', minimum={args.nu_min}, maximum={nu_maximum})"
         for key in keys
     )
 
@@ -732,6 +770,17 @@ def render_prior(
 
     injection_parameters = bundle["injection_parameters"]
     mass_ratio = injection_parameters["mass_2"] / injection_parameters["mass_1"]
+    chirp_mass_minimum, chirp_mass_maximum = bundle["test_injection_chirp_mass_bounds"]
+    rendered = replace_or_append_prior_line(
+        rendered,
+        "chirp_mass",
+        (
+            "chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass("
+            f"name='chirp_mass', minimum={format_prior_value(chirp_mass_minimum)}, "
+            f"maximum={format_prior_value(chirp_mass_maximum)}, "
+            "unit='$M_{\\{\\odot\\}}')"
+        ),
+    )
     rendered = replace_or_append_prior_line(
         rendered,
         "mass_ratio",

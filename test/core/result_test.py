@@ -474,6 +474,20 @@ class TestResult(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.result.plot_corner(priors="test")
 
+    def test_plot_corner_skips_fixed_parameters(self):
+        self.result.posterior["x"] = 1.23
+        filename = os.path.join(self.result.outdir, "fixed_parameter_corner.png")
+        self.result.plot_corner(parameters=["x", "y"], filename=filename)
+        self.assertTrue(os.path.isfile(filename))
+
+    def test_plot_corner_returns_none_if_all_requested_parameters_are_fixed(self):
+        self.result.posterior["x"] = 1.23
+        self.result.posterior["y"] = -4.56
+        filename = os.path.join(self.result.outdir, "all_fixed_corner.png")
+        figure = self.result.plot_corner(parameters=["x", "y"], filename=filename)
+        self.assertIsNone(figure)
+        self.assertFalse(os.path.exists(filename))
+
     def test_get_credible_levels(self):
         levels = self.result.get_all_injection_credible_levels()
         self.assertDictEqual(levels, dict(x=0.68, y=0.72))

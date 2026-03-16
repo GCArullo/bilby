@@ -1363,6 +1363,46 @@ class Result(object):
         if isinstance(kwargs.get('truths'), bool):
             kwargs.pop('truths')
 
+        # Drop parameters that have no finite extent; corner cannot plot them.
+        xs_frame = self.posterior[plot_parameter_keys]
+        finite_plot_parameter_keys = []
+        finite_labels = []
+        finite_truths = [] if "truths" in kwargs else None
+        finite_range = [] if isinstance(kwargs.get("range"), (list, tuple, np.ndarray)) else None
+        skipped_parameters = []
+        truths = kwargs.get("truths")
+        ranges = kwargs.get("range")
+
+        for index, key in enumerate(plot_parameter_keys):
+            values = xs_frame[key].to_numpy()
+            finite = values[np.isfinite(values)]
+            if len(finite) == 0 or np.ptp(finite) == 0:
+                skipped_parameters.append(key)
+                continue
+            finite_plot_parameter_keys.append(key)
+            finite_labels.append(kwargs["labels"][index])
+            if finite_truths is not None:
+                finite_truths.append(truths[index])
+            if finite_range is not None:
+                finite_range.append(ranges[index])
+
+        if skipped_parameters:
+            logger.warning(
+                "Skipping corner-plot parameters with zero or non-finite extent: %s",
+                ", ".join(skipped_parameters),
+            )
+
+        if len(finite_plot_parameter_keys) == 0:
+            logger.warning("No plottable parameters remain for corner plot; skipping.")
+            return None
+
+        plot_parameter_keys = finite_plot_parameter_keys
+        kwargs["labels"] = finite_labels
+        if finite_truths is not None:
+            kwargs["truths"] = finite_truths
+        if finite_range is not None:
+            kwargs["range"] = finite_range
+
         # Create the data array to plot and pass everything to corner
         xs = self.posterior[plot_parameter_keys].values
         if len(plot_parameter_keys) > 1:

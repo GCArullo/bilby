@@ -59,6 +59,8 @@ LEGACY_POSTERIOR_PATHS = (
 DEFAULT_STAGING_RANDOM_SEED = 12345
 TEST_INJECTION_CHIRP_MASS_CREDIBLE_INTERVAL = 0.99
 TEST_INJECTION_NU_MAX = 100.0
+DEFAULT_NLIVE = 1000
+TEST_INJECTION_NLIVE = 256
 
 INJECTION_KEYS = (
     "mass_1",
@@ -171,9 +173,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--nlive",
         type=int,
-        default=1000,
+        default=None,
         help=(
-            "Nested-sampler live points to write into sampler-kwargs in the generated ini."
+            "Nested-sampler live points to write into sampler-kwargs in the generated ini. "
+            f"Defaults to {TEST_INJECTION_NLIVE} for --test-injection and "
+            f"{DEFAULT_NLIVE} otherwise."
         ),
     )
     parser.add_argument(
@@ -1010,6 +1014,8 @@ def submit_runs(ini_paths: list[Path], executable: str) -> None:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.nlive is None:
+        args.nlive = TEST_INJECTION_NLIVE if args.test_injection else DEFAULT_NLIVE
     try:
         ini_paths = prepare_runs(args)
         if args.submit:

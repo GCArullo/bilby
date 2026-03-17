@@ -846,6 +846,8 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     rendered = replace_line(rendered, "data-format", "hdf5")
+    rendered = replace_line(rendered, "calibration-model", "None")
+    rendered = replace_line(rendered, "spline-calibration-envelope-dict", "None")
     rendered = replace_line(
         rendered,
         "channel-dict",

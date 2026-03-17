@@ -525,7 +525,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             use_ratio=False,
             plot=False,
             save=False,
-            npool=npool,
+            # Keep the auxiliary noise-evidence calculation single-process to
+            # avoid duplicating the main analysis worker pool in memory.
+            npool=1,
             nlive=(
                 self.noise_evidence_nlive
                 if self.noise_evidence_nlive is not None

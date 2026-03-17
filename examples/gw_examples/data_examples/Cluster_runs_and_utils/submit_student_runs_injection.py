@@ -95,6 +95,15 @@ TEST_INJECTION_FIXED_KEYS = (
 )
 
 
+def outdir_label(value: str) -> str:
+    label = value.strip()
+    if not label:
+        raise argparse.ArgumentTypeError("outdir label must not be empty")
+    if any(separator and separator in label for separator in (os.sep, os.altsep)):
+        raise argparse.ArgumentTypeError("outdir label must not contain path separators")
+    return label
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -129,6 +138,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="GW231123_student_t_injection",
         help=(
             "Prefix used to name the Gaussian/Student runs and the staged-data files."
+        ),
+    )
+    parser.add_argument(
+        "--outdir-label",
+        type=outdir_label,
+        default=None,
+        help=(
+            "Optional suffix appended to the standard run outdir/webdir name. "
+            "This does not change the bilby label or ini/prior filenames."
         ),
     )
     parser.add_argument(
@@ -909,6 +927,12 @@ def build_run_label(label_prefix: str, hypothesis: str) -> str:
     return f"{label_prefix}_{hypothesis}"
 
 
+def build_run_directory_name(label: str, outdir_label: str | None) -> str:
+    if outdir_label is None:
+        return label
+    return f"{label}_{outdir_label}"
+
+
 def write_run_files(
     *,
     base_dir: Path,
@@ -925,10 +949,11 @@ def write_run_files(
     web_dir = ensure_dir(base_dir / "web")
 
     label = build_run_label(args.label_prefix, hypothesis)
+    run_directory_name = build_run_directory_name(label, args.outdir_label)
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
-    outdir = ensure_dir(run_dir / label)
-    webdir = ensure_dir(web_dir / label)
+    outdir = ensure_dir(run_dir / run_directory_name)
+    webdir = ensure_dir(web_dir / run_directory_name)
 
     prior_path.write_text(
         render_prior(

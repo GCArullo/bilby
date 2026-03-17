@@ -55,6 +55,15 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
     ),
 }
 
+
+def outdir_label(value: str) -> str:
+    label = value.strip()
+    if not label:
+        raise argparse.ArgumentTypeError("outdir label must not be empty")
+    if any(separator and separator in label for separator in (os.sep, os.altsep)):
+        raise argparse.ArgumentTypeError("outdir label must not contain path separators")
+    return label
+
 def positive_int(value: str) -> int:
     try:
         parsed = int(value)
@@ -179,6 +188,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help="Optional run label prefix override.",
     )
     parser.add_argument(
+        "--outdir-label",
+        type=outdir_label,
+        default=None,
+        help=(
+            "Optional suffix appended to the standard run outdir/webdir name. "
+            "This does not change the bilby label or ini/prior filenames."
+        ),
+    )
+    parser.add_argument(
         "--outdir-base",
         default=None,
         help="Optional base outdir override.",
@@ -227,6 +245,12 @@ def default_output_bases(home_dir: Path, run_subdir: str) -> tuple[str, str]:
     outdir_base = resolved_home / run_subdir
     webdir_base = resolved_home / "public_html" / run_subdir
     return str(outdir_base), str(webdir_base)
+
+
+def build_run_directory_name(name: str, outdir_label: str | None) -> str:
+    if outdir_label is None:
+        return name
+    return f"{name}_{outdir_label}"
 
 
 def load_template(path: Path) -> str:
@@ -347,6 +371,7 @@ def prepare_run(
     label_prefix: str,
     outdir_base: str,
     webdir_base: str,
+    outdir_label: str | None,
     file_prefix: str,
     working_directory: Path,
     accounting_user: str,
@@ -354,8 +379,12 @@ def prepare_run(
     if hypothesis == "student":
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
         label = f"{label_prefix}{mode_suffix}_N{band_count}"
-        run_outdir = f"{outdir_base}/student{mode_suffix}_N{band_count}"
-        run_webdir = f"{webdir_base}/student{mode_suffix}_N{band_count}"
+        run_directory_name = build_run_directory_name(
+            f"student{mode_suffix}_N{band_count}",
+            outdir_label,
+        )
+        run_outdir = f"{outdir_base}/{run_directory_name}"
+        run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
             prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}.prior"
         ).resolve()
@@ -366,8 +395,12 @@ def prepare_run(
         run_detector_dependent_nu = detector_dependent_nu
     elif hypothesis == "gaussian":
         label = f"{label_prefix}_gaussian_N{band_count}"
-        run_outdir = f"{outdir_base}/gaussian_N{band_count}"
-        run_webdir = f"{webdir_base}/gaussian_N{band_count}"
+        run_directory_name = build_run_directory_name(
+            f"gaussian_N{band_count}",
+            outdir_label,
+        )
+        run_outdir = f"{outdir_base}/{run_directory_name}"
+        run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (prior_dir / f"{file_prefix}_gaussian_N{band_count}.prior").resolve()
         ini_path = (ini_dir / f"{file_prefix}_gaussian_N{band_count}.ini").resolve()
         include_nu_priors = False
@@ -473,6 +506,7 @@ def main() -> int:
                 label_prefix=label_prefix,
                 outdir_base=outdir_base,
                 webdir_base=webdir_base,
+                outdir_label=args.outdir_label,
                 file_prefix=file_prefix,
                 working_directory=working_directory,
                 accounting_user=args.accounting_user,

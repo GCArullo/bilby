@@ -2,8 +2,8 @@
 
 """Generate and optionally submit Student-t bilby_pipe runs.
 
-Optionally, Gaussian-likelihood runs can be generated and submitted alongside
-the Student-t runs.
+Gaussian-likelihood runs can also be generated either alongside the Student-t
+runs or on their own.
 """
 
 from __future__ import annotations
@@ -125,6 +125,14 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--gaussian-only",
+        action="store_true",
+        help=(
+            "Generate and submit only Gaussian-likelihood runs for each requested "
+            "band count. Gaussian runs are only supported for N=1."
+        ),
+    )
+    parser.add_argument(
         "--detector-dependent-nu",
         action="store_true",
         help="Generate detector-specific Student-t nu parameters.",
@@ -224,6 +232,21 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help="Directory where generated prior files are written.",
     )
     return parser
+
+
+def hypothesis_list(args: argparse.Namespace) -> list[str]:
+    if args.add_gaussian and args.gaussian_only:
+        raise ValueError("Choose at most one of --add-gaussian and --gaussian-only")
+    if args.gaussian_only and args.num_frequency_bands != 1:
+        raise ValueError(
+            "Gaussian runs only support num_frequency_bands=1. "
+            "Run Gaussian separately with N=1."
+        )
+    if args.gaussian_only:
+        return ["gaussian"]
+    if args.add_gaussian:
+        return ["student", "gaussian"]
+    return ["student"]
 
 
 def resolve_path(path: Path | None, default_path: Path) -> Path:
@@ -488,9 +511,7 @@ def main() -> int:
         band_counts = range(1, args.num_frequency_bands + 1)
     else:
         band_counts = [args.num_frequency_bands]
-    hypotheses = ["student"]
-    if args.add_gaussian:
-        hypotheses.append("gaussian")
+    hypotheses = hypothesis_list(args)
 
     for band_count in band_counts:
         for hypothesis in hypotheses:
@@ -521,6 +542,9 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1) from exc
+    except ValueError as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from exc
     except subprocess.CalledProcessError as exc:

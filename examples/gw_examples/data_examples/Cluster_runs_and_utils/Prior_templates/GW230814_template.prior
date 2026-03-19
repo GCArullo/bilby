@@ -1,4 +1,4 @@
-# This file is a template consumed by submit_student_runs_real_data.py.
+# This file is a template consumed by submit_runs_real_data.py.
 # The Student-t prior block below is filled in automatically.
 
 chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=27.163657186951486, maximum=30.455031050711675, unit='$M_{\{\odot\}}')

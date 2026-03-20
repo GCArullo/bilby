@@ -575,6 +575,76 @@ class ConditionalChiUniformSpinMagnitude(ConditionalLogUniform):
         return instantiation_dict
 
 
+class ConditionalUpperBoundedLogUniform(ConditionalLogUniform):
+    r"""
+    Log-uniform prior whose upper bound is set by a previously sampled value.
+
+    This is useful for breaking label symmetries between otherwise identical
+    components. For example, multiple sine-Gaussian bursts can be ordered by
+    decreasing ``hrss`` by conditioning each later component on the previous
+    one:
+
+    .. code-block:: python
+
+        priors["sine_gaussian_0_hrss"] = LogUniform(
+            minimum=1e-24,
+            maximum=1e-20,
+            name="sine_gaussian_0_hrss",
+        )
+        priors["sine_gaussian_1_hrss"] = (
+            bilby.gw.prior.ConditionalUpperBoundedLogUniform(
+                minimum=1e-24,
+                maximum=1e-20,
+                upper_bound_name="sine_gaussian_0_hrss",
+                name="sine_gaussian_1_hrss",
+            )
+        )
+
+    which enforces ``sine_gaussian_1_hrss <= sine_gaussian_0_hrss``.
+    """
+
+    def __init__(
+        self,
+        minimum,
+        maximum,
+        upper_bound_name,
+        name=None,
+        latex_label=None,
+        unit=None,
+        boundary=None,
+    ):
+        super(ConditionalUpperBoundedLogUniform, self).__init__(
+            minimum=minimum,
+            maximum=maximum,
+            name=name,
+            latex_label=latex_label,
+            unit=unit,
+            boundary=boundary,
+            condition_func=self._condition_function,
+        )
+        self.upper_bound_name = upper_bound_name
+        self._required_variables = [upper_bound_name]
+        self.__class__.__name__ = "ConditionalUpperBoundedLogUniform"
+        self.__class__.__qualname__ = "ConditionalUpperBoundedLogUniform"
+
+    def _condition_function(self, reference_params, **kwargs):
+        maximum = np.minimum(
+            reference_params["maximum"],
+            kwargs[self._required_variables[0]],
+        )
+        return dict(minimum=reference_params["minimum"], maximum=maximum)
+
+    def __repr__(self):
+        return Prior.__repr__(self)
+
+    def get_instantiation_dict(self):
+        instantiation_dict = Prior.get_instantiation_dict(self)
+        for key, value in self.reference_params.items():
+            if key in instantiation_dict:
+                instantiation_dict[key] = value
+        return instantiation_dict
+
+
 class ConditionalChiInPlane(ConditionalBasePrior):
     r"""
     This prior characterizes the conditional prior on the in-plane spin magnitude

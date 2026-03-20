@@ -7,14 +7,23 @@ Example injection of a CBC signal with two sine-Gaussian bursts.
 This script demonstrates how to run parameter estimation on a compact
 binary coalescence (CBC) signal augmented with a set of sine-Gaussian bursts.
 By default the sine-Gaussians are treated coherently (projected through the
-antenna patterns like the CBC). Activating ``incoherent`` assigns detector-
-local burst components that are added directly to each interferometer's strain.
+antenna patterns like the CBC) and the two burst amplitudes are sampled with
+an ordered prior to remove the label symmetry between otherwise exchangeable
+components. Activating ``incoherent`` assigns detector-local burst components
+that are added directly to each interferometer's strain.
 
 """
 
 ###########
 # Imports # 
 ###########
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import bilby
 from bilby.core.utils.random import seed
@@ -45,11 +54,17 @@ def flatten_sine_gaussians(components, detector=None):
 
 def populate_sine_gaussian_priors(components, detector=None):
 
+    previous_amplitude_key = None
     for index, component in enumerate(components):
         prefix = f"sine_gaussian_{index}_"
         if detector is not None:
             prefix += f"{detector}_"
-        add_sine_gaussian_priors(prefix, component)
+        add_sine_gaussian_priors(
+            prefix,
+            component,
+            upper_bound_name=previous_amplitude_key,
+        )
+        previous_amplitude_key = f"{prefix}hrss"
 
     return
 
@@ -59,10 +74,10 @@ def populate_sine_gaussian_priors(components, detector=None):
 ###############
 
 # Miscellaneous parameters
-incoherent = True # If True, use detector-local sine-Gaussians
+incoherent = False # If True, use detector-local sine-Gaussians
 zero_noise = True
 outdir     = "outdir"
-nlive      = 64
+nlive      = 128
 seed_value = 123
 
 # Detectors and time-series parameters
@@ -97,13 +112,14 @@ cbc_parameters = dict(
     dec                 =-1.2108,
 )
 
-# Two representative sine-Gaussian bursts when treated coherently
+# Two coherent sine-Gaussian bursts ordered by decreasing hrss
 coherent_sine_gaussians = [
-        dict(hrss=1e-22, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
-        # dict(hrss=5e-23, Q=9.0, frequency=120.0, time_offset=0.02, phase_offset=1.0),
+        dict(hrss=5e-23, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
+        dict(hrss=5e-23, Q=9.0, frequency=120.0, time_offset=0.02, phase_offset=1.0),
 ]
 
-# Detector-local sine-Gaussians for the incoherent case (two bursts per detector)
+# Detector-local sine-Gaussians for the incoherent case.
+# Uncomment the second entry in each detector to sample ordered amplitudes there too.
 incoherent_sine_gaussians = {
     "H1": [
         dict(hrss=1e-22, Q=8.0, frequency=70.0, time_offset=-0.07, phase_offset=0.0),
@@ -234,29 +250,26 @@ priors["phase"]               = injection_parameters["phase"]
 # Sine-gaussians parameters # 
 #---------------------------#
 
-def add_sine_gaussian_priors(prefix, component):
+def add_sine_gaussian_priors(prefix, component, upper_bound_name=None):
 
-    priors[f"{prefix}frequency"] = bilby.core.prior.Uniform(
-        minimum=40, maximum=200, name=f"{prefix}frequency", unit="Hz"
-    )
-    # priors[f"{prefix}Q"] = bilby.core.prior.Uniform(
-    #     minimum=5.0, maximum=15.0, name=f"{prefix}Q"
-    # )
-    # priors[f"{prefix}time_offset"] = bilby.core.prior.Uniform(
-    #     minimum=-0.1, maximum=0.1, name=f"{prefix}time_offset", unit="s"
-    # )
-    # priors[f"{prefix}phase_offset"] = bilby.core.prior.Uniform(
-    #     minimum=-bilby.core.utils.np.pi,
-    #     maximum=bilby.core.utils.np.pi,
-    #     name=f"{prefix}phase_offset",
-    #     boundary="periodic",
-    # )
+    if upper_bound_name is None:
+        priors[f"{prefix}hrss"] = bilby.core.prior.LogUniform(
+            minimum=1e-24,
+            maximum=1e-20,
+            name=f"{prefix}hrss",
+        )
+    else:
+        priors[f"{prefix}hrss"] = bilby.gw.prior.ConditionalUpperBoundedLogUniform(
+            minimum=1e-24,
+            maximum=1e-20,
+            upper_bound_name=upper_bound_name,
+            name=f"{prefix}hrss",
+        )
 
-    # priors[f"{prefix}frequency"]    = injection_parameters[f"{prefix}frequency"]
-    priors[f"{prefix}hrss"]         = injection_parameters[f"{prefix}hrss"]
-    priors[f"{prefix}Q"]            = injection_parameters[f"{prefix}Q"]
-    priors[f"{prefix}time_offset"]  = injection_parameters[f"{prefix}time_offset"]
-    priors[f"{prefix}phase_offset"] = injection_parameters[f"{prefix}phase_offset"]
+    priors[f"{prefix}frequency"]    = component["frequency"]
+    priors[f"{prefix}Q"]            = component["Q"]
+    priors[f"{prefix}time_offset"]  = component["time_offset"]
+    priors[f"{prefix}phase_offset"] = component["phase_offset"]
 
     return
 

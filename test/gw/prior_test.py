@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 import bilby
-from bilby.core.prior import Uniform, Constraint
+from bilby.core.prior import Uniform, Constraint, LogUniform
 from bilby.gw.prior import BBHPriorDict
 from bilby.gw import conversion
 
@@ -78,6 +78,84 @@ class TestBBHPriorDict(unittest.TestCase):
         new_dict = bilby.gw.prior.BBHPriorDict(dictionary=self.prior_dict)
         for key in self.bbh_prior_dict:
             self.assertEqual(self.bbh_prior_dict[key], new_dict[key])
+
+    def test_conditional_upper_bounded_log_uniform_samples_below_reference(self):
+        prior = bilby.gw.prior.ConditionalUpperBoundedLogUniform(
+            minimum=1e-24,
+            maximum=1e-20,
+            upper_bound_name="sine_gaussian_0_hrss",
+            name="sine_gaussian_1_hrss",
+        )
+        upper_bound = 5e-22
+        samples = prior.sample(size=1000, sine_gaussian_0_hrss=upper_bound)
+
+        self.assertTrue(np.all(samples >= 1e-24))
+        self.assertTrue(np.all(samples <= upper_bound))
+
+    def test_sine_gaussian_hrss_ordering_in_prior_dict(self):
+        priors = bilby.gw.prior.BBHPriorDict(
+            dictionary=dict(
+                sine_gaussian_0_hrss=LogUniform(
+                    minimum=1e-24, maximum=1e-20, name="sine_gaussian_0_hrss"
+                ),
+                sine_gaussian_1_hrss=bilby.gw.prior.ConditionalUpperBoundedLogUniform(
+                    minimum=1e-24,
+                    maximum=1e-20,
+                    upper_bound_name="sine_gaussian_0_hrss",
+                    name="sine_gaussian_1_hrss",
+                ),
+            )
+        )
+
+        samples = priors.sample_subset(
+            keys=["sine_gaussian_0_hrss", "sine_gaussian_1_hrss"], size=1000
+        )
+
+        self.assertListEqual(
+            priors.sorted_keys, ["sine_gaussian_0_hrss", "sine_gaussian_1_hrss"]
+        )
+        self.assertTrue(
+            np.all(samples["sine_gaussian_1_hrss"] <= samples["sine_gaussian_0_hrss"])
+        )
+
+    def test_conditional_upper_bounded_log_uniform_ln_prob_with_series(self):
+        prior = bilby.gw.prior.ConditionalUpperBoundedLogUniform(
+            minimum=1e-24,
+            maximum=1e-20,
+            upper_bound_name="sine_gaussian_0_hrss",
+            name="sine_gaussian_1_hrss",
+        )
+        upper_bound = pd.Series([5e-22, 8e-22])
+        value = pd.Series([4e-22, 7e-22])
+
+        ln_prob = prior.ln_prob(value, sine_gaussian_0_hrss=upper_bound)
+
+        self.assertEqual(len(ln_prob), len(value))
+        self.assertTrue(np.all(np.isfinite(ln_prob)))
+        self.assertTrue(np.all(prior.maximum == upper_bound))
+
+    def test_conditional_upper_bounded_log_uniform_file_roundtrip(self):
+        filename = "test_ordered_sine_gaussian_hrss.prior"
+        priors = bilby.gw.prior.BBHPriorDict(
+            dictionary=dict(
+                sine_gaussian_0_hrss=LogUniform(
+                    minimum=1e-24, maximum=1e-20, name="sine_gaussian_0_hrss"
+                ),
+                sine_gaussian_1_hrss=bilby.gw.prior.ConditionalUpperBoundedLogUniform(
+                    minimum=1e-24,
+                    maximum=1e-20,
+                    upper_bound_name="sine_gaussian_0_hrss",
+                    name="sine_gaussian_1_hrss",
+                ),
+            )
+        )
+
+        priors.to_file(outdir=".", label="test_ordered_sine_gaussian_hrss")
+        loaded = bilby.gw.prior.BBHPriorDict(filename=filename)
+
+        self.assertEqual(priors["sine_gaussian_0_hrss"], loaded["sine_gaussian_0_hrss"])
+        self.assertEqual(priors["sine_gaussian_1_hrss"], loaded["sine_gaussian_1_hrss"])
+        os.remove(filename)
 
     def test_redundant_priors_not_in_dict_before(self):
         for prior in [

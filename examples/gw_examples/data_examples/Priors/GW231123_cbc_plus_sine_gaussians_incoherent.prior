@@ -2,6 +2,8 @@
 # The standard CBC parameters follow the broad BBH priors shipped with bilby.
 # Additional entries configure the per-detector burst components required by
 # bilby.gw.source.cbc_plus_sine_gaussians when using the incoherent extension.
+# Within each detector the SG components are ordered by descending hrss to
+# remove the otherwise redundant label symmetry.
 
 mass_1 = Constraint(name='mass_1', minimum=5, maximum=100)
 mass_2 = Constraint(name='mass_2', minimum=5, maximum=100)
@@ -34,13 +36,13 @@ sine_gaussian_0_L1_time_offset = Uniform(name='sine_gaussian_0_L1_time_offset', 
 sine_gaussian_0_L1_phase_offset = Uniform(name='sine_gaussian_0_L1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
 
 # Detector-local burst parameters for component 1
-sine_gaussian_1_H1_hrss = LogUniform(name='sine_gaussian_1_H1_hrss', minimum=1e-24, maximum=1e-20)
+sine_gaussian_1_H1_hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform(name='sine_gaussian_1_H1_hrss', minimum=1e-24, maximum=1e-20, upper_bound_name='sine_gaussian_0_H1_hrss')
 sine_gaussian_1_H1_Q = Uniform(name='sine_gaussian_1_H1_Q', minimum=3, maximum=30)
 sine_gaussian_1_H1_frequency = Uniform(name='sine_gaussian_1_H1_frequency', minimum=50, maximum=1024)
 sine_gaussian_1_H1_time_offset = Uniform(name='sine_gaussian_1_H1_time_offset', minimum=-0.05, maximum=0.05)
 sine_gaussian_1_H1_phase_offset = Uniform(name='sine_gaussian_1_H1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
 
-sine_gaussian_1_L1_hrss = LogUniform(name='sine_gaussian_1_L1_hrss', minimum=1e-24, maximum=1e-20)
+sine_gaussian_1_L1_hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform(name='sine_gaussian_1_L1_hrss', minimum=1e-24, maximum=1e-20, upper_bound_name='sine_gaussian_0_L1_hrss')
 sine_gaussian_1_L1_Q = Uniform(name='sine_gaussian_1_L1_Q', minimum=3, maximum=30)
 sine_gaussian_1_L1_frequency = Uniform(name='sine_gaussian_1_L1_frequency', minimum=50, maximum=1024)
 sine_gaussian_1_L1_time_offset = Uniform(name='sine_gaussian_1_L1_time_offset', minimum=-0.05, maximum=0.05)

@@ -10,6 +10,7 @@ from scipy.stats import norm
 from ..core.prior import (
     PriorDict, Uniform, Prior, DeltaFunction, Gaussian, Interped, Constraint,
     conditional_prior_factory, PowerLaw, ConditionalLogUniform,
+    ConditionalUniform,
     ConditionalPriorDict, ConditionalBasePrior, BaseJointPriorDist, JointPrior,
     JointPriorDistError,
 )
@@ -626,6 +627,77 @@ class ConditionalUpperBoundedLogUniform(ConditionalLogUniform):
         self._required_variables = [upper_bound_name]
         self.__class__.__name__ = "ConditionalUpperBoundedLogUniform"
         self.__class__.__qualname__ = "ConditionalUpperBoundedLogUniform"
+
+    def _condition_function(self, reference_params, **kwargs):
+        maximum = np.minimum(
+            reference_params["maximum"],
+            kwargs[self._required_variables[0]],
+        )
+        return dict(minimum=reference_params["minimum"], maximum=maximum)
+
+    def __repr__(self):
+        return Prior.__repr__(self)
+
+    def get_instantiation_dict(self):
+        instantiation_dict = Prior.get_instantiation_dict(self)
+        for key, value in self.reference_params.items():
+            if key in instantiation_dict:
+                instantiation_dict[key] = value
+        return instantiation_dict
+
+
+class ConditionalUpperBoundedUniform(ConditionalUniform):
+    r"""
+    Uniform prior whose upper bound is set by a previously sampled value.
+
+    This is useful for breaking label symmetries between otherwise identical
+    components when a linear-space prior is appropriate. For example, multiple
+    sine-Gaussian bursts can be ordered by decreasing frequency by conditioning
+    each later component on the previous one:
+
+    .. code-block:: python
+
+        priors["sine_gaussian_0_frequency"] = Uniform(
+            minimum=20,
+            maximum=1024,
+            name="sine_gaussian_0_frequency",
+        )
+        priors["sine_gaussian_1_frequency"] = (
+            bilby.gw.prior.ConditionalUpperBoundedUniform(
+                minimum=20,
+                maximum=1024,
+                upper_bound_name="sine_gaussian_0_frequency",
+                name="sine_gaussian_1_frequency",
+            )
+        )
+
+    which enforces
+    ``sine_gaussian_1_frequency <= sine_gaussian_0_frequency``.
+    """
+
+    def __init__(
+        self,
+        minimum,
+        maximum,
+        upper_bound_name,
+        name=None,
+        latex_label=None,
+        unit=None,
+        boundary=None,
+    ):
+        super(ConditionalUpperBoundedUniform, self).__init__(
+            minimum=minimum,
+            maximum=maximum,
+            name=name,
+            latex_label=latex_label,
+            unit=unit,
+            boundary=boundary,
+            condition_func=self._condition_function,
+        )
+        self.upper_bound_name = upper_bound_name
+        self._required_variables = [upper_bound_name]
+        self.__class__.__name__ = "ConditionalUpperBoundedUniform"
+        self.__class__.__qualname__ = "ConditionalUpperBoundedUniform"
 
     def _condition_function(self, reference_params, **kwargs):
         maximum = np.minimum(

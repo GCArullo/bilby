@@ -134,6 +134,66 @@ class TestBBHPriorDict(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(ln_prob)))
         self.assertTrue(np.all(prior.maximum == upper_bound))
 
+    def test_conditional_upper_bounded_uniform_samples_below_reference(self):
+        prior = bilby.gw.prior.ConditionalUpperBoundedUniform(
+            minimum=20,
+            maximum=1024,
+            upper_bound_name="sine_gaussian_0_frequency",
+            name="sine_gaussian_1_frequency",
+        )
+        upper_bound = 300
+        samples = prior.sample(size=1000, sine_gaussian_0_frequency=upper_bound)
+
+        self.assertTrue(np.all(samples >= 20))
+        self.assertTrue(np.all(samples <= upper_bound))
+
+    def test_sine_gaussian_frequency_ordering_in_prior_dict(self):
+        priors = bilby.gw.prior.BBHPriorDict(
+            dictionary=dict(
+                sine_gaussian_0_frequency=Uniform(
+                    minimum=20, maximum=1024, name="sine_gaussian_0_frequency"
+                ),
+                sine_gaussian_1_frequency=bilby.gw.prior.ConditionalUpperBoundedUniform(
+                    minimum=20,
+                    maximum=1024,
+                    upper_bound_name="sine_gaussian_0_frequency",
+                    name="sine_gaussian_1_frequency",
+                ),
+            )
+        )
+
+        samples = priors.sample_subset(
+            keys=["sine_gaussian_0_frequency", "sine_gaussian_1_frequency"],
+            size=1000,
+        )
+
+        self.assertListEqual(
+            priors.sorted_keys,
+            ["sine_gaussian_0_frequency", "sine_gaussian_1_frequency"],
+        )
+        self.assertTrue(
+            np.all(
+                samples["sine_gaussian_1_frequency"]
+                <= samples["sine_gaussian_0_frequency"]
+            )
+        )
+
+    def test_conditional_upper_bounded_uniform_ln_prob_with_series(self):
+        prior = bilby.gw.prior.ConditionalUpperBoundedUniform(
+            minimum=20,
+            maximum=1024,
+            upper_bound_name="sine_gaussian_0_frequency",
+            name="sine_gaussian_1_frequency",
+        )
+        upper_bound = pd.Series([300, 500])
+        value = pd.Series([250, 450])
+
+        ln_prob = prior.ln_prob(value, sine_gaussian_0_frequency=upper_bound)
+
+        self.assertEqual(len(ln_prob), len(value))
+        self.assertTrue(np.all(np.isfinite(ln_prob)))
+        self.assertTrue(np.all(prior.maximum == upper_bound))
+
     def test_conditional_upper_bounded_log_uniform_file_roundtrip(self):
         filename = "test_ordered_sine_gaussian_hrss.prior"
         priors = bilby.gw.prior.BBHPriorDict(
@@ -155,6 +215,35 @@ class TestBBHPriorDict(unittest.TestCase):
 
         self.assertEqual(priors["sine_gaussian_0_hrss"], loaded["sine_gaussian_0_hrss"])
         self.assertEqual(priors["sine_gaussian_1_hrss"], loaded["sine_gaussian_1_hrss"])
+        os.remove(filename)
+
+    def test_conditional_upper_bounded_uniform_file_roundtrip(self):
+        filename = "test_ordered_sine_gaussian_frequency.prior"
+        priors = bilby.gw.prior.BBHPriorDict(
+            dictionary=dict(
+                sine_gaussian_0_frequency=Uniform(
+                    minimum=20, maximum=1024, name="sine_gaussian_0_frequency"
+                ),
+                sine_gaussian_1_frequency=bilby.gw.prior.ConditionalUpperBoundedUniform(
+                    minimum=20,
+                    maximum=1024,
+                    upper_bound_name="sine_gaussian_0_frequency",
+                    name="sine_gaussian_1_frequency",
+                ),
+            )
+        )
+
+        priors.to_file(outdir=".", label="test_ordered_sine_gaussian_frequency")
+        loaded = bilby.gw.prior.BBHPriorDict(filename=filename)
+
+        self.assertEqual(
+            priors["sine_gaussian_0_frequency"],
+            loaded["sine_gaussian_0_frequency"],
+        )
+        self.assertEqual(
+            priors["sine_gaussian_1_frequency"],
+            loaded["sine_gaussian_1_frequency"],
+        )
         os.remove(filename)
 
     def test_redundant_priors_not_in_dict_before(self):

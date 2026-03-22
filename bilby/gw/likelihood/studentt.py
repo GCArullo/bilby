@@ -1,6 +1,8 @@
 from copy import deepcopy
+from itertools import product
 
 import numpy as np
+from scipy.integrate import quad
 from scipy.special import gammaln
 
 from ...core.likelihood import Likelihood, _fallback_to_parameters
@@ -32,6 +34,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     scale set by the one-sided PSD S_n(f).
     """
 
+    _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
+    _NOISE_EVIDENCE_QUADRATURE_EPSREL = 1e-8
+    _NOISE_EVIDENCE_QUADRATURE_LIMIT = 200
+
     def __init__(
         self,
         interferometers,
@@ -55,6 +61,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         noise_evidence_nlive=None,
         dlogz_noise=0.1,
         dlogZ_noise=None,
+        noise_evidence_method="quadrature",
         **kwargs,
     ):
         """
@@ -84,6 +91,12 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         dlogz_noise, dlogZ_noise : float, optional
             Stopping criterion for the auxiliary nested-sampling run used to
             evaluate the noise evidence. `dlogZ_noise` is accepted as an alias.
+        noise_evidence_method : str, optional
+            Method used for the auxiliary Student-t noise-evidence calculation.
+            ``"quadrature"`` performs a direct 1D or 2D integral over the prior
+            transform and is the default. If more than two noise parameters are
+            sampled, this falls back to the nested-sampling helper run.
+            ``"nested"`` keeps the auxiliary dynesty calculation.
         kwargs :
             Passed to GravitationalWaveTransient. (Note: time/distance/phase marginalization in
             the base class assumes Gaussian structure; leave those False unless you re-derive them.)
@@ -120,6 +133,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         self.dlogz_noise           = self._resolve_dlogz_noise(
             dlogz_noise=dlogz_noise,
             dlogZ_noise=dlogZ_noise,
+        )
+        self.noise_evidence_method = self._resolve_noise_evidence_method(
+            noise_evidence_method
         )
 
         if not self._valid_nu_values(self._fixed_nu): raise ValueError("All nu values must be positive and finite")
@@ -191,6 +207,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             infer_nu=self.infer_nu,
             detector_dependent_nu=self.detector_dependent_nu,
             num_frequency_bands=self.num_frequency_bands,
+            noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
 
@@ -230,6 +247,32 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if dlogz_noise <= 0:
             raise ValueError("dlogz_noise must be a positive float")
         return dlogz_noise
+
+    @staticmethod
+    def _resolve_noise_evidence_method(noise_evidence_method):
+        try:
+            noise_evidence_method = (
+                str(noise_evidence_method).strip().lower().replace("-", "_")
+            )
+        except Exception as exc:
+            raise ValueError(
+                "noise_evidence_method must be 'quadrature' or 'nested'"
+            ) from exc
+
+        aliases = {
+            "quad": "quadrature",
+            "quadrature": "quadrature",
+            "direct_quadrature": "quadrature",
+            "dynesty": "nested",
+            "nested": "nested",
+            "nested_sampling": "nested",
+            "ns": "nested",
+        }
+        if noise_evidence_method not in aliases:
+            raise ValueError(
+                "noise_evidence_method must be 'quadrature' or 'nested'"
+            )
+        return aliases[noise_evidence_method]
 
     def _coerce_nu_array(self, nu):
 
@@ -467,6 +510,128 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         return noise_priors
 
+    @staticmethod
+    def _get_noise_evidence_quadrature_points():
+        edge_points = np.geomspace(1e-12, 1e-1, 12)
+        return np.unique(
+            np.concatenate(
+                ([0.0, 0.25, 0.5, 0.75, 1.0], edge_points, 1.0 - edge_points)
+            )
+        )
+
+    def _noise_log_likelihood_from_rescaled_priors(
+        self, keys, priors, unit_values, base_parameters
+    ):
+        parameters = base_parameters.copy()
+        for key, prior, unit_value in zip(keys, priors, unit_values):
+            parameters[key] = float(np.asarray(prior.rescale(unit_value), dtype=float))
+        return self._noise_log_likelihood_from_parameters(parameters)
+
+    def _noise_log_evidence_by_quadrature(self, noise_priors):
+        keys = list(noise_priors.non_fixed_keys)
+        priors = [noise_priors[key] for key in keys]
+        dimension = len(keys)
+        if dimension not in (1, 2):
+            raise ValueError(
+                "Student-t noise-evidence quadrature supports one or two "
+                "sampled noise parameters"
+            )
+
+        base_parameters = self._get_default_nu_parameter_dict()
+        reference_points = self._get_noise_evidence_quadrature_points()
+
+        candidate_logls = [
+            self._noise_log_likelihood_from_parameters(base_parameters)
+        ]
+        candidate_logls.extend(
+            self._noise_log_likelihood_from_rescaled_priors(
+                keys=keys,
+                priors=priors,
+                unit_values=unit_values,
+                base_parameters=base_parameters,
+            )
+            for unit_values in product(reference_points, repeat=dimension)
+        )
+        finite_logls = [value for value in candidate_logls if np.isfinite(value)]
+        if not finite_logls:
+            return np.nan_to_num(-np.inf)
+        logl_reference = max(finite_logls)
+
+        def scaled_integrand(unit_values):
+            logl = self._noise_log_likelihood_from_rescaled_priors(
+                keys=keys,
+                priors=priors,
+                unit_values=unit_values,
+                base_parameters=base_parameters,
+            )
+            if not np.isfinite(logl):
+                return 0.0
+            return float(np.exp(logl - logl_reference))
+
+        quadrature_kwargs = dict(
+            epsabs=self._NOISE_EVIDENCE_QUADRATURE_EPSABS,
+            epsrel=self._NOISE_EVIDENCE_QUADRATURE_EPSREL,
+            limit=self._NOISE_EVIDENCE_QUADRATURE_LIMIT,
+            points=reference_points[1:-1],
+        )
+        if dimension == 1:
+            integral, _ = quad(
+                lambda unit_value: scaled_integrand((unit_value,)),
+                0.0,
+                1.0,
+                **quadrature_kwargs,
+            )
+        else:
+            def outer_integrand(unit_value_2):
+                inner_integral, _ = quad(
+                    lambda unit_value_1: scaled_integrand(
+                        (unit_value_1, unit_value_2)
+                    ),
+                    0.0,
+                    1.0,
+                    **quadrature_kwargs,
+                )
+                return float(inner_integral)
+
+            integral, _ = quad(
+                outer_integrand,
+                0.0,
+                1.0,
+                **quadrature_kwargs,
+            )
+        if not np.isfinite(integral) or integral <= 0:
+            raise RuntimeError(
+                "Student-t noise-evidence quadrature failed to return a "
+                "positive finite integral"
+            )
+        return float(logl_reference + np.log(integral))
+
+    def _noise_log_evidence_by_nested_sampling(self, noise_priors):
+        from ...core.sampler import run_sampler
+
+        return run_sampler(
+            likelihood=_StudentTNoiseOnlyLikelihood(self),
+            priors=noise_priors,
+            label=f"{getattr(self, 'label', 'label')}_noise",
+            outdir=getattr(self, "outdir", "outdir"),
+            sampler="dynesty",
+            use_ratio=False,
+            plot=False,
+            save=False,
+            # Keep the auxiliary noise-evidence calculation single-process to
+            # avoid duplicating the main analysis worker pool in memory.
+            npool=1,
+            nlive=(
+                self.noise_evidence_nlive
+                if self.noise_evidence_nlive is not None
+                else max(100, 25 * len(noise_priors.non_fixed_keys))
+            ),
+            dlogz=self.dlogz_noise,
+            print_progress=False,
+            check_point=False,
+            resume=False,
+        )
+
     def log_likelihood(self, parameters=None):
 
         parameters = self._resolve_likelihood_parameters(parameters)
@@ -514,30 +679,15 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 self._get_default_nu_parameter_dict()
             )
 
-        from ...core.sampler import run_sampler
+        if self.noise_evidence_method == "quadrature":
+            if len(noise_priors.non_fixed_keys) <= 2:
+                return self._noise_log_evidence_by_quadrature(noise_priors)
+            logger.info(
+                "Student-t noise-evidence quadrature supports at most two "
+                "sampled noise parameters; falling back to nested sampling."
+            )
 
-        noise_result = run_sampler(
-            likelihood=_StudentTNoiseOnlyLikelihood(self),
-            priors=noise_priors,
-            label=f"{getattr(self, 'label', 'label')}_noise",
-            outdir=getattr(self, "outdir", "outdir"),
-            sampler="dynesty",
-            use_ratio=False,
-            plot=False,
-            save=False,
-            # Keep the auxiliary noise-evidence calculation single-process to
-            # avoid duplicating the main analysis worker pool in memory.
-            npool=1,
-            nlive=(
-                self.noise_evidence_nlive
-                if self.noise_evidence_nlive is not None
-                else max(100, 25 * len(noise_priors.non_fixed_keys))
-            ),
-            dlogz=self.dlogz_noise,
-            print_progress=False,
-            check_point=False,
-            resume=False,
-        )
+        noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
         return float(noise_result.log_evidence)
 
     def log_likelihood_ratio(self, parameters=None):

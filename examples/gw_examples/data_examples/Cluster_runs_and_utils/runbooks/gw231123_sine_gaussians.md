@@ -16,43 +16,43 @@ BASE="$HOME/GW231123/t_Student/Runs_injections_gw231123_sine_gaussians"
 GW231123 NRsur + 1 SG (coherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 1 --sine-gaussian-mode coherent
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 1 --sine-gaussian-mode coherent --submit
 ```
 
 GW231123 NRsur + 2 SG (coherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode coherent
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode coherent --submit
 ```
 
 GW231123 NRsur + 1 SG in H1 (incoherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 1 --sine-gaussian-mode incoherent --incoherent-detectors H1
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 1 --sine-gaussian-mode incoherent --incoherent-detectors H1 --submit
 ```
 
 GW231123 NRsur + 1 SG in L1 (incoherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 1 --sine-gaussian-mode incoherent --incoherent-detectors L1
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 1 --sine-gaussian-mode incoherent --incoherent-detectors L1 --submit
 ```
 
 GW231123 NRsur + 1 SG in H1 + 1 SG in L1 (incoherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-sg-counts H1=1 L1=1
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-sg-counts H1=1 L1=1 --submit
 ```
 
 GW231123 NRsur + 2 SG in H1 (incoherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors H1
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors H1 --submit
 ```
 
 GW231123 NRsur + 2 SG in L1 (incoherent):
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors L1
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors L1 --submit
 ```
 
 ## Injections
@@ -60,39 +60,42 @@ python "$REAL" --submit --event GW231123 --likelihood gaussian --num-sine-gaussi
 Inject: GW231123-maxL NRsur | Recover: NRsur | Zero Gaussian noise:
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE" \
   --label-prefix GW231123_maxl_nrsur_rec_nrsur_zero_gaussian \
   --injection-noise zero-gaussian \
-  --likelihood gaussian
+  --likelihood gaussian \
+  --submit
 ```
 
 Inject: GW231123-maxL NRsur | Recover: NRsur | Gaussian noise:
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE" \
   --label-prefix GW231123_maxl_nrsur_rec_nrsur_gaussian_noise \
   --injection-noise gaussian \
-  --likelihood gaussian
+  --likelihood gaussian \
+  --submit
 ```
 
 Inject: GW231123 NRsur + 2 SG (coherent) | Recover: NRsur | Zero Gaussian noise:
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE" \
   --label-prefix GW231123_inj_coherent2_rec_nrsur_zero_gaussian \
   --injection-noise zero-gaussian \
   --likelihood gaussian \
   --injection-num-sine-gaussians 2 \
-  --injection-sine-gaussian-mode coherent
+  --injection-sine-gaussian-mode coherent \
+  --submit
 ```
 
 Inject: GW231123 NRsur + 1 SG (coherent) | Recover: NRsur + 1 SG (coherent) | Zero Gaussian noise:
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE" \
   --label-prefix GW231123_inj_coherent1_rec_coherent1_zero_gaussian \
   --injection-noise zero-gaussian \
@@ -100,31 +103,34 @@ python "$INJ" --submit \
   --injection-num-sine-gaussians 1 \
   --injection-sine-gaussian-mode coherent \
   --num-sine-gaussians 1 \
-  --sine-gaussian-mode coherent
+  --sine-gaussian-mode coherent \
+  --submit
 ```
 
 Inject: GW231123-maxL NRsur + 1 SG in H1 (incoherent) | Recover: NRsur | Zero Gaussian noise:
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE" \
   --label-prefix GW231123_inj_h1x1_rec_nrsur_zero_gaussian \
   --injection-noise zero-gaussian \
   --likelihood gaussian \
   --injection-num-sine-gaussians 1 \
   --injection-sine-gaussian-mode incoherent \
-  --injection-incoherent-detectors H1
+  --injection-incoherent-detectors H1 \
+  --submit
 ```
 
 Inject: GW231123 NRsur + 1 SG in H1 + 1 SG in L1 (incoherent) | Recover: NRsur | Zero Gaussian noise:
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE" \
   --label-prefix GW231123_inj_h1x1_l1x1_rec_nrsur_zero_gaussian \
   --injection-noise zero-gaussian \
   --likelihood gaussian \
   --injection-num-sine-gaussians 2 \
   --injection-sine-gaussian-mode incoherent \
-  --injection-incoherent-sg-counts H1=1 L1=1
+  --injection-incoherent-sg-counts H1=1 L1=1 \
+  --submit
 ```

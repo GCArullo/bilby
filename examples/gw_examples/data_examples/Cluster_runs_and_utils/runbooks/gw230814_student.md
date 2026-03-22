@@ -10,5 +10,5 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 Det-independent `nu`, up to 4 frequency bands:
 
 ```
-python "$REAL" --submit --event GW230814 --likelihood student --range --num-frequency-bands 4
+python "$REAL" --event GW230814 --likelihood student --range --num-frequency-bands 4 --submit
 ```

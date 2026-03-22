@@ -13,13 +13,13 @@ BASE="$HOME/GW231123/t_Student/Runs_injections_runbook_gw231123_student"
 Det-independent `nu`, up to 4 frequency bands:
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood student --range --num-frequency-bands 4
+python "$REAL" --event GW231123 --likelihood student --range --num-frequency-bands 4 --submit
 ```
 
 Det-dependent `nu`, up to 4 frequency bands:
 
 ```
-python "$REAL" --submit --event GW231123 --likelihood student --range --num-frequency-bands 4 --detector-dependent-nu
+python "$REAL" --event GW231123 --likelihood student --range --num-frequency-bands 4 --detector-dependent-nu --submit
 ```
 
 ## Injections
@@ -27,36 +27,39 @@ python "$REAL" --submit --event GW231123 --likelihood student --range --num-freq
 Gaussian injections with Student recovery, det-independent `nu`
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE/gaussian_injection_student_recovery_det_independent" \
   --label-prefix "GW231123_gaussianinj_studentrec_di_N${n}" \
   --injection-noise gaussian \
   --likelihood student \
   --detector-dependent-nu \
+  --submit
 ```
 
 Gaussian injections with Student recovery, det-dependent `nu`
 
 ```
-python "$INJ" --submit \
+python "$INJ" \
   --base-dir "$BASE/gaussian_injection_student_recovery_det_dependent" \
   --label-prefix "GW231123_gaussianinj_studentrec_dd_N${n}" \
   --injection-noise gaussian \
   --likelihood student \
   --detector-dependent-nu \
+  --submit
 ```
 
 Student injections with Student recovery, det-independent `nu`, bands 1..4:
 
 ```
 for n in 1 2 3 4; do
-  python "$INJ" --submit \
+  python "$INJ" \
     --base-dir "$BASE/student_injection_student_recovery_det_independent" \
     --label-prefix "GW231123_studentinj_studentrec_di_N${n}" \
     --injection-noise student \
     --nu-injection 2.1 \
     --likelihood student \
-    --num-frequency-bands "$n"
+    --num-frequency-bands "$n" \
+    --submit
 done
 ```
 
@@ -64,13 +67,14 @@ Student injections with Student recovery, det-dependent `nu`, bands 1..4:
 
 ```
 for n in 1 2 3 4; do
-  python "$INJ" --submit \
+  python "$INJ" \
     --base-dir "$BASE/student_injection_student_recovery_det_dependent" \
     --label-prefix "GW231123_studentinj_studentrec_dd_N${n}" \
     --injection-noise student \
     --nu-injection 2.1 \
     --likelihood student \
     --detector-dependent-nu \
-    --num-frequency-bands "$n"
+    --num-frequency-bands "$n" \
+    --submit
 done
 ```

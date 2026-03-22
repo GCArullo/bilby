@@ -5,22 +5,22 @@
 The generated ini/prior files are rendered from the same GW231123 template files
 used for the real-data analyses in this directory. Only the path- and
 injection-specific settings are replaced, so the resulting configs stay as close
-as possible to the production templates. The staged simulated noise is always
-Student-t; --gaussian-only/--student-only only choose which recovery likelihood
-jobs are generated.
+as possible to the production templates. `--injection-noise` chooses the staged
+noise model, `--likelihood` chooses the primary recovery likelihood, and
+Student-t runs may optionally add a Gaussian companion run when using a single
+frequency band.
 """
 
 from __future__ import annotations
 
 import argparse
-import ast
 import getpass
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -35,10 +35,39 @@ if str(REPO_ROOT) not in sys.path:
 
 import bilby
 
+from submission_sine_gaussian_utils import (
+    SINE_GAUSSIAN_HRSS_BOUNDS,
+    SINE_GAUSSIAN_Q_BOUNDS,
+    SINE_GAUSSIAN_TIME_OFFSET_BOUNDS,
+    add_sine_gaussian_arguments,
+    apply_sine_gaussian_waveform_settings,
+    build_sine_gaussian_prior_block,
+    combine_prior_blocks,
+    effective_nlive,
+    parse_template_value,
+    positive_int,
+    read_template_settings,
+    require_supported_sine_gaussian_source_model,
+    resolve_sine_gaussian_configurations,
+    sine_gaussian_frequency_bounds,
+)
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def default_accounting_user() -> str:
+    for home_path in (os.environ.get("HOME"), str(Path.home())):
+        if not home_path:
+            continue
+        home_name = Path(home_path).name
+        if home_name:
+            return home_name
+    return getpass.getuser()
+
+
 DEFAULT_HOME_DIR = Path.home()
-DEFAULT_ACCOUNTING_USER = getpass.getuser()
+DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
 INI_TEMPLATE_PATH = (
     SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
@@ -61,6 +90,18 @@ TEST_INJECTION_CHIRP_MASS_CREDIBLE_INTERVAL = 0.99
 TEST_INJECTION_NU_MAX = 100.0
 DEFAULT_NLIVE = 1000
 TEST_INJECTION_NLIVE = 256
+DEFAULT_NUM_FREQUENCY_BANDS = 1
+DEFAULT_INJECTION_NOISE = "student"
+INJECTED_SINE_GAUSSIAN_VALUES_PATH = (
+    SCRIPT_DIR / "runbooks" / "injected_sine_gaussian_values.json"
+)
+INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS = (
+    "hrss",
+    "Q",
+    "frequency",
+    "time_offset",
+    "phase_offset",
+)
 
 INJECTION_KEYS = (
     "mass_1",
@@ -93,8 +134,6 @@ TEST_INJECTION_FIXED_KEYS = (
     "ra",
     "dec",
 )
-
-
 def outdir_label(value: str) -> str:
     label = value.strip()
     if not label:
@@ -153,18 +192,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--nu-injection",
         default="2.1",
         help=(
-            "Injected Student-t nu specification for staged noise generation. "
-            "Accepts a scalar, a per-band list, or a detector dictionary "
-            "(values may be scalar or per-band lists)."
+            "Student-t nu specification used when --injection-noise student is "
+            "selected. Accepts a scalar, a per-band list, or a detector "
+            "dictionary (values may be scalar or per-band lists). The same "
+            "values are also used to seed Student recovery runs."
+        ),
+    )
+    parser.add_argument(
+        "--injection-noise",
+        choices=("student", "gaussian", "zero-gaussian"),
+        default=DEFAULT_INJECTION_NOISE,
+        help=(
+            "Noise model used when staging the injected data. "
+            "`zero-gaussian` means zero Gaussian noise. "
+            f"Default: {DEFAULT_INJECTION_NOISE}."
         ),
     )
     parser.add_argument(
         "--num-frequency-bands",
-        type=int,
-        default=1,
+        type=positive_int,
+        default=None,
         help=(
             "Number of frequency bands for Student-t noise generation and "
-            "Student likelihood nu parameterization."
+            "Student likelihood nu parameterization. "
+            f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
         ),
     )
     parser.add_argument(
@@ -193,8 +244,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Nested-sampler live points to write into sampler-kwargs in the generated ini. "
-            f"Defaults to {TEST_INJECTION_NLIVE} for --test-injection and "
+            "Base nested-sampler live points written into sampler-kwargs before "
+            "the automatic +500-per-sine-Gaussian uplift. Defaults to "
+            f"{TEST_INJECTION_NLIVE} for --test-injection and "
             f"{DEFAULT_NLIVE} otherwise."
         ),
     )
@@ -218,19 +270,20 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--student-only",
-        action="store_true",
+        "--likelihood",
+        choices=("student", "gaussian"),
+        default="gaussian",
         help=(
-            "Generate only the Student-t likelihood recovery run. "
-            "This does not change the injected noise model."
+            "Primary recovery likelihood to generate. Gaussian runs always use "
+            f"the default single frequency band ({DEFAULT_NUM_FREQUENCY_BANDS})."
         ),
     )
     parser.add_argument(
-        "--gaussian-only",
+        "--add-gaussian",
         action="store_true",
         help=(
-            "Generate only the Gaussian likelihood recovery run. "
-            "This does not change the injected noise model."
+            "When --likelihood student is selected, also generate a Gaussian "
+            "companion run. This is only supported with a single frequency band."
         ),
     )
     parser.add_argument(
@@ -253,6 +306,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="bilby_pipe",
         help="Executable name or absolute path used to call bilby_pipe.",
     )
+    add_sine_gaussian_arguments(parser)
+    add_sine_gaussian_arguments(
+        parser,
+        prefix="injection",
+        subject="injected signal",
+    )
     return parser
 
 
@@ -262,13 +321,37 @@ def ensure_dir(path: Path) -> Path:
 
 
 def hypothesis_list(args: argparse.Namespace) -> list[str]:
-    if args.student_only and args.gaussian_only:
-        raise ValueError("Choose at most one of --student-only and --gaussian-only")
-    if args.student_only:
-        return ["student"]
-    if args.gaussian_only:
+    explicit_num_frequency_bands = getattr(
+        args,
+        "num_frequency_bands_was_explicit",
+        args.num_frequency_bands is not None,
+    )
+    resolved_num_frequency_bands = (
+        DEFAULT_NUM_FREQUENCY_BANDS
+        if args.num_frequency_bands is None
+        else args.num_frequency_bands
+    )
+    if args.likelihood == "gaussian":
+        if args.add_gaussian:
+            raise ValueError(
+                "--add-gaussian requires --likelihood student. "
+                "Gaussian is already the selected primary likelihood."
+            )
+        if explicit_num_frequency_bands:
+            raise ValueError(
+                "--likelihood gaussian cannot be combined with --num-frequency-bands. "
+                f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
+            )
         return ["gaussian"]
-    return ["gaussian", "student"]
+    if args.add_gaussian and resolved_num_frequency_bands != 1:
+        raise ValueError(
+            "--add-gaussian is only supported with --num-frequency-bands 1."
+        )
+    if args.add_gaussian:
+        return ["student", "gaussian"]
+    if args.likelihood == "student":
+        return ["student"]
+    raise ValueError(f"Unknown likelihood selection: {args.likelihood}")
 
 
 def load_template(path: Path) -> str:
@@ -298,85 +381,6 @@ def resolve_posterior_path(args: argparse.Namespace) -> Path:
             f"({legacy_locations})."
         )
     return posterior_path
-
-
-def parse_template_value(raw_value: str):
-    raw_value = raw_value.strip()
-    if raw_value in {"None", ""}:
-        return None
-    if raw_value in {"True", "False"}:
-        return raw_value == "True"
-    try:
-        return ast.literal_eval(raw_value)
-    except (ValueError, SyntaxError):
-        return raw_value
-
-
-def parse_ini_dict_string(raw_value: str) -> dict[str, object]:
-    normalized = raw_value.strip()
-    normalized = normalized.replace("=", ":")
-    normalized = normalized.replace(" ", "")
-    normalized = re.sub(
-        r'([A-Za-z/\.0-9\-\+][^\[\],:"}]*)',
-        r'"\g<1>"',
-        normalized,
-    )
-    normalized = normalized.replace('""', '"')
-    parsed = ast.literal_eval(normalized)
-    if not isinstance(parsed, dict):
-        raise ValueError(f"Unable to parse ini dict: {raw_value}")
-    return parsed
-
-
-def read_template_settings(ini_template: str) -> dict[str, object]:
-    parsed = {}
-    for line in ini_template.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        parsed[key.strip()] = parse_template_value(value)
-
-    required_keys = (
-        "detectors",
-        "trigger-time",
-        "duration",
-        "post-trigger-duration",
-        "sampling-frequency",
-        "maximum-frequency",
-        "minimum-frequency",
-        "reference-frequency",
-        "waveform-approximant",
-        "sampler-kwargs",
-    )
-    missing = [key for key in required_keys if key not in parsed]
-    if missing:
-        raise ValueError(
-            f"Template ini is missing required keys: {', '.join(missing)}"
-        )
-
-    sampler_kwargs = parsed["sampler-kwargs"]
-    if not isinstance(sampler_kwargs, dict):
-        raise ValueError("sampler-kwargs must parse to a dictionary")
-
-    calibration_envelopes = parsed.get("spline-calibration-envelope-dict")
-    if isinstance(calibration_envelopes, str):
-        calibration_envelopes = parse_ini_dict_string(calibration_envelopes)
-
-    return dict(
-        detectors=tuple(parsed["detectors"]),
-        trigger_time=float(parsed["trigger-time"]),
-        duration=float(parsed["duration"]),
-        post_trigger_duration=float(parsed["post-trigger-duration"]),
-        sampling_frequency=float(parsed["sampling-frequency"]),
-        maximum_frequency=float(parsed["maximum-frequency"]),
-        minimum_frequency=parsed["minimum-frequency"],
-        reference_frequency=float(parsed["reference-frequency"]),
-        waveform_approximant=str(parsed["waveform-approximant"]),
-        sampler_kwargs=sampler_kwargs,
-        sampling_seed=parsed.get("sampling-seed"),
-        spline_calibration_envelope_dict=calibration_envelopes,
-    )
 
 
 def _coerce_nu_per_band(nu_value, num_frequency_bands: int) -> list[float]:
@@ -508,7 +512,20 @@ def load_psds(
 
 def build_waveform_generator(
     template_settings: dict[str, object],
+    *,
+    sine_gaussian_config=None,
 ) -> bilby.gw.LALCBCWaveformGenerator:
+    if sine_gaussian_config is not None and sine_gaussian_config.enabled:
+        source_model = bilby.gw.source.cbc_plus_sine_gaussians
+        parameter_conversion = (
+            bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters
+        )
+    else:
+        source_model = bilby.gw.source.lal_binary_black_hole
+        parameter_conversion = (
+            bilby.gw.conversion.convert_to_lal_binary_black_hole_parameters
+        )
+
     return bilby.gw.LALCBCWaveformGenerator(
         duration=template_settings["duration"],
         sampling_frequency=template_settings["sampling_frequency"],
@@ -517,8 +534,8 @@ def build_waveform_generator(
             + template_settings["post_trigger_duration"]
             - template_settings["duration"]
         ),
-        frequency_domain_source_model=bilby.gw.source.lal_binary_black_hole,
-        parameter_conversion=bilby.gw.conversion.convert_to_lal_binary_black_hole_parameters,
+        frequency_domain_source_model=source_model,
+        parameter_conversion=parameter_conversion,
         waveform_arguments=dict(
             waveform_approximant=template_settings["waveform_approximant"],
             reference_frequency=template_settings["reference_frequency"],
@@ -534,10 +551,290 @@ def build_waveform_generator(
     )
 
 
+def build_injected_label_prefix(label_prefix: str, sine_gaussian_config) -> str:
+    if not sine_gaussian_config.enabled:
+        return label_prefix
+    return f"{label_prefix}_injected{sine_gaussian_config.label_suffix}"
+
+
+def build_stage_directory_name(sine_gaussian_config) -> str:
+    if not sine_gaussian_config.enabled:
+        return "staged_data"
+    return f"staged_data{sine_gaussian_config.label_suffix}"
+
+
+def serialize_sine_gaussian_configuration(sine_gaussian_config) -> dict[str, object]:
+    return dict(
+        enabled=sine_gaussian_config.enabled,
+        mode=sine_gaussian_config.mode,
+        total_components=sine_gaussian_config.total_components,
+        detector_counts=dict(sine_gaussian_config.detector_counts),
+    )
+
+
+@lru_cache(maxsize=1)
+def load_injected_sine_gaussian_values() -> dict[str, object]:
+    if not INJECTED_SINE_GAUSSIAN_VALUES_PATH.is_file():
+        raise FileNotFoundError(
+            f"Missing injected SG values file: {INJECTED_SINE_GAUSSIAN_VALUES_PATH}"
+        )
+    with INJECTED_SINE_GAUSSIAN_VALUES_PATH.open(encoding="utf-8") as stream:
+        raw_values = json.load(stream)
+
+    if not isinstance(raw_values, dict):
+        raise ValueError(
+            f"Injected SG values file must contain a JSON object: {INJECTED_SINE_GAUSSIAN_VALUES_PATH}"
+        )
+
+    coherent_raw = raw_values.get("coherent")
+    if not isinstance(coherent_raw, dict):
+        raise ValueError(
+            "Injected SG values file must define a 'coherent' object keyed by component count."
+        )
+
+    incoherent_raw = raw_values.get("incoherent")
+    if not isinstance(incoherent_raw, dict):
+        raise ValueError(
+            "Injected SG values file must define an 'incoherent' object keyed by detector."
+        )
+
+    def parse_count(raw_count, *, context: str) -> int:
+        try:
+            count = int(raw_count)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{context} count key must be an integer, got {raw_count!r}."
+            ) from exc
+        if count < 1:
+            raise ValueError(f"{context} count key must be >= 1, got {count}.")
+        return count
+
+    def parse_component(raw_component, *, context: str) -> dict[str, float]:
+        if not isinstance(raw_component, dict):
+            raise ValueError(f"{context} must be a JSON object.")
+
+        missing = [
+            key
+            for key in INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS
+            if key not in raw_component
+        ]
+        if missing:
+            raise ValueError(f"{context} is missing keys: {', '.join(missing)}.")
+
+        unexpected = sorted(
+            set(raw_component).difference(INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS)
+        )
+        if unexpected:
+            raise ValueError(
+                f"{context} has unexpected keys: {', '.join(unexpected)}."
+            )
+
+        component = {}
+        for key in INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS:
+            try:
+                component[key] = float(raw_component[key])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{context}.{key} must be a finite numeric value."
+                ) from exc
+            if not np.isfinite(component[key]):
+                raise ValueError(f"{context}.{key} must be finite.")
+        return component
+
+    def parse_component_series(
+        raw_components,
+        *,
+        expected_count: int,
+        context: str,
+    ) -> tuple[dict[str, float], ...]:
+        if not isinstance(raw_components, list):
+            raise ValueError(f"{context} must be a JSON array of components.")
+        components = tuple(
+            parse_component(raw_component, context=f"{context}[{index}]")
+            for index, raw_component in enumerate(raw_components)
+        )
+        if len(components) != expected_count:
+            raise ValueError(
+                f"{context} must contain exactly {expected_count} component(s), got {len(components)}."
+            )
+        return components
+
+    coherent = {}
+    for raw_count, raw_components in coherent_raw.items():
+        count = parse_count(raw_count, context="coherent")
+        coherent[count] = parse_component_series(
+            raw_components,
+            expected_count=count,
+            context=f"coherent[{count}]",
+        )
+
+    incoherent = {}
+    for detector, detector_raw in incoherent_raw.items():
+        if not isinstance(detector_raw, dict):
+            raise ValueError(
+                f"incoherent[{detector!r}] must be an object keyed by component count."
+            )
+        detector_components = {}
+        for raw_count, raw_components in detector_raw.items():
+            count = parse_count(raw_count, context=f"incoherent[{detector}]")
+            detector_components[count] = parse_component_series(
+                raw_components,
+                expected_count=count,
+                context=f"incoherent[{detector}][{count}]",
+            )
+        incoherent[str(detector)] = detector_components
+
+    return dict(coherent=coherent, incoherent=incoherent)
+
+
+def load_injected_sine_gaussian_component_series(
+    *,
+    mode: str,
+    count: int,
+    detector: str | None = None,
+) -> list[dict[str, float]]:
+    if count < 1:
+        raise ValueError(f"Sine-Gaussian component count must be >= 1, got {count}.")
+
+    injected_values = load_injected_sine_gaussian_values()
+    if mode == "coherent":
+        if detector is not None:
+            raise ValueError("Coherent SG injections do not take a detector selector.")
+        component_series = injected_values["coherent"].get(count)
+        if component_series is None:
+            raise ValueError(
+                "Injected SG values file does not define a coherent configuration "
+                f"with {count} component(s): {INJECTED_SINE_GAUSSIAN_VALUES_PATH}"
+            )
+    elif mode == "incoherent":
+        if detector is None:
+            raise ValueError("Incoherent SG injections require a detector name.")
+        detector_values = injected_values["incoherent"].get(detector)
+        if detector_values is None:
+            raise ValueError(
+                "Injected SG values file does not define incoherent SG values "
+                f"for detector {detector!r}: {INJECTED_SINE_GAUSSIAN_VALUES_PATH}"
+            )
+        component_series = detector_values.get(count)
+        if component_series is None:
+            raise ValueError(
+                "Injected SG values file does not define an incoherent configuration "
+                f"for detector {detector!r} with {count} component(s): "
+                f"{INJECTED_SINE_GAUSSIAN_VALUES_PATH}"
+            )
+    else:
+        raise ValueError(f"Unknown SG injection mode: {mode}")
+
+    return [dict(component) for component in component_series]
+
+
+def validate_injected_sine_gaussian_component(
+    component: dict[str, float],
+    *,
+    frequency_minimum: float,
+    frequency_maximum: float,
+    context: str = "component",
+) -> None:
+    bounds = {
+        "hrss": SINE_GAUSSIAN_HRSS_BOUNDS,
+        "Q": SINE_GAUSSIAN_Q_BOUNDS,
+        "frequency": (frequency_minimum, frequency_maximum),
+        "time_offset": SINE_GAUSSIAN_TIME_OFFSET_BOUNDS,
+        "phase_offset": (-float(np.pi), float(np.pi)),
+    }
+    for key, (minimum, maximum) in bounds.items():
+        value = float(component[key])
+        if value < minimum or value > maximum:
+            raise ValueError(
+                "Injected sine-Gaussian {} has {}={} outside prior bounds [{}, {}].".format(
+                    context, key, value, minimum, maximum
+                )
+            )
+
+
+def flatten_sine_gaussian_component(
+    index: int,
+    component: dict[str, float],
+    *,
+    detector: str | None = None,
+) -> dict[str, float]:
+    prefix = f"sine_gaussian_{index}_"
+    if detector is not None:
+        prefix += f"{detector}_"
+    return {
+        f"{prefix}hrss": component["hrss"],
+        f"{prefix}Q": component["Q"],
+        f"{prefix}frequency": component["frequency"],
+        f"{prefix}time_offset": component["time_offset"],
+        f"{prefix}phase_offset": component["phase_offset"],
+    }
+
+
+def add_injected_sine_gaussians(
+    injection_parameters: dict[str, float],
+    *,
+    template_settings: dict[str, object],
+    sine_gaussian_config,
+) -> dict[str, float]:
+    if not sine_gaussian_config.enabled:
+        return injection_parameters
+
+    frequency_minimum, frequency_maximum = sine_gaussian_frequency_bounds(
+        template_settings["minimum_frequency"],
+        template_settings["maximum_frequency"],
+    )
+    updated_parameters = dict(injection_parameters)
+
+    if sine_gaussian_config.mode == "coherent":
+        components = load_injected_sine_gaussian_component_series(
+            mode="coherent",
+            count=sine_gaussian_config.total_components,
+        )
+        for index, component in enumerate(components):
+            validate_injected_sine_gaussian_component(
+                component,
+                frequency_minimum=frequency_minimum,
+                frequency_maximum=frequency_maximum,
+                context=f"coherent[{sine_gaussian_config.total_components}][{index}]",
+            )
+            updated_parameters.update(
+                flatten_sine_gaussian_component(
+                    index,
+                    component,
+                )
+            )
+        return updated_parameters
+
+    component_index = 0
+    for detector, count in sine_gaussian_config.detector_counts:
+        components = load_injected_sine_gaussian_component_series(
+            mode="incoherent",
+            detector=detector,
+            count=count,
+        )
+        for local_index, component in enumerate(components):
+            validate_injected_sine_gaussian_component(
+                component,
+                frequency_minimum=frequency_minimum,
+                frequency_maximum=frequency_maximum,
+                context=f"incoherent[{detector}][{count}][{local_index}]",
+            )
+            updated_parameters.update(
+                flatten_sine_gaussian_component(
+                    component_index,
+                    component,
+                    detector=detector,
+                )
+            )
+            component_index += 1
+    return updated_parameters
+
+
 def build_interferometers(
     psds: dict[str, tuple[np.ndarray, np.ndarray]],
     template_settings: dict[str, object],
     *,
+    noise_model: str,
     nu_injection,
     num_frequency_bands: int,
 ) -> bilby.gw.detector.InterferometerList:
@@ -558,13 +855,28 @@ def build_interferometers(
         + template_settings["post_trigger_duration"]
         - template_settings["duration"]
     )
-    interferometers.set_strain_data_from_power_spectral_densities_student_t(
-        sampling_frequency=template_settings["sampling_frequency"],
-        duration=template_settings["duration"],
-        nu=nu_injection,
-        start_time=start_time,
-        num_frequency_bands=num_frequency_bands,
-    )
+    if noise_model == "student":
+        interferometers.set_strain_data_from_power_spectral_densities_student_t(
+            sampling_frequency=template_settings["sampling_frequency"],
+            duration=template_settings["duration"],
+            nu=nu_injection,
+            start_time=start_time,
+            num_frequency_bands=num_frequency_bands,
+        )
+    elif noise_model == "gaussian":
+        interferometers.set_strain_data_from_power_spectral_densities(
+            sampling_frequency=template_settings["sampling_frequency"],
+            duration=template_settings["duration"],
+            start_time=start_time,
+        )
+    elif noise_model == "zero-gaussian":
+        interferometers.set_strain_data_from_zero_noise(
+            sampling_frequency=template_settings["sampling_frequency"],
+            duration=template_settings["duration"],
+            start_time=start_time,
+        )
+    else:
+        raise ValueError(f"Unknown injection noise model: {noise_model}")
     return interferometers
 
 
@@ -597,8 +909,15 @@ def stage_injection_bundle(
     args: argparse.Namespace,
     template_settings: dict[str, object],
     posterior_path: Path,
+    injected_sine_gaussian_config,
 ) -> dict[str, object]:
-    stage_dir = ensure_dir(base_dir / "staged_data")
+    staged_label_prefix = build_injected_label_prefix(
+        args.label_prefix,
+        injected_sine_gaussian_config,
+    )
+    stage_dir = ensure_dir(
+        base_dir / build_stage_directory_name(injected_sine_gaussian_config)
+    )
     data_dir = ensure_dir(stage_dir / "data")
     psd_dir = ensure_dir(stage_dir / "psds")
 
@@ -613,20 +932,43 @@ def stage_injection_bundle(
     injection_parameters, maxl_log_likelihood, maxl_index = (
         load_maximum_likelihood_injection(posterior_path)
     )
-    noise_nu, likelihood_nu, effective_detector_dependent_nu = resolve_nu_configuration(
-        raw_nu_injection=args.nu_injection,
-        detectors=template_settings["detectors"],
-        num_frequency_bands=args.num_frequency_bands,
-        detector_dependent_nu=args.detector_dependent_nu,
+    injection_parameters = add_injected_sine_gaussians(
+        injection_parameters,
+        template_settings=template_settings,
+        sine_gaussian_config=injected_sine_gaussian_config,
+    )
+    need_nu_configuration = (
+        args.injection_noise == "student" or args.likelihood == "student"
+    )
+    if need_nu_configuration:
+        configured_noise_nu, likelihood_nu, effective_detector_dependent_nu = (
+            resolve_nu_configuration(
+                raw_nu_injection=args.nu_injection,
+                detectors=template_settings["detectors"],
+                num_frequency_bands=args.num_frequency_bands,
+                detector_dependent_nu=args.detector_dependent_nu,
+            )
+        )
+    else:
+        configured_noise_nu = None
+        likelihood_nu = None
+        effective_detector_dependent_nu = False
+
+    injected_noise_nu = (
+        configured_noise_nu if args.injection_noise == "student" else None
     )
     psds = load_psds(posterior_path, template_settings["detectors"])
     interferometers = build_interferometers(
         psds,
         template_settings,
-        nu_injection=noise_nu,
+        noise_model=args.injection_noise,
+        nu_injection=injected_noise_nu,
         num_frequency_bands=args.num_frequency_bands,
     )
-    waveform_generator = build_waveform_generator(template_settings)
+    waveform_generator = build_waveform_generator(
+        template_settings,
+        sine_gaussian_config=injected_sine_gaussian_config,
+    )
     interferometers.inject_signal(
         parameters=injection_parameters,
         waveform_generator=waveform_generator,
@@ -636,8 +978,8 @@ def stage_injection_bundle(
     psd_paths = {}
     for interferometer in interferometers:
         detector = interferometer.name
-        data_path = data_dir / f"{detector}_{args.label_prefix}.hdf5"
-        psd_path = psd_dir / f"{detector}_{args.label_prefix}_psd.dat"
+        data_path = data_dir / f"{detector}_{staged_label_prefix}.hdf5"
+        psd_path = psd_dir / f"{detector}_{staged_label_prefix}_psd.dat"
         write_time_series(
             data_path,
             detector,
@@ -653,7 +995,8 @@ def stage_injection_bundle(
     metadata = dict(
         maxl_index=maxl_index,
         maxl_log_likelihood=maxl_log_likelihood,
-        nu_injection=noise_nu,
+        injection_noise_model=args.injection_noise,
+        nu_injection=injected_noise_nu,
         likelihood_nu=likelihood_nu,
         num_frequency_bands=args.num_frequency_bands,
         detector_dependent_nu=effective_detector_dependent_nu,
@@ -661,10 +1004,13 @@ def stage_injection_bundle(
         waveform_approximant=template_settings["waveform_approximant"],
         sampling_seed=staging_seed,
         injection_parameters=injection_parameters,
+        injected_sine_gaussian_configuration=serialize_sine_gaussian_configuration(
+            injected_sine_gaussian_config
+        ),
         data_paths=data_paths,
         psd_paths=psd_paths,
     )
-    metadata_path = stage_dir / f"{args.label_prefix}_metadata.json"
+    metadata_path = stage_dir / f"{staged_label_prefix}_metadata.json"
     metadata_path.write_text(
         json.dumps(metadata, indent=2, sort_keys=True),
         encoding="utf-8",
@@ -672,12 +1018,14 @@ def stage_injection_bundle(
 
     return dict(
         stage_dir=stage_dir,
+        staged_label_prefix=staged_label_prefix,
         metadata_path=metadata_path,
         data_paths=data_paths,
         psd_paths=psd_paths,
         likelihood_nu=likelihood_nu,
         detector_dependent_nu=effective_detector_dependent_nu,
         injection_parameters=injection_parameters,
+        injected_sine_gaussian_configuration=injected_sine_gaussian_config,
         maxl_index=maxl_index,
         maxl_log_likelihood=maxl_log_likelihood,
         test_injection_chirp_mass_bounds=load_test_injection_chirp_mass_bounds(
@@ -777,6 +1125,8 @@ def render_prior(
     detectors: tuple[str, ...],
     num_frequency_bands: int,
     detector_dependent_nu: bool,
+    template_settings: dict[str, object],
+    sine_gaussian_config,
     bundle: dict[str, object],
 ) -> str:
     nu_prior_block = build_nu_priors(
@@ -786,7 +1136,15 @@ def render_prior(
         num_frequency_bands=num_frequency_bands,
         detector_dependent_nu=detector_dependent_nu,
     )
-    rendered = prior_template.replace("__NU_PRIORS__", nu_prior_block)
+    sine_gaussian_prior_block = build_sine_gaussian_prior_block(
+        sine_gaussian_config,
+        minimum_frequency=template_settings["minimum_frequency"],
+        maximum_frequency=template_settings["maximum_frequency"],
+    )
+    rendered = prior_template.replace(
+        "__NU_PRIORS__",
+        combine_prior_blocks(nu_prior_block, sine_gaussian_prior_block),
+    )
     if not args.test_injection:
         return rendered
 
@@ -848,6 +1206,7 @@ def render_ini(
     psd_paths: dict[str, str],
     stage_dir: Path,
     hypothesis: str,
+    sine_gaussian_config,
 ) -> str:
     rendered = ini_template
     placeholders = {
@@ -885,7 +1244,7 @@ def render_ini(
         rendered = replace_line(rendered, "time-reference", "geocenter")
 
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
-    sampler_kwargs["nlive"] = args.nlive
+    sampler_kwargs["nlive"] = effective_nlive(args.nlive, sine_gaussian_config)
     sampler_kwargs["naccept"] = args.naccept
     rendered = replace_line(
         rendered,
@@ -920,11 +1279,16 @@ def render_ini(
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
 
+    rendered = apply_sine_gaussian_waveform_settings(
+        rendered,
+        sine_gaussian_config,
+        replace_line=replace_line,
+    )
     return rendered
 
 
-def build_run_label(label_prefix: str, hypothesis: str) -> str:
-    return f"{label_prefix}_{hypothesis}"
+def build_run_label(label_prefix: str, hypothesis: str, sine_gaussian_config) -> str:
+    return f"{label_prefix}_{hypothesis}{sine_gaussian_config.label_suffix}"
 
 
 def build_run_directory_name(label: str, outdir_label: str | None) -> str:
@@ -939,6 +1303,7 @@ def write_run_files(
     args: argparse.Namespace,
     template_settings: dict[str, object],
     hypothesis: str,
+    sine_gaussian_config,
     ini_template: str,
     prior_template: str,
     bundle: dict[str, object],
@@ -948,7 +1313,11 @@ def write_run_files(
     run_dir = ensure_dir(base_dir / "Runs")
     web_dir = ensure_dir(base_dir / "web")
 
-    label = build_run_label(args.label_prefix, hypothesis)
+    label = build_run_label(
+        bundle["staged_label_prefix"],
+        hypothesis,
+        sine_gaussian_config,
+    )
     run_directory_name = build_run_directory_name(label, args.outdir_label)
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
@@ -963,6 +1332,8 @@ def write_run_files(
             detectors=template_settings["detectors"],
             num_frequency_bands=args.num_frequency_bands,
             detector_dependent_nu=bundle["detector_dependent_nu"],
+            template_settings=template_settings,
+            sine_gaussian_config=sine_gaussian_config,
             bundle=bundle,
         ),
         encoding="utf-8",
@@ -983,6 +1354,7 @@ def write_run_files(
             psd_paths=bundle["psd_paths"],
             stage_dir=bundle["stage_dir"],
             hypothesis=hypothesis,
+            sine_gaussian_config=sine_gaussian_config,
         ),
         encoding="utf-8",
     )
@@ -998,32 +1370,71 @@ def prepare_runs(args: argparse.Namespace) -> list[Path]:
     ini_template = load_template(INI_TEMPLATE_PATH)
     prior_template = load_template(PRIOR_TEMPLATE_PATH)
     template_settings = read_template_settings(ini_template)
-    posterior_path = resolve_posterior_path(args)
-    bundle = stage_injection_bundle(
-        base_dir,
-        args,
-        template_settings,
-        posterior_path,
+    sine_gaussian_configs = resolve_sine_gaussian_configurations(
+        num_sine_gaussians=args.num_sine_gaussians,
+        range_mode=args.sine_gaussian_range,
+        mode=args.sine_gaussian_mode,
+        incoherent_detectors=args.incoherent_detectors,
+        incoherent_counts_spec=args.incoherent_sg_counts,
+        detectors=template_settings["detectors"],
     )
+    injected_sine_gaussian_configs = resolve_sine_gaussian_configurations(
+        num_sine_gaussians=args.injection_num_sine_gaussians,
+        range_mode=args.injection_sine_gaussian_range,
+        mode=args.injection_sine_gaussian_mode,
+        incoherent_detectors=args.injection_incoherent_detectors,
+        incoherent_counts_spec=args.injection_incoherent_sg_counts,
+        detectors=template_settings["detectors"],
+    )
+    if args.test_injection and any(config.enabled for config in sine_gaussian_configs):
+        raise ValueError(
+            "--test-injection cannot be combined with recovery sine-Gaussian "
+            "parameters. Disable --test-injection or set --num-sine-gaussians 0."
+        )
+    for sine_gaussian_config in [
+        *sine_gaussian_configs,
+        *injected_sine_gaussian_configs,
+    ]:
+        require_supported_sine_gaussian_source_model(
+            template_settings,
+            sine_gaussian_config,
+        )
+    posterior_path = resolve_posterior_path(args)
 
     ini_paths = []
-    for hypothesis in hypothesis_list(args):
-        ini_path, prior_path = write_run_files(
-            base_dir=base_dir,
-            args=args,
-            template_settings=template_settings,
-            hypothesis=hypothesis,
-            ini_template=ini_template,
-            prior_template=prior_template,
-            bundle=bundle,
+    for injected_sine_gaussian_config in injected_sine_gaussian_configs:
+        bundle = stage_injection_bundle(
+            base_dir,
+            args,
+            template_settings,
+            posterior_path,
+            injected_sine_gaussian_config,
         )
-        ini_paths.append(ini_path)
-        print(f"Prepared {hypothesis}:")
-        print(f"  prior: {prior_path}")
-        print(f"  ini:   {ini_path}")
+        for sine_gaussian_config in sine_gaussian_configs:
+            for hypothesis in hypothesis_list(args):
+                ini_path, prior_path = write_run_files(
+                    base_dir=base_dir,
+                    args=args,
+                    template_settings=template_settings,
+                    hypothesis=hypothesis,
+                    sine_gaussian_config=sine_gaussian_config,
+                    ini_template=ini_template,
+                    prior_template=prior_template,
+                    bundle=bundle,
+                )
+                ini_paths.append(ini_path)
+                print(
+                    "Prepared {} (injection: {}; recovery: {}):".format(
+                        hypothesis,
+                        injected_sine_gaussian_config.description,
+                        sine_gaussian_config.description,
+                    )
+                )
+                print(f"  prior: {prior_path}")
+                print(f"  ini:   {ini_path}")
 
-    print(f"Staged injection data in: {bundle['stage_dir']}")
-    print(f"Metadata written to:      {bundle['metadata_path']}")
+        print(f"Staged injection data in: {bundle['stage_dir']}")
+        print(f"Metadata written to:      {bundle['metadata_path']}")
     return ini_paths
 
 
@@ -1041,6 +1452,9 @@ def submit_runs(ini_paths: list[Path], executable: str) -> None:
 
 def main() -> int:
     args = build_parser().parse_args()
+    args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
+    if args.num_frequency_bands is None:
+        args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS
     if args.nlive is None:
         args.nlive = TEST_INJECTION_NLIVE if args.test_injection else DEFAULT_NLIVE
     try:

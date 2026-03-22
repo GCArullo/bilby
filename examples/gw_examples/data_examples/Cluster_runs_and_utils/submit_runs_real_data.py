@@ -2,8 +2,8 @@
 
 """Generate and optionally submit Student-t bilby_pipe runs.
 
-Gaussian-likelihood runs can also be generated either alongside the Student-t
-runs or on their own.
+Generate either Student-t or Gaussian-likelihood runs. Student-t runs may
+optionally add a Gaussian companion run when using a single frequency band.
 """
 
 from __future__ import annotations
@@ -16,11 +16,36 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from submission_sine_gaussian_utils import (
+    add_sine_gaussian_arguments,
+    apply_sine_gaussian_waveform_settings,
+    build_sine_gaussian_prior_block,
+    combine_prior_blocks,
+    effective_nlive,
+    positive_int,
+    read_template_settings,
+    require_supported_sine_gaussian_source_model,
+    resolve_sine_gaussian_configurations,
+)
+
 
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
+
+
+def default_accounting_user() -> str:
+    for home_path in (os.environ.get("HOME"), str(Path.home())):
+        if not home_path:
+            continue
+        home_name = Path(home_path).name
+        if home_name:
+            return home_name
+    return getpass.getuser()
+
+
 DEFAULT_HOME_DIR = Path.home()
-DEFAULT_ACCOUNTING_USER = getpass.getuser()
+DEFAULT_ACCOUNTING_USER = default_accounting_user()
+DEFAULT_NUM_FREQUENCY_BANDS = 1
 
 
 @dataclass(frozen=True)
@@ -64,22 +89,12 @@ def outdir_label(value: str) -> str:
         raise argparse.ArgumentTypeError("outdir label must not contain path separators")
     return label
 
-def positive_int(value: str) -> int:
-    try:
-        parsed = int(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("must be a positive integer") from exc
-
-    if parsed < 1:
-        raise argparse.ArgumentTypeError("must be a positive integer")
-    return parsed
-
 
 def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate bilby_pipe ini/prior files for Student-t runs and optionally "
-            "submit them. Gaussian runs can also be added."
+            "Generate bilby_pipe ini/prior files for Student-t or Gaussian runs "
+            "and optionally submit them."
         )
     )
     parser.add_argument(
@@ -92,11 +107,13 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "num_frequency_bands",
+        "--num-frequency-bands",
         type=positive_int,
+        default=None,
         help=(
             "Positive integer. In single mode this is the exact band count. "
-            "In range mode this is the maximum band count."
+            "In range mode this is the maximum band count. "
+            f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
         ),
     )
     mode = parser.add_mutually_exclusive_group()
@@ -117,19 +134,20 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help="Generate files but do not call bilby_pipe.",
     )
     parser.add_argument(
-        "--add-gaussian",
-        action="store_true",
+        "--likelihood",
+        choices=("student", "gaussian"),
+        default="gaussian",
         help=(
-            "Also generate and submit Gaussian-likelihood runs for each requested "
-            "band count."
+            "Primary recovery likelihood to generate. Gaussian runs always use "
+            f"the default single frequency band ({DEFAULT_NUM_FREQUENCY_BANDS})."
         ),
     )
     parser.add_argument(
-        "--gaussian-only",
+        "--add-gaussian",
         action="store_true",
         help=(
-            "Generate and submit only Gaussian-likelihood runs for each requested "
-            "band count. Gaussian runs are only supported for N=1."
+            "When --likelihood student is selected, also generate a Gaussian "
+            "companion run. This is only supported with a single frequency band."
         ),
     )
     parser.add_argument(
@@ -231,19 +249,37 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         default=script_dir / "Priors",
         help="Directory where generated prior files are written.",
     )
+    add_sine_gaussian_arguments(parser)
     return parser
 
 
 def hypothesis_list(args: argparse.Namespace) -> list[str]:
-    if args.add_gaussian and args.gaussian_only:
-        raise ValueError("Choose at most one of --add-gaussian and --gaussian-only")
-    if args.gaussian_only and args.num_frequency_bands != 1:
-        raise ValueError(
-            "Gaussian runs only support num_frequency_bands=1. "
-            "Run Gaussian separately with N=1."
-        )
-    if args.gaussian_only:
+    explicit_num_frequency_bands = getattr(
+        args,
+        "num_frequency_bands_was_explicit",
+        args.num_frequency_bands is not None,
+    )
+    resolved_num_frequency_bands = (
+        DEFAULT_NUM_FREQUENCY_BANDS
+        if args.num_frequency_bands is None
+        else args.num_frequency_bands
+    )
+    if args.likelihood == "gaussian":
+        if args.add_gaussian:
+            raise ValueError(
+                "--add-gaussian requires --likelihood student. "
+                "Gaussian is already the selected primary likelihood."
+            )
+        if explicit_num_frequency_bands:
+            raise ValueError(
+                "--likelihood gaussian cannot be combined with --num-frequency-bands. "
+                f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
+            )
         return ["gaussian"]
+    if args.add_gaussian and resolved_num_frequency_bands != 1:
+        raise ValueError(
+            "--add-gaussian is only supported with --num-frequency-bands 1."
+        )
     if args.add_gaussian:
         return ["student", "gaussian"]
     return ["student"]
@@ -313,16 +349,24 @@ def render_prior(
     include_nu_priors: bool = True,
     detector_dependent_nu: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+    template_settings: dict[str, object],
+    sine_gaussian_config,
 ) -> str:
-    if not include_nu_priors:
-        return prior_template.replace("__NU_PRIORS__", "")
-    return prior_template.replace(
-        "__NU_PRIORS__",
-        build_nu_priors(
+    nu_prior_block = ""
+    if include_nu_priors:
+        nu_prior_block = build_nu_priors(
             band_count,
             detector_dependent_nu=detector_dependent_nu,
             detectors=detectors,
-        ),
+        )
+    sine_gaussian_prior_block = build_sine_gaussian_prior_block(
+        sine_gaussian_config,
+        minimum_frequency=template_settings["minimum_frequency"],
+        maximum_frequency=template_settings["maximum_frequency"],
+    )
+    return prior_template.replace(
+        "__NU_PRIORS__",
+        combine_prior_blocks(nu_prior_block, sine_gaussian_prior_block),
     )
 
 
@@ -348,6 +392,8 @@ def render_ini(
     detector_dependent_nu: bool,
     working_directory: Path,
     accounting_user: str,
+    template_settings: dict[str, object],
+    sine_gaussian_config,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -362,6 +408,12 @@ def render_ini(
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
+    sampler_kwargs = dict(template_settings["sampler_kwargs"])
+    sampler_kwargs["nlive"] = effective_nlive(
+        int(sampler_kwargs["nlive"]),
+        sine_gaussian_config,
+    )
+    rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))
 
     if hypothesis == "student":
         rendered = replace_line(
@@ -378,6 +430,11 @@ def render_ini(
         rendered = replace_line(rendered, "extra-likelihood-kwargs", "None")
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
+    rendered = apply_sine_gaussian_waveform_settings(
+        rendered,
+        sine_gaussian_config,
+        replace_line=replace_line,
+    )
     return rendered
 
 
@@ -387,6 +444,7 @@ def prepare_run(
     band_count: int,
     ini_template: str,
     prior_template: str,
+    template_settings: dict[str, object],
     ini_dir: Path,
     prior_dir: Path,
     detector_dependent_nu: bool,
@@ -398,34 +456,40 @@ def prepare_run(
     file_prefix: str,
     working_directory: Path,
     accounting_user: str,
+    sine_gaussian_config,
 ) -> Path:
+    waveform_suffix = sine_gaussian_config.label_suffix
     if hypothesis == "student":
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
-        label = f"{label_prefix}{mode_suffix}_N{band_count}"
+        label = f"{label_prefix}{mode_suffix}_N{band_count}{waveform_suffix}"
         run_directory_name = build_run_directory_name(
-            f"student{mode_suffix}_N{band_count}",
+            f"student{mode_suffix}_N{band_count}{waveform_suffix}",
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
-            prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}.prior"
+            prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}{waveform_suffix}.prior"
         ).resolve()
         ini_path = (
-            ini_dir / f"{file_prefix}_t_student{mode_suffix}_N{band_count}.ini"
+            ini_dir / f"{file_prefix}_t_student{mode_suffix}_N{band_count}{waveform_suffix}.ini"
         ).resolve()
         include_nu_priors = True
         run_detector_dependent_nu = detector_dependent_nu
     elif hypothesis == "gaussian":
-        label = f"{label_prefix}_gaussian_N{band_count}"
+        label = f"{label_prefix}_gaussian_N{band_count}{waveform_suffix}"
         run_directory_name = build_run_directory_name(
-            f"gaussian_N{band_count}",
+            f"gaussian_N{band_count}{waveform_suffix}",
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
-        prior_path = (prior_dir / f"{file_prefix}_gaussian_N{band_count}.prior").resolve()
-        ini_path = (ini_dir / f"{file_prefix}_gaussian_N{band_count}.ini").resolve()
+        prior_path = (
+            prior_dir / f"{file_prefix}_gaussian_N{band_count}{waveform_suffix}.prior"
+        ).resolve()
+        ini_path = (
+            ini_dir / f"{file_prefix}_gaussian_N{band_count}{waveform_suffix}.ini"
+        ).resolve()
         include_nu_priors = False
         run_detector_dependent_nu = False
     else:
@@ -438,6 +502,8 @@ def prepare_run(
             include_nu_priors=include_nu_priors,
             detector_dependent_nu=run_detector_dependent_nu,
             detectors=detectors,
+            template_settings=template_settings,
+            sine_gaussian_config=sine_gaussian_config,
         ),
         encoding="utf-8",
     )
@@ -453,11 +519,16 @@ def prepare_run(
             detector_dependent_nu=run_detector_dependent_nu,
             working_directory=working_directory,
             accounting_user=accounting_user,
+            template_settings=template_settings,
+            sine_gaussian_config=sine_gaussian_config,
         ),
         encoding="utf-8",
     )
 
-    print(f"Prepared {hypothesis} N={band_count}:")
+    print(
+        f"Prepared {hypothesis} N={band_count} "
+        f"({sine_gaussian_config.description}):"
+    )
     print(f"  prior: {prior_path}")
     print(f"  ini:   {ini_path}")
     return ini_path
@@ -474,6 +545,9 @@ def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
 def main() -> int:
     script_dir = Path(__file__).resolve().parent
     args = build_argument_parser(script_dir).parse_args()
+    args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
+    if args.num_frequency_bands is None:
+        args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS
 
     defaults = EVENT_DEFAULTS[args.event]
     ini_template_path = resolve_path(
@@ -501,6 +575,20 @@ def main() -> int:
 
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
+    template_settings = read_template_settings(ini_template)
+    sine_gaussian_configs = resolve_sine_gaussian_configurations(
+        num_sine_gaussians=args.num_sine_gaussians,
+        range_mode=args.sine_gaussian_range,
+        mode=args.sine_gaussian_mode,
+        incoherent_detectors=args.incoherent_detectors,
+        incoherent_counts_spec=args.incoherent_sg_counts,
+        detectors=detectors,
+    )
+    for sine_gaussian_config in sine_gaussian_configs:
+        require_supported_sine_gaussian_source_model(
+            template_settings,
+            sine_gaussian_config,
+        )
 
     ini_dir = args.ini_dir.expanduser().resolve()
     prior_dir = args.prior_dir.expanduser().resolve()
@@ -514,26 +602,29 @@ def main() -> int:
     hypotheses = hypothesis_list(args)
 
     for band_count in band_counts:
-        for hypothesis in hypotheses:
-            ini_path = prepare_run(
-                hypothesis=hypothesis,
-                band_count=band_count,
-                ini_template=ini_template,
-                prior_template=prior_template,
-                ini_dir=ini_dir,
-                prior_dir=prior_dir,
-                detector_dependent_nu=args.detector_dependent_nu,
-                detectors=detectors,
-                label_prefix=label_prefix,
-                outdir_base=outdir_base,
-                webdir_base=webdir_base,
-                outdir_label=args.outdir_label,
-                file_prefix=file_prefix,
-                working_directory=working_directory,
-                accounting_user=args.accounting_user,
-            )
-            if not args.dry_run:
-                submit_run(ini_path, submit_directory=submit_directory)
+        for sine_gaussian_config in sine_gaussian_configs:
+            for hypothesis in hypotheses:
+                ini_path = prepare_run(
+                    hypothesis=hypothesis,
+                    band_count=band_count,
+                    ini_template=ini_template,
+                    prior_template=prior_template,
+                    template_settings=template_settings,
+                    ini_dir=ini_dir,
+                    prior_dir=prior_dir,
+                    detector_dependent_nu=args.detector_dependent_nu,
+                    detectors=detectors,
+                    label_prefix=label_prefix,
+                    outdir_base=outdir_base,
+                    webdir_base=webdir_base,
+                    outdir_label=args.outdir_label,
+                    file_prefix=file_prefix,
+                    working_directory=working_directory,
+                    accounting_user=args.accounting_user,
+                    sine_gaussian_config=sine_gaussian_config,
+                )
+                if not args.dry_run:
+                    submit_run(ini_path, submit_directory=submit_directory)
 
     return 0
 

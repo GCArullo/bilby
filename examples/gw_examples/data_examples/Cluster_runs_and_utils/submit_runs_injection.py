@@ -7,8 +7,7 @@ used for the real-data analyses in this directory. Only the path- and
 injection-specific settings are replaced, so the resulting configs stay as close
 as possible to the production templates. `--injection-noise` chooses the staged
 noise model, `--likelihood` chooses the primary recovery likelihood, and
-Student-t runs may optionally add a Gaussian companion run when using a single
-frequency band.
+Student-t runs also generate a single-band Gaussian companion run by default.
 """
 
 from __future__ import annotations
@@ -280,10 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--add-gaussian",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
-            "When --likelihood student is selected, also generate a Gaussian "
-            "companion run. This is only supported with a single frequency band."
+            "When --likelihood student is selected, also generate a single-band "
+            "Gaussian companion run. Enabled by default for Student runs; pass "
+            "--no-add-gaussian to disable it."
         ),
     )
     parser.add_argument(
@@ -332,7 +333,7 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
         else args.num_frequency_bands
     )
     if args.likelihood == "gaussian":
-        if args.add_gaussian:
+        if args.add_gaussian is True:
             raise ValueError(
                 "--add-gaussian requires --likelihood student. "
                 "Gaussian is already the selected primary likelihood."
@@ -343,11 +344,7 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
                 f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
             )
         return ["gaussian"]
-    if args.add_gaussian and resolved_num_frequency_bands != 1:
-        raise ValueError(
-            "--add-gaussian is only supported with --num-frequency-bands 1."
-        )
-    if args.add_gaussian:
+    if args.add_gaussian is not False:
         return ["student", "gaussian"]
     if args.likelihood == "student":
         return ["student"]
@@ -1318,6 +1315,15 @@ def write_run_files(
         hypothesis,
         sine_gaussian_config,
     )
+    run_num_frequency_bands = (
+        args.num_frequency_bands
+        if hypothesis == "student"
+        else DEFAULT_NUM_FREQUENCY_BANDS
+    )
+    run_detector_dependent_nu = (
+        bundle["detector_dependent_nu"] if hypothesis == "student" else False
+    )
+    run_likelihood_nu = bundle["likelihood_nu"] if hypothesis == "student" else None
     run_directory_name = build_run_directory_name(label, args.outdir_label)
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
@@ -1330,8 +1336,8 @@ def write_run_files(
             args=args,
             include_nu_prior=(hypothesis == "student"),
             detectors=template_settings["detectors"],
-            num_frequency_bands=args.num_frequency_bands,
-            detector_dependent_nu=bundle["detector_dependent_nu"],
+            num_frequency_bands=run_num_frequency_bands,
+            detector_dependent_nu=run_detector_dependent_nu,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             bundle=bundle,
@@ -1343,9 +1349,9 @@ def write_run_files(
             ini_template,
             args=args,
             template_settings=template_settings,
-            num_frequency_bands=args.num_frequency_bands,
-            detector_dependent_nu=bundle["detector_dependent_nu"],
-            likelihood_nu=bundle["likelihood_nu"],
+            num_frequency_bands=run_num_frequency_bands,
+            detector_dependent_nu=run_detector_dependent_nu,
+            likelihood_nu=run_likelihood_nu,
             label=label,
             outdir=outdir,
             webdir=webdir,

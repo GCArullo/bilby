@@ -3,7 +3,7 @@
 """Generate and optionally submit Student-t bilby_pipe runs.
 
 Generate either Student-t or Gaussian-likelihood runs. Student-t runs may
-optionally add a Gaussian companion run when using a single frequency band.
+also generate a single-band Gaussian companion run by default.
 """
 
 from __future__ import annotations
@@ -144,10 +144,12 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--add-gaussian",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
-            "When --likelihood student is selected, also generate a Gaussian "
-            "companion run. This is only supported with a single frequency band."
+            "When --likelihood student is selected, also generate a single-band "
+            "Gaussian companion run. Enabled by default for Student runs; pass "
+            "--no-add-gaussian to disable it."
         ),
     )
     parser.add_argument(
@@ -265,7 +267,7 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
         else args.num_frequency_bands
     )
     if args.likelihood == "gaussian":
-        if args.add_gaussian:
+        if args.add_gaussian is True:
             raise ValueError(
                 "--add-gaussian requires --likelihood student. "
                 "Gaussian is already the selected primary likelihood."
@@ -276,13 +278,23 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
                 f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
             )
         return ["gaussian"]
-    if args.add_gaussian and resolved_num_frequency_bands != 1:
-        raise ValueError(
-            "--add-gaussian is only supported with --num-frequency-bands 1."
-        )
-    if args.add_gaussian:
+    if args.add_gaussian is not False:
         return ["student", "gaussian"]
     return ["student"]
+
+
+def build_run_requests(
+    args: argparse.Namespace,
+    *,
+    band_counts,
+) -> list[tuple[str, int]]:
+    if args.likelihood == "gaussian":
+        return [("gaussian", DEFAULT_NUM_FREQUENCY_BANDS)]
+
+    requests = [("student", band_count) for band_count in band_counts]
+    if args.add_gaussian is not False:
+        requests.append(("gaussian", DEFAULT_NUM_FREQUENCY_BANDS))
+    return requests
 
 
 def resolve_path(path: Path | None, default_path: Path) -> Path:
@@ -460,36 +472,36 @@ def prepare_run(
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix
     if hypothesis == "student":
+        run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
-        label = f"{label_prefix}{mode_suffix}_N{band_count}{waveform_suffix}"
+        label = f"{label_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}"
         run_directory_name = build_run_directory_name(
-            f"student{mode_suffix}_N{band_count}{waveform_suffix}",
+            f"student{mode_suffix}_N{run_band_count}{waveform_suffix}",
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
-            prior_dir / f"{file_prefix}{mode_suffix}_N{band_count}{waveform_suffix}.prior"
+            prior_dir
+            / f"{file_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}.prior"
         ).resolve()
         ini_path = (
-            ini_dir / f"{file_prefix}_t_student{mode_suffix}_N{band_count}{waveform_suffix}.ini"
+            ini_dir
+            / f"{file_prefix}_t_student{mode_suffix}_N{run_band_count}{waveform_suffix}.ini"
         ).resolve()
         include_nu_priors = True
         run_detector_dependent_nu = detector_dependent_nu
     elif hypothesis == "gaussian":
-        label = f"{label_prefix}_gaussian_N{band_count}{waveform_suffix}"
+        run_band_count = DEFAULT_NUM_FREQUENCY_BANDS
+        label = f"{label_prefix}_gaussian{waveform_suffix}"
         run_directory_name = build_run_directory_name(
-            f"gaussian_N{band_count}{waveform_suffix}",
+            f"gaussian{waveform_suffix}",
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
-        prior_path = (
-            prior_dir / f"{file_prefix}_gaussian_N{band_count}{waveform_suffix}.prior"
-        ).resolve()
-        ini_path = (
-            ini_dir / f"{file_prefix}_gaussian_N{band_count}{waveform_suffix}.ini"
-        ).resolve()
+        prior_path = (prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior").resolve()
+        ini_path = (ini_dir / f"{file_prefix}_gaussian{waveform_suffix}.ini").resolve()
         include_nu_priors = False
         run_detector_dependent_nu = False
     else:
@@ -498,7 +510,7 @@ def prepare_run(
     prior_path.write_text(
         render_prior(
             prior_template,
-            band_count,
+            run_band_count,
             include_nu_priors=include_nu_priors,
             detector_dependent_nu=run_detector_dependent_nu,
             detectors=detectors,
@@ -515,7 +527,7 @@ def prepare_run(
             outdir=run_outdir,
             webdir=run_webdir,
             prior_file=prior_path,
-            band_count=band_count,
+            band_count=run_band_count,
             detector_dependent_nu=run_detector_dependent_nu,
             working_directory=working_directory,
             accounting_user=accounting_user,
@@ -525,8 +537,9 @@ def prepare_run(
         encoding="utf-8",
     )
 
+    band_fragment = f" N={run_band_count}" if hypothesis == "student" else ""
     print(
-        f"Prepared {hypothesis} N={band_count} "
+        f"Prepared {hypothesis}{band_fragment} "
         f"({sine_gaussian_config.description}):"
     )
     print(f"  prior: {prior_path}")
@@ -599,32 +612,31 @@ def main() -> int:
         band_counts = range(1, args.num_frequency_bands + 1)
     else:
         band_counts = [args.num_frequency_bands]
-    hypotheses = hypothesis_list(args)
+    run_requests = build_run_requests(args, band_counts=band_counts)
 
-    for band_count in band_counts:
-        for sine_gaussian_config in sine_gaussian_configs:
-            for hypothesis in hypotheses:
-                ini_path = prepare_run(
-                    hypothesis=hypothesis,
-                    band_count=band_count,
-                    ini_template=ini_template,
-                    prior_template=prior_template,
-                    template_settings=template_settings,
-                    ini_dir=ini_dir,
-                    prior_dir=prior_dir,
-                    detector_dependent_nu=args.detector_dependent_nu,
-                    detectors=detectors,
-                    label_prefix=label_prefix,
-                    outdir_base=outdir_base,
-                    webdir_base=webdir_base,
-                    outdir_label=args.outdir_label,
-                    file_prefix=file_prefix,
-                    working_directory=working_directory,
-                    accounting_user=args.accounting_user,
-                    sine_gaussian_config=sine_gaussian_config,
-                )
-                if not args.dry_run:
-                    submit_run(ini_path, submit_directory=submit_directory)
+    for sine_gaussian_config in sine_gaussian_configs:
+        for hypothesis, band_count in run_requests:
+            ini_path = prepare_run(
+                hypothesis=hypothesis,
+                band_count=band_count,
+                ini_template=ini_template,
+                prior_template=prior_template,
+                template_settings=template_settings,
+                ini_dir=ini_dir,
+                prior_dir=prior_dir,
+                detector_dependent_nu=args.detector_dependent_nu,
+                detectors=detectors,
+                label_prefix=label_prefix,
+                outdir_base=outdir_base,
+                webdir_base=webdir_base,
+                outdir_label=args.outdir_label,
+                file_prefix=file_prefix,
+                working_directory=working_directory,
+                accounting_user=args.accounting_user,
+                sine_gaussian_config=sine_gaussian_config,
+            )
+            if not args.dry_run:
+                submit_run(ini_path, submit_directory=submit_directory)
 
     return 0
 

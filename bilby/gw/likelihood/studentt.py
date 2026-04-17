@@ -143,11 +143,11 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if self.infer_nu:
             if not self.detector_dependent_nu:
                 for key, value in zip(self.nu_parameter_keys, self._fixed_nu):
-                    self.parameters.setdefault(key, float(value))
+                    self._parameters.setdefault(key, float(value))
             else:
                 for detector_index, detector_name in enumerate(self._detector_names):
                     for band_index in range(self.num_frequency_bands):
-                        self.parameters.setdefault(
+                        self._parameters.setdefault(
                             self._detector_nu_parameter_key(detector_name, band_index),
                             float(self._fixed_nu[detector_index, band_index]),
                         )
@@ -166,7 +166,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     @property
     def nu(self):
 
-        values = self._get_nu_values(self.parameters)
+        values = self._get_nu_values(self._parameters)
         if not self.detector_dependent_nu:
             if self.num_frequency_bands == 1:
                 return float(values[0])
@@ -360,12 +360,12 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         if not self.detector_dependent_nu:
             for key, value in zip(self.nu_parameter_keys, nu_values):
-                self.parameters[key] = float(value)
+                self._parameters[key] = float(value)
             return
 
         for detector_index, detector_name in enumerate(self._detector_names):
             for band_index in range(self.num_frequency_bands):
-                self.parameters[
+                self._parameters[
                     self._detector_nu_parameter_key(detector_name, band_index)
                 ] = float(nu_values[detector_index, band_index])
 
@@ -391,10 +391,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     def _resolve_likelihood_parameters(self, parameters=None):
 
         parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self.parameters:
+        if parameters is self._parameters:
             parameters = parameters.copy()
         else:
-            merged_parameters = self.parameters.copy()
+            merged_parameters = self._parameters.copy()
             merged_parameters.update(parameters)
             parameters = merged_parameters
         parameters.update(self.get_sky_frame_parameters(parameters))
@@ -480,10 +480,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _get_default_nu_parameter_dict(self):
 
-        if self.parameters is None:
+        if self._parameters is None:
             parameters = dict()
         else:
-            parameters = self.parameters.copy()
+            parameters = self._parameters.copy()
 
         nu_values = self._get_nu_values(parameters)
         return {
@@ -658,7 +658,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self.parameters.copy())
+        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
 

@@ -28,6 +28,12 @@ def set_parameters_as_state(level):
     PARAMETERS_AS_STATE = level
 
 
+def _get_stored_parameters(obj):
+    if hasattr(obj, "_parameters"):
+        return obj._parameters
+    return obj.parameters
+
+
 def _fallback_to_parameters(obj, parameters):
 
     if parameters is None:
@@ -42,7 +48,7 @@ def _fallback_to_parameters(obj, parameters):
             warnings.warn(msg, FutureWarning)
         else:
             logger.debug(msg)
-        parameters = copy.deepcopy(obj.parameters)
+        parameters = copy.deepcopy(_get_stored_parameters(obj))
 
     return parameters
 
@@ -67,7 +73,7 @@ def _safe_likelihood_call(likelihood, parameters=None, use_ratio=False):
                 "See https://bilby-dev.github.io/bilby/parameters for more details.",
                 DeprecationWarning,
             )
-        likelihood.parameters.update(parameters)
+        _get_stored_parameters(likelihood).update(parameters)
         logl = method()
     return logl
 

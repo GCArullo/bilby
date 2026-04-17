@@ -449,10 +449,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
             band_scale2 = scale2[band_mask]
             band_abs2 = abs2[band_mask]
+            # multivariate Student's t with p=2
             const = (
-                gammaln((nu + 2.0) / 2.0)
-                - gammaln(nu / 2.0)
-                - np.log(nu * np.pi * band_scale2)
+                - np.log(2 * np.pi * band_scale2)
             )
 
             logl += np.sum(

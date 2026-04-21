@@ -1049,6 +1049,41 @@ def replace_line(text: str, key: str, value: str) -> str:
     raise ValueError(f"Unable to find config key '{key}' in template")
 
 
+def replace_or_append_line(
+    text: str,
+    key: str,
+    value: str,
+    *,
+    insert_after: str | None = None,
+) -> str:
+    lines = text.splitlines()
+    prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{key}={value}"
+            return "\n".join(lines) + "\n"
+    if insert_after is not None:
+        anchor = f"{insert_after}="
+        for index, line in enumerate(lines):
+            if line.startswith(anchor):
+                lines.insert(index + 1, f"{key}={value}")
+                return "\n".join(lines) + "\n"
+    lines.append(f"{key}={value}")
+    return "\n".join(lines) + "\n"
+
+
+def disable_calibration_settings(text: str) -> str:
+    rendered = replace_line(text, "calibration-model", "None")
+    rendered = replace_or_append_line(
+        rendered,
+        "calibration-correction-type",
+        "None",
+        insert_after="calibration-model",
+    )
+    rendered = replace_line(rendered, "spline-calibration-envelope-dict", "None")
+    return rendered
+
+
 def replace_or_append_prior_line(
     text: str,
     key: str,
@@ -1220,8 +1255,7 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     rendered = replace_line(rendered, "data-format", "hdf5")
-    rendered = replace_line(rendered, "calibration-model", "None")
-    rendered = replace_line(rendered, "spline-calibration-envelope-dict", "None")
+    rendered = disable_calibration_settings(rendered)
     rendered = replace_line(
         rendered,
         "channel-dict",

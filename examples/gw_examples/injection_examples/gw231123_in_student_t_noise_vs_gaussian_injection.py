@@ -38,7 +38,15 @@ import bilby
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-POSTERIOR_PATH = SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5"
+POSTERIOR_PATH_CANDIDATES = (
+    SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5",
+    SCRIPT_DIR.parent
+    / "data_examples"
+    / "Cluster_runs_and_utils"
+    / "LVK_posteriors"
+    / "GW231123"
+    / "posterior_samples.h5",
+)
 
 TEMPLATE_SETTINGS = dict(
     detectors=("H1", "L1"),
@@ -92,6 +100,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use a symmetric +/- fraction around the injected luminosity distance.",
     )
     parser.add_argument(
+        "--fix-distance",
+        action="store_true",
+        help="Keep luminosity_distance fixed to the injected value instead of sampling it.",
+    )
+    parser.add_argument(
         "--required-bias-improvement",
         type=float,
         default=0.05,
@@ -118,6 +131,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Defaults to the NRSur7dq4 approximant used in the LVK run.",
     )
     return parser
+
+
+def resolve_posterior_path() -> Path:
+    for posterior_path in POSTERIOR_PATH_CANDIDATES:
+        if posterior_path.exists():
+            return posterior_path
+    checked_paths = "\n".join(str(path) for path in POSTERIOR_PATH_CANDIDATES)
+    raise FileNotFoundError(
+        "Could not locate GW231123 posterior_samples.h5. Checked:\n"
+        f"{checked_paths}"
+    )
 
 
 def load_maximum_likelihood_injection(posterior_path: Path) -> tuple[dict, float, int]:
@@ -231,6 +255,7 @@ def build_priors(
     *,
     hypothesis: str,
     distance_prior_fraction: float,
+    fix_distance: bool,
     nu_min: float,
     nu_max: float,
 ) -> bilby.core.prior.PriorDict:
@@ -240,11 +265,17 @@ def build_priors(
             continue
         priors[key] = bilby.core.prior.DeltaFunction(value, name=key)
 
-    priors["luminosity_distance"] = bilby.core.prior.Uniform(
-        injection_parameters["luminosity_distance"] * (1.0 - distance_prior_fraction),
-        injection_parameters["luminosity_distance"] * (1.0 + distance_prior_fraction),
-        name="luminosity_distance",
-    )
+    if fix_distance:
+        priors["luminosity_distance"] = bilby.core.prior.DeltaFunction(
+            injection_parameters["luminosity_distance"],
+            name="luminosity_distance",
+        )
+    else:
+        priors["luminosity_distance"] = bilby.core.prior.Uniform(
+            injection_parameters["luminosity_distance"] * (1.0 - distance_prior_fraction),
+            injection_parameters["luminosity_distance"] * (1.0 + distance_prior_fraction),
+            name="luminosity_distance",
+        )
 
     if hypothesis == "student":
         priors["nu"] = bilby.core.prior.Uniform(nu_min, nu_max, name="nu")
@@ -287,8 +318,14 @@ def get_waveform_parameters(parameters: dict) -> dict:
     return {key: parameters[key] for key in INJECTION_KEYS}
 
 
-def get_result_median_parameters(result) -> dict:
-    return result.posterior.median(numeric_only=True).to_dict()
+def get_result_median_parameters(
+    result, fallback_parameters: dict | None = None
+) -> dict:
+    parameters = dict(fallback_parameters or {})
+    injection_parameters = getattr(result, "injection_parameters", None) or {}
+    parameters.update(injection_parameters)
+    parameters.update(result.posterior.median(numeric_only=True).to_dict())
+    return parameters
 
 
 def gaussian_component_pdf(x: np.ndarray) -> np.ndarray:
@@ -425,7 +462,10 @@ def plot_waveform_reconstructions(
         posterior = posterior.iloc[sample_indices]
 
     df = 1.0 / interferometers[0].duration
-    geocent_time = float(posterior["geocent_time"].mean())
+    if "geocent_time" in posterior:
+        geocent_time = float(posterior["geocent_time"].mean())
+    else:
+        geocent_time = float(injection_parameters["geocent_time"])
     plot_start = geocent_time - 0.15
     plot_end = geocent_time + 0.05
 
@@ -443,7 +483,9 @@ def plot_waveform_reconstructions(
         fd_waveforms = []
         td_waveforms = []
         for sample in posterior.to_dict(orient="records"):
-            waveform_parameters = get_waveform_parameters(sample)
+            waveform_parameters = dict(injection_parameters)
+            waveform_parameters.update(sample)
+            waveform_parameters = get_waveform_parameters(waveform_parameters)
             waveform_polarizations = waveform_generator.frequency_domain_strain(
                 waveform_parameters
             )
@@ -579,7 +621,7 @@ def plot_whitened_residual_histograms(
                 build_whitened_residual_components(
                     interferometers,
                     waveform_generator,
-                    get_result_median_parameters(result),
+                    get_result_median_parameters(result, injection_parameters),
                 ),
             )
         )
@@ -662,6 +704,7 @@ def run_inference(
         injection_parameters,
         hypothesis=hypothesis,
         distance_prior_fraction=args.distance_prior_fraction,
+        fix_distance=args.fix_distance,
         nu_min=args.nu_min,
         nu_max=args.nu_max,
     )
@@ -685,20 +728,26 @@ def run_inference(
         npool=args.npool,
         outdir=str(Path(args.outdir).resolve()),
         label=run_label,
+        injection_parameters=injection_parameters,
         clean=True,
         check_point=False,
         verbose=False,
     )
 
-    distance_median = float(result.posterior["luminosity_distance"].median())
-    distance_bias_fraction = (
-        distance_median / injection_parameters["luminosity_distance"] - 1.0
-    )
+    if "luminosity_distance" in result.posterior:
+        distance_median = float(result.posterior["luminosity_distance"].median())
+        distance_bias_fraction = (
+            distance_median / injection_parameters["luminosity_distance"] - 1.0
+        )
+    else:
+        distance_median = float(injection_parameters["luminosity_distance"])
+        distance_bias_fraction = 0.0
 
     summary = dict(
         label=run_label,
         hypothesis=hypothesis,
         distance_scale=float(distance_scale),
+        distance_fixed=bool(args.fix_distance),
         true_luminosity_distance=float(injection_parameters["luminosity_distance"]),
         distance_median=distance_median,
         distance_bias_fraction=float(distance_bias_fraction),
@@ -807,17 +856,19 @@ def main() -> None:
     outdir = Path(args.outdir).resolve()
     bilby.core.utils.check_directory_exists_and_if_not_mkdir(str(outdir))
 
+    posterior_path = resolve_posterior_path()
     base_injection_parameters, maxl_log_likelihood, maxl_index = (
-        load_maximum_likelihood_injection(POSTERIOR_PATH)
+        load_maximum_likelihood_injection(posterior_path)
     )
     bilby.core.utils.logger.info(
-        "Using GW231123 NRSur7dq4 maximum-likelihood sample %d with LVK log-likelihood %.6f",
+        "Using GW231123 NRSur7dq4 maximum-likelihood sample %d with LVK log-likelihood %.6f from %s",
         maxl_index,
         maxl_log_likelihood,
+        posterior_path,
     )
 
     waveform_generator = build_waveform_generator(args.waveform_approximant)
-    psds = load_psds(POSTERIOR_PATH)
+    psds = load_psds(posterior_path)
 
     selected_outputs = None
     for distance_scale in get_trial_distance_scales(args):
@@ -878,10 +929,13 @@ def main() -> None:
             student_summary=student_summary,
         )
 
-        if is_bias_visible(
+        if (
+            not args.fix_distance
+            and is_bias_visible(
             gaussian_summary,
             student_summary,
             required_improvement=args.required_bias_improvement,
+            )
         ):
             bilby.core.utils.logger.info(
                 "Student-t outperformed Gaussian at distance scale %.3f",
@@ -969,6 +1023,7 @@ def main() -> None:
     if (
         not args.skip_gaussian
         and not args.skip_student
+        and not args.fix_distance
         and not is_bias_visible(
             selected_outputs["gaussian_summary"],
             selected_outputs["student_summary"],

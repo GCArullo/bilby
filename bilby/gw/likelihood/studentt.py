@@ -448,15 +448,25 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 continue
 
             band_scale2 = scale2[band_mask]
-            band_abs2 = abs2[band_mask]
-            # multivariate Student's t with p=2
-            const = (
-                - np.log(2 * np.pi * band_scale2)
-            )
+            band_abs2   =   abs2[band_mask]
 
-            logl += np.sum(
-                const - 0.5 * (nu + 2.0) * np.log1p(band_abs2 / (nu * band_scale2))
-            )
+            """
+            Multivariate Student's t with dimension d=2 (complex residuals in frequency domain) 
+
+            The full expression would be:
+
+            const = (gammaln((nu + 2.0) / 2.0)
+                   - gammaln(nu / 2.0)
+                   - np.log(nu * np.pi * band_scale2)
+
+            but for d=2, gamma functions simplify to give const= - np.log(2 * np.pi * band_scale2)
+
+            See: https://en.wikipedia.org/wiki/Multivariate_t-distribution
+            
+            """
+            const = - np.log(2 * np.pi * band_scale2)
+
+            logl += np.sum(const - 0.5 * (nu + 2.0) * np.log1p(band_abs2 / (nu * band_scale2)))
 
         return float(logl)
 

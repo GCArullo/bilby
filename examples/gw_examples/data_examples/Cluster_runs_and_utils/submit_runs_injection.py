@@ -6,7 +6,7 @@ The generated ini/prior files are rendered from the same GW231123 template files
 used for the real-data analyses in this directory. Only the path- and
 injection-specific settings are replaced, so the resulting configs stay as close
 as possible to the production templates. `--injection-noise` chooses the staged
-noise model, `--likelihood` chooses the primary recovery likelihood, and
+noise model, `--likelihood` chooses the recovery likelihood, and
 Student-t runs also generate a single-band Gaussian companion run by default.
 """
 

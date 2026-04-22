@@ -433,7 +433,7 @@ def posterior_curve_from_log_likelihood(
 ) -> tuple[np.ndarray, np.ndarray]:
     log_posterior = log_likelihood_values - np.max(log_likelihood_values)
     posterior_density = np.exp(log_posterior)
-    posterior_density /= np.trapezoid(posterior_density, nu_grid)
+    posterior_density /= np.trapz(posterior_density, nu_grid)
     cumulative_density = np.concatenate(
         [[0.0], cumulative_trapezoid(posterior_density, nu_grid)]
     )
@@ -451,7 +451,7 @@ def summarize_curve(
     )
     return dict(
         map=float(nu_grid[np.argmax(posterior_density)]),
-        mean=float(np.trapezoid(nu_grid * posterior_density, nu_grid)),
+        mean=float(np.trapz(nu_grid * posterior_density, nu_grid)),
         median=quantile(0.5),
         q05=quantile(0.05),
         q16=quantile(0.16),
@@ -687,7 +687,7 @@ def plot_bias_overview(
         linewidth=1.5,
         label=f"Injected nu = {injected_nu:g}",
     )
-    posterior_axis.set_xlim(2.1, 4.8)
+    posterior_axis.set_xlim(injected_nu-0.3*injected_nu, stage_summaries['stored_data_dump']['median']+0.6*stage_summaries['stored_data_dump']['median'])
     posterior_axis.set_xlabel("nu")
     posterior_axis.set_ylabel("Posterior density")
     posterior_axis.set_title("Posterior shift from bilby time-domain conditioning")

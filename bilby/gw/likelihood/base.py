@@ -153,6 +153,9 @@ class GravitationalWaveTransient(Likelihood):
         self.waveform_generator = waveform_generator
         super(GravitationalWaveTransient, self).__init__()
         self.interferometers = InterferometerList(interferometers)
+        self._check_cbc_plus_sine_gaussians_distance_marginalization(
+            distance_marginalization
+        )
         self.time_marginalization = time_marginalization
         self.distance_marginalization = distance_marginalization
         self.phase_marginalization = phase_marginalization
@@ -220,6 +223,22 @@ class GravitationalWaveTransient(Likelihood):
             self.starting_index = starting_index
             self._setup_calibration_marginalization(calibration_lookup_table, priors)
             self._marginalized_parameters.append('recalib_index')
+
+    def _check_cbc_plus_sine_gaussians_distance_marginalization(
+        self, distance_marginalization
+    ):
+        source_model = getattr(
+            self.waveform_generator, "frequency_domain_source_model", None
+        )
+        if (
+            distance_marginalization
+            and getattr(source_model, "__name__", None) == "cbc_plus_sine_gaussians"
+        ):
+            raise ValueError(
+                "distance_marginalization=True is not supported for "
+                "bilby.gw.source.cbc_plus_sine_gaussians. Set "
+                "distance_marginalization=False for CBC+sine-Gaussian analyses."
+            )
 
     def __repr__(self):
         return self.__class__.__name__ + '(interferometers={},\n\twaveform_generator={},\n\ttime_marginalization={}, ' \

@@ -386,11 +386,8 @@ def apply_sine_gaussian_waveform_settings(
         "conversion-function",
         "bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters",
     )
-    updated = replace_line(
-        updated,
-        "generation-function",
-        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters",
-    )
+    updated = replace_line(updated, "generation-function", "None")
+    updated = replace_line(updated, "distance-marginalization", "False")
     return updated
 
 

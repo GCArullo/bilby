@@ -298,9 +298,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Generate files but do not call bilby_pipe.",
+    )
+    parser.add_argument(
         "--submit",
         action="store_true",
-        help="After generating ini/prior files, invoke bilby_pipe --submit for each run.",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--bilby-pipe-executable",
@@ -1499,7 +1504,7 @@ def main() -> int:
         args.nlive = TEST_INJECTION_NLIVE if args.test_injection else DEFAULT_NLIVE
     try:
         ini_paths = prepare_runs(args)
-        if args.submit:
+        if not args.dry_run:
             submit_runs(ini_paths, args.bilby_pipe_executable)
     except (FileNotFoundError, ValueError, subprocess.CalledProcessError) as exc:
         print(exc, file=sys.stderr)

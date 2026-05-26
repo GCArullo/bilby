@@ -1990,8 +1990,17 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
     dict or pandas.DataFrame
         The converted samples augmented with the standard CBC parameters and a
         ``sine_gaussian_parameters`` entry and an
-        ``incoherent_sine_gaussian_parameters`` mapping when applicable.
+        ``incoherent_sine_gaussian_parameters`` mapping when applicable. For
+        DataFrame posterior samples, the scalar ``sine_gaussian_*`` columns are
+        retained instead so the result remains serializable.
     """
+
+    is_dataframe = isinstance(sample, DataFrame)
+    if is_dataframe:
+        sine_gaussian_columns = [
+            column for column in sample.columns
+            if column.startswith("sine_gaussian_")
+        ]
 
     waveform_defaults = {
         'reference_frequency': 50.0,
@@ -2006,6 +2015,17 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
         priors=priors,
         npool=npool,
     )
+    if is_dataframe:
+        output_sample = output_sample.drop(
+            columns=[
+                "sine_gaussian_parameters",
+                "incoherent_sine_gaussian_parameters",
+            ],
+            errors="ignore",
+        )
+        for column in sine_gaussian_columns:
+            output_sample[column] = sample[column]
+
     return output_sample
 
 

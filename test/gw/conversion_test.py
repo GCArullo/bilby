@@ -704,32 +704,20 @@ class TestGenerateAllParameters(unittest.TestCase):
                 container
             )
 
+            if isinstance(converted, pd.DataFrame):
+                self.assertNotIn("sine_gaussian_parameters", converted)
+                self.assertNotIn("incoherent_sine_gaussian_parameters", converted)
+                for key in sg_parameters:
+                    self.assertIn(key, converted)
+                self.assertEqual(converted["sine_gaussian_0_frequency"].iloc[0], 120.0)
+                self.assertEqual(
+                    converted["sine_gaussian_0_frequency"].iloc[-1],
+                    120.0 + len(converted) - 1,
+                )
+                continue
+
             self.assertIn("sine_gaussian_parameters", converted)
             components = converted["sine_gaussian_parameters"]
-            if isinstance(converted, pd.DataFrame):
-                first_components = components.iloc[0]
-                last_components = components.iloc[-1]
-                self.assertEqual(
-                    first_components[0],
-                    dict(
-                        hrss=1e-22,
-                        Q=9.0,
-                        frequency=120.0,
-                        time_offset=0.01,
-                        phase_offset=0.1,
-                    ),
-                )
-                self.assertEqual(
-                    last_components[0],
-                    dict(
-                        hrss=1e-22,
-                        Q=9.0,
-                        frequency=120.0 + len(converted) - 1,
-                        time_offset=0.01,
-                        phase_offset=0.1,
-                    ),
-                )
-                components = first_components
             self.assertEqual(len(components), 2)
             for index, expected in enumerate((
                 dict(hrss=1e-22, Q=9.0, frequency=120.0, time_offset=0.01, phase_offset=0.1),
@@ -758,6 +746,28 @@ class TestGenerateAllParameters(unittest.TestCase):
                     phase_offset=0.2,
                 ),
             )
+
+    def test_generate_all_cbc_plus_sine_gaussian_parameters_dataframe_is_serializable(self):
+        sg_parameters = dict(
+            sine_gaussian_0_hrss=1e-22,
+            sine_gaussian_0_Q=9.0,
+            sine_gaussian_0_frequency=120.0,
+            sine_gaussian_0_time_offset=0.01,
+            sine_gaussian_0_phase_offset=0.1,
+        )
+        samples = self.data_frame.copy()
+        for key, value in sg_parameters.items():
+            samples[key] = value
+
+        converted = bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters(
+            samples
+        )
+
+        self.assertNotIn("sine_gaussian_parameters", converted)
+        self.assertNotIn("incoherent_sine_gaussian_parameters", converted)
+        for key, value in sg_parameters.items():
+            self.assertIn(key, converted)
+            self.assertTrue(np.all(converted[key] == value))
 
     def _generate(self, func, expected):
         for values in [self.parameters, self.data_frame]:

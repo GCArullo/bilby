@@ -2001,6 +2001,12 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
             column for column in sample.columns
             if column.startswith("sine_gaussian_")
         ]
+    else:
+        sine_gaussian_columns = [
+            key for key in sample
+            if key.startswith("sine_gaussian_")
+        ]
+    sine_gaussian_values = {key: sample[key] for key in sine_gaussian_columns}
 
     waveform_defaults = {
         'reference_frequency': 50.0,
@@ -2023,8 +2029,11 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
             ],
             errors="ignore",
         )
-        for column in sine_gaussian_columns:
-            output_sample[column] = sample[column]
+    else:
+        output_sample.pop("sine_gaussian_parameters", None)
+        output_sample.pop("incoherent_sine_gaussian_parameters", None)
+    for column, value in sine_gaussian_values.items():
+        output_sample[column] = value
 
     return output_sample
 

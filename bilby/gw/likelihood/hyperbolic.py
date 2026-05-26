@@ -1,19 +1,46 @@
-import numpy as np
-from scipy.special import kve
+from copy import deepcopy
+from itertools import product
+from math import factorial
 
-from ...core.likelihood import _fallback_to_parameters
+import numpy as np
+from scipy.integrate import quad
+
+from ...core.likelihood import Likelihood, _fallback_to_parameters
+from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .base import GravitationalWaveTransient
 
 
+class _HyperbolicNoiseOnlyLikelihood(Likelihood):
+    """Auxiliary likelihood for marginalizing the hyperbolic noise evidence."""
+
+    def __init__(self, hyperbolic_likelihood):
+        super().__init__(
+            parameters=hyperbolic_likelihood._get_default_shape_parameter_dict()
+        )
+        self.hyperbolic_likelihood = hyperbolic_likelihood
+
+    def log_likelihood(self, parameters=None):
+        parameters = _fallback_to_parameters(self, parameters)
+        return self.hyperbolic_likelihood._noise_log_likelihood_from_parameters(parameters)
+
+    def noise_log_likelihood(self):
+        return 0.0
+
+
 class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
     r"""
-    A heavy-tailed likelihood based on the symmetric 2D hyperbolic distribution.
+    A heavy-tailed likelihood based on the hyperbolic distribution in Eq. 8-9 of
+    arXiv:2602.22074.
 
-    This follows the distribution used in arXiv:2602.22074. Each complex frequency
-    bin is treated as a two-dimensional real vector built from the real and imaginary
-    residual parts.
+    Each active network frequency bin is represented by a real residual vector whose
+    dimension is twice the number of detectors contributing to that bin. If detector
+    masks differ, the effective dimension varies by frequency bin.
     """
+
+    _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
+    _NOISE_EVIDENCE_QUADRATURE_EPSREL = 1e-8
+    _NOISE_EVIDENCE_QUADRATURE_LIMIT = 200
 
     def __init__(
         self,
@@ -24,6 +51,22 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         infer_alpha=False,
         infer_delta=False,
         num_frequency_bands=1,
+        time_marginalization=False,
+        distance_marginalization=False,
+        phase_marginalization=False,
+        calibration_marginalization=False,
+        priors=None,
+        distance_marginalization_lookup_table=None,
+        calibration_lookup_table=None,
+        number_of_response_curves=1000,
+        starting_index=0,
+        jitter_time=True,
+        reference_frame="sky",
+        time_reference="geocenter",
+        noise_evidence_nlive=None,
+        dlogz_noise=0.1,
+        dlogZ_noise=None,
+        noise_evidence_method="quadrature",
         **kwargs,
     ):
         """
@@ -48,12 +91,40 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         num_frequency_bands : int
             Number of contiguous frequency bands spanning the active analysis range. Each
             band has its own hyperbolic `alpha` and `delta` parameters.
+        noise_evidence_nlive : int, optional
+            Number of live points to use when the noise evidence requires an
+            auxiliary nested-sampling run. If not provided, use the internal
+            low-dimensional heuristic.
+        dlogz_noise, dlogZ_noise : float, optional
+            Stopping criterion for the auxiliary nested-sampling run used to
+            evaluate the noise evidence. `dlogZ_noise` is accepted as an alias.
+        noise_evidence_method : str, optional
+            Method used for the auxiliary hyperbolic noise-evidence
+            calculation. ``"quadrature"`` performs a direct 1D or 2D
+            integral over the prior transform and is the default. If more
+            than two noise parameters are sampled, this falls back to the
+            nested-sampling helper run. ``"nested"`` keeps the auxiliary
+            dynesty calculation.
         kwargs :
             Passed to GravitationalWaveTransient.
         """
+        # Keep the base-likelihood kwargs explicit so tools such as bilby_pipe
+        # can discover and forward them when this class is selected by dotted path.
         super().__init__(
             interferometers=interferometers,
             waveform_generator=waveform_generator,
+            time_marginalization=time_marginalization,
+            distance_marginalization=distance_marginalization,
+            phase_marginalization=phase_marginalization,
+            calibration_marginalization=calibration_marginalization,
+            priors=priors,
+            distance_marginalization_lookup_table=distance_marginalization_lookup_table,
+            calibration_lookup_table=calibration_lookup_table,
+            number_of_response_curves=number_of_response_curves,
+            starting_index=starting_index,
+            jitter_time=jitter_time,
+            reference_frame=reference_frame,
+            time_reference=time_reference,
             **kwargs,
         )
 
@@ -63,6 +134,16 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         self.infer_alpha = bool(infer_alpha)
         self.infer_delta = bool(infer_delta)
         self._frequency_band_edges = self._create_frequency_band_edges()
+        self.noise_evidence_nlive = self._validate_noise_evidence_nlive(
+            noise_evidence_nlive
+        )
+        self.dlogz_noise = self._resolve_dlogz_noise(
+            dlogz_noise=dlogz_noise,
+            dlogZ_noise=dlogZ_noise,
+        )
+        self.noise_evidence_method = self._resolve_noise_evidence_method(
+            noise_evidence_method
+        )
 
         if not self._valid_positive_values(self._fixed_alpha):
             raise ValueError("All alpha values must be positive and finite")
@@ -113,6 +194,29 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             return ["delta"]
         return [f"delta_{index}" for index in range(1, self.num_frequency_bands + 1)]
 
+    @property
+    def noise_parameter_keys(self):
+        keys = []
+        if self.infer_alpha:
+            keys.extend(self.alpha_parameter_keys)
+        if self.infer_delta:
+            keys.extend(self.delta_parameter_keys)
+        return keys
+
+    @property
+    def meta_data(self):
+        meta_data = super().meta_data
+        meta_data.update(
+            likelihood_class=self.__class__,
+            alpha=self._fixed_alpha.tolist(),
+            delta=self._fixed_delta.tolist(),
+            infer_alpha=self.infer_alpha,
+            infer_delta=self.infer_delta,
+            num_frequency_bands=self.num_frequency_bands,
+            noise_evidence_method=self.noise_evidence_method,
+        )
+        return meta_data
+
     def _validate_num_frequency_bands(self, num_frequency_bands):
         try:
             num_frequency_bands = int(num_frequency_bands)
@@ -121,6 +225,60 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if num_frequency_bands < 1:
             raise ValueError("num_frequency_bands must be a positive integer")
         return num_frequency_bands
+
+    @staticmethod
+    def _validate_noise_evidence_nlive(noise_evidence_nlive):
+        if noise_evidence_nlive is None:
+            return None
+        try:
+            noise_evidence_nlive = int(noise_evidence_nlive)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("noise_evidence_nlive must be a positive integer") from exc
+        if noise_evidence_nlive < 1:
+            raise ValueError("noise_evidence_nlive must be a positive integer")
+        return noise_evidence_nlive
+
+    @staticmethod
+    def _resolve_dlogz_noise(dlogz_noise, dlogZ_noise):
+        if dlogZ_noise is not None:
+            if dlogz_noise != 0.1 and dlogz_noise != dlogZ_noise:
+                raise ValueError(
+                    "Received both dlogz_noise and dlogZ_noise with different values"
+                )
+            dlogz_noise = dlogZ_noise
+        try:
+            dlogz_noise = float(dlogz_noise)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("dlogz_noise must be a positive float") from exc
+        if dlogz_noise <= 0:
+            raise ValueError("dlogz_noise must be a positive float")
+        return dlogz_noise
+
+    @staticmethod
+    def _resolve_noise_evidence_method(noise_evidence_method):
+        try:
+            noise_evidence_method = (
+                str(noise_evidence_method).strip().lower().replace("-", "_")
+            )
+        except Exception as exc:
+            raise ValueError(
+                "noise_evidence_method must be 'quadrature' or 'nested'"
+            ) from exc
+
+        aliases = {
+            "quad": "quadrature",
+            "quadrature": "quadrature",
+            "direct_quadrature": "quadrature",
+            "dynesty": "nested",
+            "nested": "nested",
+            "nested_sampling": "nested",
+            "ns": "nested",
+        }
+        if noise_evidence_method not in aliases:
+            raise ValueError(
+                "noise_evidence_method must be 'quadrature' or 'nested'"
+            )
+        return aliases[noise_evidence_method]
 
     def _coerce_parameter_array(self, values, name):
         values = np.asarray(values, dtype=float)
@@ -139,11 +297,14 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         return np.all(np.isfinite(values)) and np.all(values > 0)
 
     def _create_frequency_band_edges(self):
-        frequencies = self.interferometers[0].frequency_array[
-            self.interferometers[0].frequency_mask
+        active_frequencies = [
+            interferometer.frequency_array[interferometer.frequency_mask]
+            for interferometer in self.interferometers
+            if np.any(interferometer.frequency_mask)
         ]
-        if len(frequencies) == 0:
+        if len(active_frequencies) == 0:
             raise ValueError("No active frequencies available to construct hyperbolic bands")
+        frequencies = np.unique(np.concatenate(active_frequencies))
         return np.linspace(frequencies[0], frequencies[-1], self.num_frequency_bands + 1)
 
     def _get_alpha_values(self, parameters):
@@ -190,8 +351,8 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         for key, value in zip(self.delta_parameter_keys, delta_values):
             self.parameters[key] = float(value)
 
-    def _get_frequency_band_masks(self, interferometer):
-        frequencies = interferometer.frequency_array[interferometer.frequency_mask]
+    def _get_frequency_band_masks(self, frequencies):
+        frequencies = np.asarray(frequencies, dtype=float)
         band_masks = []
         for index, (lower, upper) in enumerate(
             zip(self._frequency_band_edges[:-1], self._frequency_band_edges[1:])
@@ -204,40 +365,91 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         return band_masks
 
     @staticmethod
-    def _log_bessel_k(order, value):
-        value = np.asarray(value, dtype=float)
-        if np.any(value <= 0) or not np.all(np.isfinite(value)):
-            return np.full_like(value, np.nan, dtype=float)
-        result = np.log(kve(order, value)) - value
-        if result.ndim == 0:
-            return float(result)
-        return result
+    def _map_frequencies_to_network_grid(network_frequencies, frequencies):
+        frequencies = np.asarray(frequencies, dtype=float)
+        if len(frequencies) == 0:
+            return np.array([], dtype=int)
+
+        indices = np.searchsorted(network_frequencies, frequencies)
+        if np.any(indices >= len(network_frequencies)):
+            return None
+
+        matched_frequencies = network_frequencies[indices]
+        frequency_tolerance = 0.0
+        if len(network_frequencies) > 1:
+            frequency_tolerance = np.min(np.diff(network_frequencies)) * 1e-12
+
+        if not np.all(
+            np.isclose(
+                matched_frequencies, frequencies, rtol=0.0, atol=frequency_tolerance
+            )
+        ):
+            return None
+
+        return indices
 
     @staticmethod
-    def _log_hyperbolic_density(abs2_over_scale2, alpha, delta):
+    def _scaled_bessel_k_half_integer(dimension, value):
+        if dimension < 2 or dimension % 2 != 0:
+            return None
+        if value <= 0 or not np.isfinite(value):
+            return None
+
+        half_integer_order_index = dimension // 2
+        inverse_twice_value = 0.5 / value
+        polynomial = 0.0
+        for index in range(half_integer_order_index + 1):
+            coefficient = factorial(half_integer_order_index + index) / (
+                factorial(index) * factorial(half_integer_order_index - index)
+            )
+            polynomial += coefficient * inverse_twice_value ** index
+
+        return np.sqrt(np.pi / (2.0 * value)) * polynomial
+
+    @staticmethod
+    def _compute_bin_log_terms(quadratic_forms, dimensions, alpha, delta):
+        quadratic_forms = np.asarray(quadratic_forms, dtype=float)
+        dimensions = np.asarray(dimensions, dtype=int)
+
+        if quadratic_forms.shape != dimensions.shape:
+            return None
+        if len(quadratic_forms) == 0:
+            return np.array([], dtype=float)
+        if alpha <= 0 or delta <= 0 or not np.isfinite(alpha) or not np.isfinite(delta):
+            return None
+        if np.any(quadratic_forms < 0) or not np.all(np.isfinite(quadratic_forms)):
+            return None
+        if np.any(dimensions < 2) or np.any(dimensions % 2 != 0):
+            return None
+
         normalization_argument = alpha * delta
         if normalization_argument <= 0 or not np.isfinite(normalization_argument):
             return None
 
-        if min(alpha, delta) >= 1e8:
-            precision = alpha / delta
-            return (
-                np.log(precision)
-                - np.log(2.0 * np.pi)
-                - 0.5 * precision * abs2_over_scale2
-            )
-
-        radius = np.sqrt(delta ** 2 + abs2_over_scale2)
-        argument = alpha * radius
-        if not np.all(np.isfinite(argument)) or np.any(argument <= 0):
+        radial_shift = quadratic_forms / (np.sqrt(delta ** 2 + quadratic_forms) + delta)
+        if not np.all(np.isfinite(radial_shift)):
             return None
 
-        return (
-            np.log(alpha)
-            - np.log(2.0 * np.pi * delta)
-            - HyperbolicGravitationalWaveTransient._log_bessel_k(1, normalization_argument)
-            + HyperbolicGravitationalWaveTransient._log_bessel_k(0, argument)
-        )
+        log_terms = -alpha * radial_shift
+        for dimension in np.unique(dimensions):
+            order = 0.5 * (dimension + 1.0)
+            scaled_bessel = (
+                HyperbolicGravitationalWaveTransient._scaled_bessel_k_half_integer(
+                    dimension, normalization_argument
+                )
+            )
+            if not np.isfinite(scaled_bessel) or scaled_bessel <= 0:
+                return None
+
+            constant = (
+                order * np.log(delta / alpha)
+                + 0.5 * (1.0 - dimension) * np.log(2.0 * np.pi)
+                - np.log(2.0 * alpha)
+                - np.log(scaled_bessel)
+            )
+            log_terms[dimensions == dimension] += constant
+
+        return log_terms
 
     def _resolve_likelihood_parameters(self, parameters=None):
         parameters = _fallback_to_parameters(self, parameters)
@@ -270,47 +482,275 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         # Bilby's frequency-domain convention gives Var(Re n_k) = Var(Im n_k) = S_n(f_k) T / 4.
         return power_spectral_density * self.waveform_generator.duration / 4.0
 
-    def _compute_detector_log_likelihood(
+    def _get_frequency_bin_data(
         self,
-        interferometer,
+        interferometers,
+        parameters=None,
+        waveform_polarizations=None,
+    ):
+        detector_frequency_data = []
+        active_frequencies = []
+        for interferometer in interferometers:
+            mask = interferometer.frequency_mask
+            frequencies = interferometer.frequency_array[mask]
+            if len(frequencies) == 0:
+                continue
+
+            scale2 = self._compute_scale2(interferometer.power_spectral_density_array[mask])
+            if np.any(scale2 <= 0) or not np.all(np.isfinite(scale2)):
+                return None
+
+            if waveform_polarizations is None:
+                residual = interferometer.frequency_domain_strain[mask]
+            else:
+                h_f = interferometer.get_detector_response(waveform_polarizations, parameters)
+                residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+
+            quadratic_contribution = (residual.real ** 2 + residual.imag ** 2) / scale2
+            if not np.all(np.isfinite(quadratic_contribution)):
+                return None
+
+            detector_frequency_data.append((frequencies, quadratic_contribution))
+            active_frequencies.append(frequencies)
+
+        if len(active_frequencies) == 0:
+            empty_float = np.array([], dtype=float)
+            empty_int = np.array([], dtype=int)
+            return empty_float, empty_float, empty_int
+
+        network_frequencies = np.unique(np.concatenate(active_frequencies))
+        quadratic_forms = np.zeros(len(network_frequencies), dtype=float)
+        active_counts = np.zeros(len(network_frequencies), dtype=int)
+
+        for frequencies, quadratic_contribution in detector_frequency_data:
+            indices = self._map_frequencies_to_network_grid(network_frequencies, frequencies)
+            if indices is None:
+                return None
+            quadratic_forms[indices] += quadratic_contribution
+            active_counts[indices] += 1
+
+        active_mask = active_counts > 0
+        return (
+            network_frequencies[active_mask],
+            quadratic_forms[active_mask],
+            2 * active_counts[active_mask],
+        )
+
+    def _compute_network_log_likelihood(
+        self,
+        interferometers,
         alpha_values,
         delta_values,
         parameters=None,
         waveform_polarizations=None,
     ):
-        mask = interferometer.frequency_mask
-        scale2 = self._compute_scale2(interferometer.power_spectral_density_array[mask])
-
-        if np.any(scale2 <= 0) or not np.all(np.isfinite(scale2)):
+        frequency_bin_data = self._get_frequency_bin_data(
+            interferometers=interferometers,
+            parameters=parameters,
+            waveform_polarizations=waveform_polarizations,
+        )
+        if frequency_bin_data is None:
             return -np.inf
 
-        if waveform_polarizations is None:
-            residual = interferometer.frequency_domain_strain[mask]
-        else:
-            h_f = interferometer.get_detector_response(waveform_polarizations, parameters)
-            residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+        frequencies, quadratic_forms, dimensions = frequency_bin_data
+        if len(frequencies) == 0:
+            return 0.0
 
-        abs2 = residual.real ** 2 + residual.imag ** 2
-        band_masks = self._get_frequency_band_masks(interferometer)
-
+        band_masks = self._get_frequency_band_masks(frequencies)
         logl = 0.0
         for alpha, delta, band_mask in zip(alpha_values, delta_values, band_masks):
             if not np.any(band_mask):
                 continue
 
-            band_scale2 = scale2[band_mask]
-            band_abs2_over_scale2 = abs2[band_mask] / band_scale2
-            band_log_density = self._log_hyperbolic_density(
-                abs2_over_scale2=band_abs2_over_scale2,
+            band_log_terms = self._compute_bin_log_terms(
+                quadratic_forms=quadratic_forms[band_mask],
+                dimensions=dimensions[band_mask],
                 alpha=alpha,
                 delta=delta,
             )
-            if band_log_density is None or not np.all(np.isfinite(band_log_density)):
+            if band_log_terms is None or not np.all(np.isfinite(band_log_terms)):
                 return -np.inf
-
-            logl += np.sum(band_log_density - np.log(band_scale2))
+            logl += np.sum(band_log_terms)
 
         return float(logl)
+
+    def _noise_log_likelihood_from_parameters(self, parameters):
+        alpha_values, delta_values = self._get_active_shape_parameters(
+            parameters, update_state=False
+        )
+        if alpha_values is None or delta_values is None:
+            return np.nan_to_num(-np.inf)
+
+        logl = self._compute_network_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+        )
+        if not np.isfinite(logl):
+            return np.nan_to_num(-np.inf)
+        return float(logl)
+
+    def _get_default_shape_parameter_dict(self):
+        if self.parameters is None:
+            parameters = dict()
+        else:
+            parameters = self.parameters.copy()
+
+        shape_parameters = dict()
+        alpha_values = self._get_alpha_values(parameters)
+        delta_values = self._get_delta_values(parameters)
+        if self.infer_alpha:
+            shape_parameters.update(
+                {
+                    key: float(value)
+                    for key, value in zip(self.alpha_parameter_keys, alpha_values)
+                }
+            )
+        if self.infer_delta:
+            shape_parameters.update(
+                {
+                    key: float(value)
+                    for key, value in zip(self.delta_parameter_keys, delta_values)
+                }
+            )
+        return shape_parameters
+
+    def _get_noise_evidence_priors(self, priors):
+        if priors is None:
+            priors = PriorDict()
+        elif not isinstance(priors, PriorDict):
+            priors = PriorDict(priors)
+
+        default_shape_parameters = self._get_default_shape_parameter_dict()
+        noise_priors = PriorDict()
+        for key, value in default_shape_parameters.items():
+            if key in priors:
+                noise_priors[key] = deepcopy(priors[key])
+            else:
+                noise_priors[key] = DeltaFunction(peak=value, name=key)
+        return noise_priors
+
+    @staticmethod
+    def _get_noise_evidence_quadrature_points():
+        edge_points = np.geomspace(1e-12, 1e-1, 12)
+        return np.unique(
+            np.concatenate(
+                ([0.0, 0.25, 0.5, 0.75, 1.0], edge_points, 1.0 - edge_points)
+            )
+        )
+
+    def _noise_log_likelihood_from_rescaled_priors(
+        self, keys, priors, unit_values, base_parameters
+    ):
+        parameters = base_parameters.copy()
+        for key, prior, unit_value in zip(keys, priors, unit_values):
+            parameters[key] = float(np.asarray(prior.rescale(unit_value), dtype=float))
+        return self._noise_log_likelihood_from_parameters(parameters)
+
+    def _noise_log_evidence_by_quadrature(self, noise_priors):
+        keys = list(noise_priors.non_fixed_keys)
+        priors = [noise_priors[key] for key in keys]
+        dimension = len(keys)
+        if dimension not in (1, 2):
+            raise ValueError(
+                "Hyperbolic noise-evidence quadrature supports one or two "
+                "sampled noise parameters"
+            )
+
+        base_parameters = self._get_default_shape_parameter_dict()
+        reference_points = self._get_noise_evidence_quadrature_points()
+
+        candidate_logls = [
+            self._noise_log_likelihood_from_parameters(base_parameters)
+        ]
+        candidate_logls.extend(
+            self._noise_log_likelihood_from_rescaled_priors(
+                keys=keys,
+                priors=priors,
+                unit_values=unit_values,
+                base_parameters=base_parameters,
+            )
+            for unit_values in product(reference_points, repeat=dimension)
+        )
+        finite_logls = [value for value in candidate_logls if np.isfinite(value)]
+        if not finite_logls:
+            return np.nan_to_num(-np.inf)
+        logl_reference = max(finite_logls)
+
+        def scaled_integrand(unit_values):
+            logl = self._noise_log_likelihood_from_rescaled_priors(
+                keys=keys,
+                priors=priors,
+                unit_values=unit_values,
+                base_parameters=base_parameters,
+            )
+            if not np.isfinite(logl):
+                return 0.0
+            return float(np.exp(logl - logl_reference))
+
+        quadrature_kwargs = dict(
+            epsabs=self._NOISE_EVIDENCE_QUADRATURE_EPSABS,
+            epsrel=self._NOISE_EVIDENCE_QUADRATURE_EPSREL,
+            limit=self._NOISE_EVIDENCE_QUADRATURE_LIMIT,
+            points=reference_points[1:-1],
+        )
+        if dimension == 1:
+            integral, _ = quad(
+                lambda unit_value: scaled_integrand((unit_value,)),
+                0.0,
+                1.0,
+                **quadrature_kwargs,
+            )
+        else:
+            def outer_integrand(unit_value_2):
+                inner_integral, _ = quad(
+                    lambda unit_value_1: scaled_integrand(
+                        (unit_value_1, unit_value_2)
+                    ),
+                    0.0,
+                    1.0,
+                    **quadrature_kwargs,
+                )
+                return float(inner_integral)
+
+            integral, _ = quad(
+                outer_integrand,
+                0.0,
+                1.0,
+                **quadrature_kwargs,
+            )
+        if not np.isfinite(integral) or integral <= 0:
+            raise RuntimeError(
+                "Hyperbolic noise-evidence quadrature failed to return a "
+                "positive finite integral"
+            )
+        return float(logl_reference + np.log(integral))
+
+    def _noise_log_evidence_by_nested_sampling(self, noise_priors):
+        from ...core.sampler import run_sampler
+
+        return run_sampler(
+            likelihood=_HyperbolicNoiseOnlyLikelihood(self),
+            priors=noise_priors,
+            label=f"{getattr(self, 'label', 'label')}_noise",
+            outdir=getattr(self, "outdir", "outdir"),
+            sampler="dynesty",
+            use_ratio=False,
+            plot=False,
+            save=False,
+            # Keep the auxiliary noise-evidence calculation single-process to
+            # avoid duplicating the main analysis worker pool in memory.
+            npool=1,
+            nlive=(
+                self.noise_evidence_nlive
+                if self.noise_evidence_nlive is not None
+                else max(100, 25 * len(noise_priors.non_fixed_keys))
+            ),
+            dlogz=self.dlogz_noise,
+            print_progress=False,
+            check_point=False,
+            resume=False,
+        )
 
     def log_likelihood(self, parameters=None):
         parameters = self._resolve_likelihood_parameters(parameters)
@@ -324,40 +764,47 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        logl = 0.0
-        for ifo in self.interferometers:
-            detector_logl = self._compute_detector_log_likelihood(
-                interferometer=ifo,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-            )
-            if not np.isfinite(detector_logl):
-                return np.nan_to_num(-np.inf)
-            logl += detector_logl
-
+        logl = self._compute_network_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+            parameters=parameters,
+            waveform_polarizations=pols,
+        )
+        if not np.isfinite(logl):
+            return np.nan_to_num(-np.inf)
         return float(logl)
 
     def noise_log_likelihood(self):
-        alpha_values, delta_values = self._get_active_shape_parameters(
-            self.parameters.copy(), update_state=False
-        )
-        if alpha_values is None or delta_values is None:
-            return np.nan_to_num(-np.inf)
+        return self._noise_log_likelihood_from_parameters(self.parameters.copy())
 
-        logl = 0.0
-        for ifo in self.interferometers:
-            detector_logl = self._compute_detector_log_likelihood(
-                interferometer=ifo,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
+    def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+        if priors is None:
+            sampled_parameters = []
+        elif isinstance(priors, PriorDict):
+            sampled_parameters = priors.non_fixed_keys
+        else:
+            sampled_parameters = PriorDict(priors).non_fixed_keys
+
+        if not self.has_parameter_dependent_noise_likelihood(sampled_parameters):
+            return self.noise_log_likelihood()
+
+        noise_priors = self._get_noise_evidence_priors(priors)
+        if len(noise_priors.non_fixed_keys) == 0:
+            return self._noise_log_likelihood_from_parameters(
+                self._get_default_shape_parameter_dict()
             )
-            if not np.isfinite(detector_logl):
-                return np.nan_to_num(-np.inf)
-            logl += detector_logl
 
-        return float(logl)
+        if self.noise_evidence_method == "quadrature":
+            if len(noise_priors.non_fixed_keys) <= 2:
+                return self._noise_log_evidence_by_quadrature(noise_priors)
+            logger.info(
+                "Hyperbolic noise-evidence quadrature supports at most two "
+                "sampled noise parameters; falling back to nested sampling."
+            )
+
+        noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
+        return float(noise_result.log_evidence)
 
     def log_likelihood_ratio(self, parameters=None):
         parameters = self._resolve_likelihood_parameters(parameters)
@@ -371,26 +818,20 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        signal_logl = 0.0
-        noise_logl = 0.0
-        for ifo in self.interferometers:
-            detector_signal_logl = self._compute_detector_log_likelihood(
-                interferometer=ifo,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-            )
-            detector_noise_logl = self._compute_detector_log_likelihood(
-                interferometer=ifo,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-            )
-            if not np.isfinite(detector_signal_logl) or not np.isfinite(detector_noise_logl):
-                return np.nan_to_num(-np.inf)
-            signal_logl += detector_signal_logl
-            noise_logl += detector_noise_logl
-
+        signal_logl = self._compute_network_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+            parameters=parameters,
+            waveform_polarizations=pols,
+        )
+        noise_logl = self._compute_network_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+        )
+        if not np.isfinite(signal_logl) or not np.isfinite(noise_logl):
+            return np.nan_to_num(-np.inf)
         return float(signal_logl - noise_logl)
 
     def compute_per_detector_log_likelihood(self, parameters=None):
@@ -410,15 +851,15 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             return parameters.copy()
 
         for interferometer in self.interferometers:
-            detector_signal_logl = self._compute_detector_log_likelihood(
-                interferometer=interferometer,
+            detector_signal_logl = self._compute_network_log_likelihood(
+                interferometers=[interferometer],
                 alpha_values=alpha_values,
                 delta_values=delta_values,
                 parameters=parameters,
                 waveform_polarizations=pols,
             )
-            detector_noise_logl = self._compute_detector_log_likelihood(
-                interferometer=interferometer,
+            detector_noise_logl = self._compute_network_log_likelihood(
+                interferometers=[interferometer],
                 alpha_values=alpha_values,
                 delta_values=delta_values,
             )

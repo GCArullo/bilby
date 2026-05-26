@@ -952,8 +952,24 @@ class Result(object):
 
         """
         latex_labels = []
+        sine_gaussian_labels = dict(
+            hrss="SG-{index} hrss",
+            Q="SG-{index} Q",
+            frequency="SG-{index} f [Hz]",
+            time_offset="SG-{index} dt [s]",
+            phase_offset="SG-{index} dphi",
+        )
         for key in keys:
-            if key in self.search_parameter_keys:
+            parts = key.split("_", 3)
+            if (
+                len(parts) == 4
+                and parts[0] == "sine"
+                and parts[1] == "gaussian"
+                and parts[2].isdigit()
+                and parts[3] in sine_gaussian_labels
+            ):
+                label = sine_gaussian_labels[parts[3]].format(index=parts[2])
+            elif key in self.search_parameter_keys:
                 idx = self.search_parameter_keys.index(key)
                 label = self.parameter_labels_with_unit[idx]
             elif key in self.parameter_labels:
@@ -1327,6 +1343,10 @@ class Result(object):
                 key: self.injection_parameters.get(key, np.nan)
                 for key in self.search_parameter_keys
             }
+        elif cond1 and isinstance(parameters, list) and cond3:
+            kwargs["truths"] = [
+                self.injection_parameters.get(key, np.nan) for key in parameters
+            ]
 
         # If parameters is a dictionary, use the keys to determine which
         # parameters to plot and the values as truths.

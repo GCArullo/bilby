@@ -108,6 +108,39 @@ class TestResult(unittest.TestCase):
         del self.result
         pass
 
+    def test_get_latex_labels_from_sine_gaussian_parameter_keys(self):
+        result = bilby.core.result.Result(
+            label="label",
+            outdir="outdir",
+            sampler="emcee",
+            search_parameter_keys=[
+                "sine_gaussian_0_hrss",
+                "sine_gaussian_0_Q",
+                "sine_gaussian_0_frequency",
+                "sine_gaussian_0_time_offset",
+                "sine_gaussian_0_phase_offset",
+            ],
+            fixed_parameter_keys=[],
+            priors=None,
+            injection_parameters=dict(),
+            meta_data=dict(),
+        )
+
+        labels = result.get_latex_labels_from_parameter_keys(
+            result.search_parameter_keys
+        )
+
+        self.assertEqual(
+            labels,
+            [
+                "SG-0 hrss",
+                "SG-0 Q",
+                "SG-0 f [Hz]",
+                "SG-0 dt [s]",
+                "SG-0 dphi",
+            ],
+        )
+
     def test_result_file_name_default(self):
         outdir = "outdir"
         label = "label"
@@ -463,6 +496,17 @@ class TestResult(unittest.TestCase):
         self.result.plot_corner(parameters=["x", "y"])
         self.result.plot_corner(parameters=["x", "y"], truths=[1, 1])
         self.result.plot_corner(parameters=dict(x=1, y=1))
+
+    def test_plot_corner_with_explicit_parameters_uses_injection_truths(self):
+        import matplotlib.pyplot as plt
+
+        self.result.injection_parameters = dict(x=0.8, y=1.1)
+        with patch("corner.corner", return_value=plt.figure()) as mock_corner:
+            self.result.plot_corner(
+                parameters=["x", "y"], save=False, titles=False
+            )
+
+        self.assertEqual(mock_corner.call_args.kwargs["truths"], [0.8, 1.1])
 
     def test_plot_corner_with_priors(self):
         priors = bilby.core.prior.PriorDict()

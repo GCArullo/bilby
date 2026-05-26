@@ -77,7 +77,7 @@ class TestResult(unittest.TestCase):
         result = bilby.core.result.Result(
             label="label",
             outdir=self.outdir,
-            sampler="nestle",
+            sampler="emcee",
             search_parameter_keys=["x", "y"],
             fixed_parameter_keys=["c", "d"],
             priors=priors,
@@ -182,7 +182,7 @@ class TestResult(unittest.TestCase):
         result = bilby.core.result.Result(
             label="label",
             outdir="outdir",
-            sampler="nestle",
+            sampler="emcee",
             search_parameter_keys=["x", "y"],
             fixed_parameter_keys=["c", "d"],
             priors=None,
@@ -202,7 +202,7 @@ class TestResult(unittest.TestCase):
             bilby.core.result.Result(
                 label="label",
                 outdir="outdir",
-                sampler="nestle",
+                sampler="emcee",
                 search_parameter_keys=["x", "y"],
                 fixed_parameter_keys=["c", "d"],
                 priors=["a", "b"],
@@ -544,7 +544,7 @@ class TestResult(unittest.TestCase):
         for var in ["x", "y"]:
             self.assertTrue(np.array_equal(az.posterior[var].values.squeeze(),
                                            self.result.posterior[var].values))
-            self.assertTrue(len(az.prior[var][0]) == Nprior)
+            self.assertTrue(len(np.squeeze(az.prior[var])) == Nprior)
 
         self.assertTrue(np.array_equal(az.log_likelihood["log_likelihood"].values.squeeze(),
                                        log_likelihood))
@@ -790,7 +790,7 @@ class TestResultListError(unittest.TestCase):
             result = bilby.core.result.Result(
                 label=self.label + str(i),
                 outdir=self.outdir,
-                sampler="cpnest",
+                sampler="emcee",
                 search_parameter_keys=["x", "y"],
                 fixed_parameter_keys=["c", "d"],
                 priors=self.priors,
@@ -950,7 +950,7 @@ class TestResultListError(unittest.TestCase):
         result = bilby.core.result.Result(
             label=self.label,
             outdir=self.outdir,
-            sampler="cpnest",
+            sampler="emcee",
             search_parameter_keys=["x", "y"],
             fixed_parameter_keys=["c", "d"],
             priors=self.priors,
@@ -1109,7 +1109,7 @@ class TestResultSaveAndRead(unittest.TestCase):
         result = bilby.core.result.Result(
             label="label",
             outdir=self.outdir,
-            sampler="nestle",
+            sampler="emcee",
             search_parameter_keys=["x", "y"],
             fixed_parameter_keys=["c", "d"],
             priors=priors,

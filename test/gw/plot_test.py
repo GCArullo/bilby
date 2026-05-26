@@ -111,6 +111,21 @@ class TestCBCResult(unittest.TestCase):
                 )
             )
 
+    def test_waveform_plotting_png_labels_median_interval(self):
+        import matplotlib.pyplot as plt
+
+        fig = self.result.plot_interferometer_waveform_posterior(
+            interferometer=self.result.interferometers[0],
+            n_samples=10,
+            save=False,
+        )
+        labels = [artist.get_label() for axis in fig.axes for artist in axis.get_children()]
+
+        self.assertIn("Median reconstructed", labels)
+        self.assertIn("90% credible interval", labels)
+        self.assertNotIn("Mean reconstructed", labels)
+        plt.close(fig)
+
     def test_plot_skymap_meta_data(self):
         from ligo.skymap import io
 

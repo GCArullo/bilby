@@ -624,10 +624,10 @@ class CompactBinaryCoalescenceResult(CoreResult):
                 col=1,
             )
         else:
-            lower_limit = np.mean(fd_waveforms, axis=0)[0] / 1e3
+            lower_limit = np.median(fd_waveforms, axis=0)[0] / 1e3
             axs[0].loglog(
                 plot_frequencies,
-                np.mean(fd_waveforms, axis=0), color=WAVEFORM_COLOR, label='Mean reconstructed')
+                np.median(fd_waveforms, axis=0), color=WAVEFORM_COLOR, label='Median reconstructed')
             axs[0].fill_between(
                 plot_frequencies,
                 np.percentile(fd_waveforms, lower_percentile, axis=0),
@@ -636,7 +636,7 @@ class CompactBinaryCoalescenceResult(CoreResult):
                 label=r'{}% credible interval'.format(int(upper_percentile - lower_percentile)),
                 alpha=0.3)
             axs[1].plot(
-                plot_times, np.mean(td_waveforms, axis=0),
+                plot_times, np.median(td_waveforms, axis=0),
                 color=WAVEFORM_COLOR)
             axs[1].fill_between(
                 plot_times, np.percentile(

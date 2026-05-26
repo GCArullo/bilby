@@ -134,6 +134,14 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help="Generate files but do not call bilby_pipe.",
     )
     parser.add_argument(
+        "--require-epnfs",
+        action="store_true",
+        help=(
+            "Set queue=EPNFS in generated ini files so bilby_pipe emits "
+            "requirements = ((TARGET.EPNFS =?= True)) in Condor submit files."
+        ),
+    )
+    parser.add_argument(
         "--likelihood",
         choices=("student", "gaussian"),
         default="gaussian",
@@ -404,6 +412,7 @@ def render_ini(
     detector_dependent_nu: bool,
     working_directory: Path,
     accounting_user: str,
+    require_epnfs: bool,
     template_settings: dict[str, object],
     sine_gaussian_config,
 ) -> str:
@@ -420,6 +429,8 @@ def render_ini(
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
+    if require_epnfs:
+        rendered = replace_line(rendered, "queue", "EPNFS")
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(
         int(sampler_kwargs["nlive"]),
@@ -468,6 +479,7 @@ def prepare_run(
     file_prefix: str,
     working_directory: Path,
     accounting_user: str,
+    require_epnfs: bool,
     sine_gaussian_config,
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix
@@ -531,6 +543,7 @@ def prepare_run(
             detector_dependent_nu=run_detector_dependent_nu,
             working_directory=working_directory,
             accounting_user=accounting_user,
+            require_epnfs=require_epnfs,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
         ),
@@ -633,6 +646,7 @@ def main() -> int:
                 file_prefix=file_prefix,
                 working_directory=working_directory,
                 accounting_user=args.accounting_user,
+                require_epnfs=args.require_epnfs,
                 sine_gaussian_config=sine_gaussian_config,
             )
             if not args.dry_run:

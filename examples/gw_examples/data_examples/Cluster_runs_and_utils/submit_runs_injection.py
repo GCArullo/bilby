@@ -303,6 +303,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate files but do not call bilby_pipe.",
     )
     parser.add_argument(
+        "--require-epnfs",
+        action="store_true",
+        help=(
+            "Set queue=EPNFS in generated ini files so bilby_pipe emits "
+            "requirements = ((TARGET.EPNFS =?= True)) in Condor submit files."
+        ),
+    )
+    parser.add_argument(
         "--submit",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -1258,6 +1266,8 @@ def render_ini(
         rendered = rendered.replace(placeholder, value)
 
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
+    if args.require_epnfs:
+        rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = disable_calibration_settings(rendered)

@@ -972,6 +972,8 @@ class Result(object):
             elif key in self.search_parameter_keys:
                 idx = self.search_parameter_keys.index(key)
                 label = self.parameter_labels_with_unit[idx]
+                if label == key and key in Prior._default_latex_labels:
+                    label = Prior._default_latex_labels[key]
             elif key in self.parameter_labels:
                 label = key
             else:

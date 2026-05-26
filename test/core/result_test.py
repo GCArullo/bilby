@@ -141,6 +141,37 @@ class TestResult(unittest.TestCase):
             ],
         )
 
+    def test_get_latex_labels_from_default_labels_without_priors(self):
+        result = bilby.core.result.Result(
+            label="label",
+            outdir="outdir",
+            sampler="emcee",
+            search_parameter_keys=[
+                "chirp_mass",
+                "mass_1",
+                "luminosity_distance",
+                "theta_jn",
+            ],
+            fixed_parameter_keys=[],
+            priors=None,
+            injection_parameters=dict(),
+            meta_data=dict(),
+        )
+
+        labels = result.get_latex_labels_from_parameter_keys(
+            result.search_parameter_keys
+        )
+
+        self.assertEqual(
+            labels,
+            [
+                r"$\mathcal{M}$",
+                "$m_1$",
+                "$d_L$",
+                r"$\theta_{JN}$",
+            ],
+        )
+
     def test_result_file_name_default(self):
         outdir = "outdir"
         label = "label"

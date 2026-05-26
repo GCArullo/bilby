@@ -1,4 +1,5 @@
 import importlib.util
+import ast
 import sys
 from pathlib import Path
 
@@ -156,6 +157,58 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert "distance-marginalization=False\n" in ini_text
     assert "generation-function=None\n" in ini_text
     assert "queue=EPNFS\n" in ini_text
+
+
+def test_main_creates_summarypages_without_recalib_parameters_by_default(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+    outdir_base = tmp_path / "out"
+    webdir_base = tmp_path / "web"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "gaussian",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--outdir-base",
+            str(outdir_base),
+            "--webdir-base",
+            str(webdir_base),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    summary_line = next(
+        line for line in ini_text.splitlines()
+        if line.startswith("summarypages-arguments=")
+    )
+    summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
+    assert "create-summary=True\n" in ini_text
+    assert summary_arguments["ignore_parameters"] == ["recalib*"]
+    assert summary_arguments["disable_expert"] is True
+    assert summary_arguments["f_ref"] == 10.0
+    assert summary_arguments["f_low"] == 20
+    assert summary_arguments["f_start"] == 10.0
+    assert summary_arguments["f_final"] == 448.0
+    assert summary_arguments["approximant"] == ["NRSur7dq4"]
+    assert summary_arguments["calibration"] == {
+        "H1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/H1.txt",
+        "L1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/L1.txt",
+    }
 
 
 def test_main_student_range_writes_single_gaussian_run_without_n_suffix(

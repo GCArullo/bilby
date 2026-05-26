@@ -68,6 +68,19 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
+DEFAULT_PESUMMARY_ARGUMENTS = {
+    "multi_process": 6,
+    "disable_expert": True,
+    "disable_interactive": True,
+    "gw": True,
+    "no_ligo_skymap": True,
+    "redshift_method": "exact",
+    "evolve_spins_forwards": True,
+    "evolve_spins_backwards": True,
+    "NRSur_fits": True,
+    "calculate_multipole_snr": True,
+    "ignore_parameters": ["recalib*"],
+}
 INI_TEMPLATE_PATH = (
     SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
 )
@@ -1235,6 +1248,43 @@ def render_prior(
     return rendered
 
 
+def minimum_frequency_for_pesummary(minimum_frequency):
+    if isinstance(minimum_frequency, dict):
+        detector_frequencies = [
+            value for key, value in minimum_frequency.items()
+            if key != "waveform"
+        ]
+        if detector_frequencies:
+            return min(detector_frequencies)
+        return minimum_frequency["waveform"]
+    return minimum_frequency
+
+
+def maximum_frequency_for_pesummary(maximum_frequency):
+    if isinstance(maximum_frequency, dict):
+        return max(maximum_frequency.values())
+    return maximum_frequency
+
+
+def build_pesummary_arguments(
+    template_settings: dict[str, object],
+    *,
+    psd_paths: dict[str, str],
+) -> dict[str, object]:
+    arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
+    f_low = minimum_frequency_for_pesummary(template_settings["minimum_frequency"])
+    f_ref = template_settings["reference_frequency"]
+    arguments.update(
+        f_low=f_low,
+        f_start=f_ref,
+        f_ref=f_ref,
+        f_final=maximum_frequency_for_pesummary(template_settings["maximum_frequency"]),
+        approximant=[template_settings["waveform_approximant"]],
+        psd=psd_paths,
+    )
+    return arguments
+
+
 def render_ini(
     ini_template: str,
     *,
@@ -1268,6 +1318,12 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
+    rendered = replace_line(rendered, "create-summary", "True")
+    rendered = replace_line(
+        rendered,
+        "summarypages-arguments",
+        repr(build_pesummary_arguments(template_settings, psd_paths=psd_paths)),
+    )
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = disable_calibration_settings(rendered)

@@ -1,4 +1,5 @@
 import importlib.util
+import ast
 import sys
 from pathlib import Path
 
@@ -231,6 +232,47 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert "distance-marginalization=False\n" in gaussian_ini
     assert "generation-function=None\n" in gaussian_ini
     assert "queue=EPNFS\n" in gaussian_ini
+
+
+def test_main_creates_summarypages_without_recalib_parameters_by_default(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "gaussian",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    gaussian_ini = next(base_dir.rglob("*.ini")).read_text(encoding="utf-8")
+    summary_line = next(
+        line for line in gaussian_ini.splitlines()
+        if line.startswith("summarypages-arguments=")
+    )
+    summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
+    assert "create-summary=True\n" in gaussian_ini
+    assert summary_arguments["ignore_parameters"] == ["recalib*"]
+    assert summary_arguments["disable_interactive"] is True
+    assert summary_arguments["f_ref"] == 10.0
+    assert summary_arguments["f_low"] == 20
+    assert summary_arguments["f_start"] == 10.0
+    assert summary_arguments["f_final"] == 448.0
+    assert summary_arguments["approximant"] == ["NRSur7dq4"]
+    assert "calibration" not in summary_arguments
+    assert set(summary_arguments["psd"]) == {"H1", "L1"}
 
 
 def test_main_student_multi_band_writes_single_gaussian_companion(

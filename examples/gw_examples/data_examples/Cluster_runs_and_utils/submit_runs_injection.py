@@ -26,6 +26,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import h5py
 import numpy as np
+from gwpy.timeseries import TimeSeries
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
@@ -909,14 +910,13 @@ def write_time_series(
     start_time: float,
     sampling_frequency: float,
 ) -> None:
-    dataset_name = f"{detector}_SIM"
-    with h5py.File(path, "w") as h5_file:
-        dataset = h5_file.create_dataset(dataset_name, data=np.asarray(strain))
-        dataset.attrs["dx"] = 1.0 / sampling_frequency
-        dataset.attrs["name"] = dataset_name
-        dataset.attrs["unit"] = ""
-        dataset.attrs["x0"] = start_time
-        dataset.attrs["xunit"] = "s"
+    series = TimeSeries(
+        strain,
+        t0=start_time,
+        dt=1.0 / sampling_frequency,
+        name=f"{detector}_SIM",
+    )
+    series.write(str(path), format="hdf5", overwrite=True)
 
 
 def write_psd(path: Path, frequencies: np.ndarray, psd: np.ndarray) -> None:

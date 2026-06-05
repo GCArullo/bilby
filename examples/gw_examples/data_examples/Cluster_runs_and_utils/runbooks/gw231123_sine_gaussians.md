@@ -28,6 +28,12 @@ GW231123 NRsur + 2 SG (coherent):
 python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode coherent
 ```
 
+GW231123 NRsur + 3 SG (coherent):
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 3 --sine-gaussian-mode coherent
+```
+
 GW231123 NRsur + 1 SG in H1 (incoherent):
 
 ```

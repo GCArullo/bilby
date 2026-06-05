@@ -158,6 +158,17 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert "generation-function=None\n" in ini_text
     assert "queue=EPNFS\n" in ini_text
 
+    prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
+    assert (
+        "luminosity_distance =  bilby.gw.prior.UniformSourceFrame("
+        "name='luminosity_distance', cosmology=Planck15, maximum=15000.0, "
+        "minimum=10, unit='Mpc')"
+    ) in prior_text
+    assert (
+        "sine_gaussian_0_time_offset = Uniform("
+        "name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)"
+    ) in prior_text
+
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
     monkeypatch, tmp_path

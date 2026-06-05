@@ -10,7 +10,7 @@ from typing import Iterable
 NLIVE_PER_SINE_GAUSSIAN = 500
 SINE_GAUSSIAN_HRSS_BOUNDS = (1e-24, 1e-20)
 SINE_GAUSSIAN_Q_BOUNDS = (3.0, 30.0)
-SINE_GAUSSIAN_TIME_OFFSET_BOUNDS = (-0.05, 0.05)
+SINE_GAUSSIAN_TIME_OFFSET_BOUNDS = (-0.15, 0.15)
 
 
 def positive_int(value: str) -> int:

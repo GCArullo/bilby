@@ -126,6 +126,28 @@ class TestCBCResult(unittest.TestCase):
         self.assertNotIn("Mean reconstructed", labels)
         plt.close(fig)
 
+    def test_waveform_plotting_accepts_detector_frame_time(self):
+        import matplotlib.pyplot as plt
+
+        posterior = self.result.posterior.copy()
+        posterior["L1_time"] = posterior["geocent_time"]
+        posterior["zenith"] = 0.5
+        posterior["azimuth"] = 1.0
+        posterior = posterior.drop(columns=["ra", "dec", "geocent_time"])
+
+        self.result.posterior = posterior
+        self.result.meta_data["likelihood"]["reference_frame"] = "L1H1"
+        self.result.meta_data["likelihood"]["time_reference"] = "L1"
+
+        fig = self.result.plot_interferometer_waveform_posterior(
+            interferometer=self.result.interferometers[0],
+            n_samples=2,
+            save=False,
+        )
+
+        self.assertIsNotNone(fig)
+        plt.close(fig)
+
     def test_plot_skymap_meta_data(self):
         from ligo.skymap import io
 

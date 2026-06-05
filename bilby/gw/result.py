@@ -9,8 +9,11 @@ from ..core.utils import (
     infft, logger, check_directory_exists_and_if_not_mkdir,
     latex_plot_format, safe_file_dump, safe_save_figure,
 )
-from .utils import plot_spline_pos, spline_angle_xform, asd_from_freq_series
-from .detector import get_empty_interferometer, Interferometer
+from .utils import (
+    plot_spline_pos, spline_angle_xform, asd_from_freq_series,
+    zenith_azimuth_to_ra_dec,
+)
+from .detector import get_empty_interferometer, Interferometer, InterferometerList
 
 
 class CompactBinaryCoalescenceResult(CoreResult):
@@ -140,6 +143,24 @@ class CompactBinaryCoalescenceResult(CoreResult):
             'likelihood', 'parameter_conversion')
 
     @property
+    def reference_frame(self):
+        """ Reference frame used for sky-location sampling """
+        try:
+            return self.__get_from_nested_meta_data(
+                'likelihood', 'reference_frame')
+        except AttributeError:
+            return "sky"
+
+    @property
+    def time_reference(self):
+        """ Time reference used for coalescence-time sampling """
+        try:
+            return self.__get_from_nested_meta_data(
+                'likelihood', 'time_reference')
+        except AttributeError:
+            return "geocent"
+
+    @property
     def cosmology(self):
         """The global cosmology used in the analysis.
 
@@ -183,6 +204,101 @@ class CompactBinaryCoalescenceResult(CoreResult):
         except AttributeError:
             logger.info("No injection for detector {}".format(detector))
             return None
+
+    @staticmethod
+    def _parse_reference_frame(reference_frame):
+        if reference_frame == "sky":
+            return "sky"
+        elif isinstance(reference_frame, InterferometerList):
+            return reference_frame[:2]
+        elif isinstance(reference_frame, list):
+            return InterferometerList(reference_frame[:2])
+        elif isinstance(reference_frame, str):
+            if len(reference_frame) < 4:
+                raise ValueError(
+                    "Unable to parse reference frame {}".format(reference_frame)
+                )
+            return InterferometerList([reference_frame[:2], reference_frame[2:4]])
+        else:
+            raise ValueError(
+                "Unable to parse reference frame {}".format(reference_frame)
+            )
+
+    def _add_sky_frame_parameters_to_samples(self, samples):
+        samples = samples.copy()
+        if {"ra", "dec", "geocent_time"}.issubset(samples):
+            return samples
+
+        reference_frame = self.reference_frame
+        time_reference = self.time_reference
+        if time_reference is None:
+            time_reference = "geocent"
+        time_reference = str(time_reference)
+        time_key = "{}_time".format(time_reference)
+
+        if reference_frame != "sky":
+            reference_frame = self._parse_reference_frame(reference_frame)
+        if "geocent" not in time_reference:
+            reference_ifo = get_empty_interferometer(time_reference)
+        else:
+            reference_ifo = None
+
+        sky_frame_parameters = []
+        for parameters in samples.to_dict(orient="records"):
+            time = parameters.get(time_key, parameters.get("geocent_time"))
+            if time is None:
+                raise KeyError(
+                    "Unable to determine waveform plot time from {} or "
+                    "geocent_time".format(time_key)
+                )
+
+            if reference_frame != "sky":
+                try:
+                    ra, dec = zenith_azimuth_to_ra_dec(
+                        parameters["zenith"], parameters["azimuth"],
+                        time, reference_frame)
+                except KeyError:
+                    if "ra" in parameters and "dec" in parameters:
+                        ra = parameters["ra"]
+                        dec = parameters["dec"]
+                        logger.warning(
+                            "Cannot convert from zenith/azimuth to ra/dec; "
+                            "falling back to provided ra/dec"
+                        )
+                    else:
+                        raise
+            else:
+                ra = parameters["ra"]
+                dec = parameters["dec"]
+
+            if reference_ifo is None:
+                geocent_time = parameters["geocent_time"]
+            else:
+                geocent_time = time - reference_ifo.time_delay_from_geocenter(
+                    ra=ra, dec=dec, time=time)
+
+            sky_frame_parameters.append(
+                dict(ra=ra, dec=dec, geocent_time=geocent_time)
+            )
+
+        for key in ["ra", "dec", "geocent_time"]:
+            samples[key] = [parameters[key] for parameters in sky_frame_parameters]
+        return samples
+
+    def _get_waveform_plot_samples(self, n_samples=None):
+        if n_samples is None:
+            samples = self.posterior
+        elif n_samples > len(self.posterior):
+            logger.debug(
+                "Requested more waveform samples ({}) than we have "
+                "posterior samples ({})!".format(
+                    n_samples, len(self.posterior)
+                )
+            )
+            samples = self.posterior
+        else:
+            samples = self.posterior.sample(n_samples, replace=False)
+        return self._add_sky_frame_parameters_to_samples(samples)
 
     @latex_plot_format
     def plot_calibration_posterior(self, level=.9, format="png"):
@@ -385,25 +501,14 @@ class CompactBinaryCoalescenceResult(CoreResult):
         logger.info("Generating waveform figure for {}".format(
             interferometer.name))
 
-        if n_samples is None:
-            samples = self.posterior
-        elif n_samples > len(self.posterior):
-            logger.debug(
-                "Requested more waveform samples ({}) than we have "
-                "posterior samples ({})!".format(
-                    n_samples, len(self.posterior)
-                )
-            )
-            samples = self.posterior
-        else:
-            samples = self.posterior.sample(n_samples, replace=False)
+        samples = self._get_waveform_plot_samples(n_samples)
 
         if start_time is None:
             start_time = - 0.4
-        start_time = np.mean(samples.geocent_time) + start_time
+        start_time = np.mean(samples["geocent_time"]) + start_time
         if end_time is None:
             end_time = 0.2
-        end_time = np.mean(samples.geocent_time) + end_time
+        end_time = np.mean(samples["geocent_time"]) + end_time
         if format == "html":
             start_time = - np.inf
             end_time = np.inf

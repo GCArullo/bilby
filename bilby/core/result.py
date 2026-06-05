@@ -1000,6 +1000,21 @@ class Result(object):
         tokens.discard("")
         return bool(tokens.intersection(RAILING_HARD_BOUND_NAME_TOKENS))
 
+    @staticmethod
+    def _adjust_railing_flags_for_exempt_bounds(key, prior, lower_rail, upper_rail):
+        minimum = getattr(prior, "minimum", np.nan)
+        maximum = getattr(prior, "maximum", np.nan)
+        key = key.lower()
+        tokens = set(re.split(r"[^0-9a-zA-Z]+", key))
+        tokens.discard("")
+
+        if key == "mass_ratio" and np.isfinite(maximum) and np.isclose(maximum, 1):
+            upper_rail = False
+        if "hrss" in tokens and np.isfinite(minimum) and np.isclose(minimum, 0):
+            lower_rail = False
+
+        return lower_rail, upper_rail
+
     @latex_plot_format
     def check_railing(
         self, bins=100, tolerance=2.0, save=True, outdir=None, label=None
@@ -1087,6 +1102,12 @@ class Result(object):
                 samples=samples,
                 prior_bins=prior_bins,
                 tolerance=tolerance,
+            )
+            lower_rail, upper_rail = self._adjust_railing_flags_for_exempt_bounds(
+                key=key,
+                prior=prior,
+                lower_rail=lower_rail,
+                upper_rail=upper_rail,
             )
             status = "railing" if lower_rail or upper_rail else "not_railing"
             if lower_rail and upper_rail:

@@ -13,9 +13,11 @@ Student-t runs also generate a single-band Gaussian companion run by default.
 from __future__ import annotations
 
 import argparse
+import ast
 import getpass
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -26,7 +28,6 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import h5py
 import numpy as np
-from gwpy.timeseries import TimeSeries
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
@@ -43,6 +44,7 @@ from submission_sine_gaussian_utils import (
     build_sine_gaussian_prior_block,
     combine_prior_blocks,
     effective_nlive,
+    parse_ini_dict_string,
     parse_template_value,
     positive_int,
     read_template_settings,
@@ -104,6 +106,16 @@ DEFAULT_NLIVE = 1000
 TEST_INJECTION_NLIVE = 256
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 DEFAULT_INJECTION_NOISE = "student"
+FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
+FD_PATCH_MODULE_NAME = "fd_data_generation_patch"
+FD_PATCH_SOURCE_PATH = SCRIPT_DIR / f"{FD_PATCH_MODULE_NAME}.py"
+FD_SITE_CUSTOMIZE = """\
+import os
+
+if os.environ.get("BILBY_FD_DATA_PATCH") == "1":
+    import fd_data_generation_patch
+    fd_data_generation_patch.patch()
+"""
 INJECTED_SINE_GAUSSIAN_VALUES_PATH = (
     SCRIPT_DIR / "runbooks" / "injected_sine_gaussian_values.json"
 )
@@ -153,6 +165,16 @@ def outdir_label(value: str) -> str:
     if any(separator and separator in label for separator in (os.sep, os.altsep)):
         raise argparse.ArgumentTypeError("outdir label must not contain path separators")
     return label
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive finite number") from exc
+    if not np.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive finite number")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -218,6 +240,26 @@ def build_parser() -> argparse.ArgumentParser:
             "Noise model used when staging the injected data. "
             "`zero-gaussian` means zero Gaussian noise. "
             f"Default: {DEFAULT_INJECTION_NOISE}."
+        ),
+    )
+    parser.add_argument(
+        "--injection-duration",
+        type=positive_float,
+        default=None,
+        help=(
+            "Duration in seconds used to stage injected data and write the "
+            "generated recovery ini files. Defaults to the template duration."
+        ),
+    )
+    parser.add_argument(
+        "--frequency-domain-injection",
+        "--fd-injection",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Stage injected data as frequency-domain strain and make the "
+            "generated bilby_pipe jobs load it directly into the likelihood. "
+            "This avoids the time-domain HDF5 round-trip and Tukey window."
         ),
     )
     parser.add_argument(
@@ -531,6 +573,17 @@ def load_psds(
             )
             for detector in detectors
         }
+
+
+def template_settings_with_injection_duration(
+    template_settings: dict[str, object],
+    injection_duration: float | None,
+) -> dict[str, object]:
+    if injection_duration is None:
+        return template_settings
+    updated_settings = dict(template_settings)
+    updated_settings["duration"] = float(injection_duration)
+    return updated_settings
 
 
 def build_waveform_generator(
@@ -903,6 +956,13 @@ def build_interferometers(
     return interferometers
 
 
+def write_frequency_domain_data_generation_patch(stage_dir: Path) -> None:
+    if not FD_PATCH_SOURCE_PATH.is_file():
+        raise FileNotFoundError(f"Missing FD data-generation patch: {FD_PATCH_SOURCE_PATH}")
+    shutil.copy2(FD_PATCH_SOURCE_PATH, stage_dir / FD_PATCH_SOURCE_PATH.name)
+    (stage_dir / "sitecustomize.py").write_text(FD_SITE_CUSTOMIZE, encoding="utf-8")
+
+
 def write_time_series(
     path: Path,
     detector: str,
@@ -910,6 +970,8 @@ def write_time_series(
     start_time: float,
     sampling_frequency: float,
 ) -> None:
+    from gwpy.timeseries import TimeSeries
+
     series = TimeSeries(
         strain,
         t0=start_time,
@@ -919,7 +981,36 @@ def write_time_series(
     series.write(str(path), format="hdf5", overwrite=True)
 
 
+def write_frequency_domain_strain(
+    path: Path,
+    detector: str,
+    frequency_domain_strain: np.ndarray,
+    frequencies: np.ndarray,
+    start_time: float,
+    duration: float,
+    sampling_frequency: float,
+) -> None:
+    if np.shape(frequency_domain_strain) != np.shape(frequencies):
+        raise ValueError("Frequency-domain strain and frequency array shapes differ")
+    with h5py.File(path, "w") as h5_file:
+        h5_file.create_dataset(
+            "frequency_array",
+            data=np.asarray(frequencies, dtype=float),
+        )
+        h5_file.create_dataset(
+            "frequency_domain_strain",
+            data=np.asarray(frequency_domain_strain, dtype=complex),
+        )
+        h5_file.attrs["detector"] = detector
+        h5_file.attrs["duration"] = float(duration)
+        h5_file.attrs["sampling_frequency"] = float(sampling_frequency)
+        h5_file.attrs["start_time"] = float(start_time)
+        h5_file.attrs["data_format"] = FD_DATA_FORMAT
+
+
 def write_psd(path: Path, frequencies: np.ndarray, psd: np.ndarray) -> None:
+    if np.shape(frequencies) != np.shape(psd):
+        raise ValueError("PSD and frequency array shapes differ")
     np.savetxt(
         path,
         np.column_stack([frequencies, psd]),
@@ -996,22 +1087,41 @@ def stage_injection_bundle(
         parameters=injection_parameters,
         waveform_generator=waveform_generator,
     )
+    if args.frequency_domain_injection:
+        write_frequency_domain_data_generation_patch(stage_dir)
 
     data_paths = {}
     psd_paths = {}
     for interferometer in interferometers:
         detector = interferometer.name
-        data_path = data_dir / f"{detector}_{staged_label_prefix}.hdf5"
+        if args.frequency_domain_injection:
+            data_path = data_dir / f"{detector}_{staged_label_prefix}_fd.hdf5"
+        else:
+            data_path = data_dir / f"{detector}_{staged_label_prefix}.hdf5"
         psd_path = psd_dir / f"{detector}_{staged_label_prefix}_psd.dat"
-        write_time_series(
-            data_path,
-            detector,
-            interferometer.time_domain_strain,
-            interferometer.start_time,
-            interferometer.sampling_frequency,
+        if args.frequency_domain_injection:
+            write_frequency_domain_strain(
+                data_path,
+                detector,
+                interferometer.frequency_domain_strain,
+                interferometer.frequency_array,
+                interferometer.start_time,
+                interferometer.duration,
+                interferometer.sampling_frequency,
+            )
+        else:
+            write_time_series(
+                data_path,
+                detector,
+                interferometer.time_domain_strain,
+                interferometer.start_time,
+                interferometer.sampling_frequency,
+            )
+        write_psd(
+            psd_path,
+            interferometer.frequency_array,
+            interferometer.power_spectral_density_array,
         )
-        frequencies, psd_array = psds[detector]
-        write_psd(psd_path, frequencies, psd_array)
         data_paths[detector] = str(data_path.resolve())
         psd_paths[detector] = str(psd_path.resolve())
 
@@ -1019,9 +1129,21 @@ def stage_injection_bundle(
         maxl_index=maxl_index,
         maxl_log_likelihood=maxl_log_likelihood,
         injection_noise_model=args.injection_noise,
+        injection_data_domain=(
+            "frequency" if args.frequency_domain_injection else "time"
+        ),
+        injection_data_format=(
+            FD_DATA_FORMAT if args.frequency_domain_injection else "hdf5"
+        ),
         nu_injection=injected_noise_nu,
         likelihood_nu=likelihood_nu,
         num_frequency_bands=args.num_frequency_bands,
+        injection_duration=template_settings["duration"],
+        injection_start_time=(
+            template_settings["trigger_time"]
+            + template_settings["post_trigger_duration"]
+            - template_settings["duration"]
+        ),
         detector_dependent_nu=effective_detector_dependent_nu,
         posterior_path=str(posterior_path.resolve()),
         waveform_approximant=template_settings["waveform_approximant"],
@@ -1063,6 +1185,68 @@ def format_ini_dict(mapping: dict[str, str], *, quote_values: bool = False) -> s
         rendered = f"'{value}'" if quote_values else value
         items.append(f"{key}: {rendered}")
     return "{ " + ", ".join(items) + ", }"
+
+
+def get_ini_value(text: str, key: str) -> str | None:
+    prefix = f"{key}="
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return line.split("=", 1)[1]
+    return None
+
+
+def parse_environment_variables(raw_value: str | None) -> dict[str, object]:
+    if raw_value is None:
+        return {}
+    parsed = parse_template_value(raw_value)
+    if isinstance(parsed, dict):
+        return dict(parsed)
+    if isinstance(parsed, str):
+        normalized = re.sub(
+            r"([\"'][^\"']+[\"'])\s*=",
+            r"\1:",
+            parsed.strip(),
+        )
+        try:
+            parsed = ast.literal_eval(normalized)
+        except (ValueError, SyntaxError):
+            parsed = parse_ini_dict_string(parsed)
+        if isinstance(parsed, dict):
+            return dict(parsed)
+    raise ValueError(f"Unable to parse environment-variables={raw_value}")
+
+
+def build_frequency_domain_pythonpath(
+    stage_dir: Path,
+    _existing_pythonpath: object | None,
+) -> str:
+    return stage_dir.name
+
+
+def add_frequency_domain_environment(text: str, stage_dir: Path) -> str:
+    environment = parse_environment_variables(
+        get_ini_value(text, "environment-variables")
+    )
+    environment["PYTHONPATH"] = build_frequency_domain_pythonpath(
+        stage_dir,
+        environment.get("PYTHONPATH"),
+    )
+    environment["BILBY_FD_DATA_PATCH"] = "1"
+    return replace_or_append_line(
+        text,
+        "environment-variables",
+        repr(environment),
+    )
+
+
+def apply_frequency_domain_injection_ini_settings(text: str, stage_dir: Path) -> str:
+    rendered = replace_line(text, "data-format", FD_DATA_FORMAT)
+    rendered = replace_or_append_line(rendered, "gaussian-noise", "False")
+    rendered = replace_or_append_line(rendered, "zero-noise", "False")
+    rendered = replace_or_append_line(rendered, "injection", "False")
+    rendered = replace_or_append_line(rendered, "plot-data", "False")
+    rendered = replace_or_append_line(rendered, "plot-spectrogram", "False")
+    return add_frequency_domain_environment(rendered, stage_dir)
 
 
 def replace_line(text: str, key: str, value: str) -> str:
@@ -1315,6 +1499,12 @@ def render_ini(
     for placeholder, value in placeholders.items():
         rendered = rendered.replace(placeholder, value)
 
+    if "duration" in template_settings:
+        rendered = replace_or_append_line(
+            rendered,
+            "duration",
+            repr(float(template_settings["duration"])),
+        )
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
@@ -1325,7 +1515,10 @@ def render_ini(
         repr(build_pesummary_arguments(template_settings, psd_paths=psd_paths)),
     )
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
-    rendered = replace_line(rendered, "data-format", "hdf5")
+    if args.frequency_domain_injection:
+        rendered = apply_frequency_domain_injection_ini_settings(rendered, stage_dir)
+    else:
+        rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = disable_calibration_settings(rendered)
     rendered = replace_line(
         rendered,
@@ -1481,6 +1674,10 @@ def prepare_runs(args: argparse.Namespace) -> list[Path]:
     ini_template = load_template(INI_TEMPLATE_PATH)
     prior_template = load_template(PRIOR_TEMPLATE_PATH)
     template_settings = read_template_settings(ini_template)
+    template_settings = template_settings_with_injection_duration(
+        template_settings,
+        args.injection_duration,
+    )
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
         range_mode=args.sine_gaussian_range,

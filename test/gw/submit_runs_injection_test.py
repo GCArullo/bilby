@@ -12,24 +12,12 @@ SCRIPT_PATH = REPO_ROOT / (
     "examples/gw_examples/data_examples/Cluster_runs_and_utils/"
     "submit_runs_injection.py"
 )
-FD_PATCH_PATH = REPO_ROOT / (
-    "examples/gw_examples/data_examples/Cluster_runs_and_utils/"
-    "fd_data_generation_patch.py"
-)
 
 
 def import_submit_runs_injection(monkeypatch, module_name="submit_runs_injection_test"):
     script_path = SCRIPT_PATH
     monkeypatch.syspath_prepend(str(script_path.parent))
     spec = importlib.util.spec_from_file_location(module_name, script_path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def import_fd_patch_module(module_name="fd_data_generation_patch_test"):
-    spec = importlib.util.spec_from_file_location(module_name, FD_PATCH_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
@@ -113,7 +101,7 @@ def test_write_frequency_domain_strain_writes_hdf5_layout(monkeypatch, tmp_path)
         assert h5_file.attrs["start_time"] == 123.5
 
 
-def test_render_ini_frequency_domain_injection_uses_fd_loader(monkeypatch, tmp_path):
+def test_render_ini_frequency_domain_injection_uses_native_fd_loader(monkeypatch, tmp_path):
     module = import_submit_runs_injection(
         monkeypatch,
         module_name="submit_runs_injection_fd_ini_test",
@@ -188,41 +176,5 @@ def test_render_ini_frequency_domain_injection_uses_fd_loader(monkeypatch, tmp_p
     assert "data-format=bilby_frequency_domain_hdf5" in rendered
     assert "plot-data=False" in rendered
     assert "plot-spectrogram=False" in rendered
-    assert "BILBY_FD_DATA_PATCH" in rendered
-    assert "PYTHONPATH" in rendered
-
-
-def test_fd_patch_loads_frequency_domain_data_without_td_materialization(tmp_path):
-    patch_module = import_fd_patch_module()
-    path = tmp_path / "H1_fd.hdf5"
-    frequencies = np.linspace(0.0, 2.0, 9)
-    strain = np.arange(9, dtype=float) + 1j * np.arange(9, dtype=float)
-    with h5py.File(path, "w") as h5_file:
-        h5_file.create_dataset("frequency_array", data=frequencies)
-        h5_file.create_dataset("frequency_domain_strain", data=strain)
-        h5_file.attrs["duration"] = 4.0
-        h5_file.attrs["sampling_frequency"] = 4.0
-        h5_file.attrs["start_time"] = 123.5
-
-    loader = type(
-        "Loader",
-        (),
-        dict(
-            detectors=("H1",),
-            data_dict={"H1": str(path)},
-            psd_dict=None,
-            injection=False,
-            duration=4.0,
-            sampling_frequency=4.0,
-            start_time=123.5,
-        ),
-    )()
-
-    patch_module._set_interferometers_from_frequency_domain_hdf5(loader)
-
-    interferometer = loader.interferometers[0]
-    np.testing.assert_array_equal(
-        interferometer.strain_data._frequency_domain_strain,
-        strain,
-    )
-    assert interferometer.strain_data._time_domain_strain is None
+    assert "BILBY_FD_DATA_PATCH" not in rendered
+    assert "PYTHONPATH" not in rendered

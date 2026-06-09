@@ -13,11 +13,9 @@ Student-t runs also generate a single-band Gaussian companion run by default.
 from __future__ import annotations
 
 import argparse
-import ast
 import getpass
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -107,15 +105,6 @@ TEST_INJECTION_NLIVE = 256
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 DEFAULT_INJECTION_NOISE = "student"
 FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
-FD_PATCH_MODULE_NAME = "fd_data_generation_patch"
-FD_PATCH_SOURCE_PATH = SCRIPT_DIR / f"{FD_PATCH_MODULE_NAME}.py"
-FD_SITE_CUSTOMIZE = """\
-import os
-
-if os.environ.get("BILBY_FD_DATA_PATCH") == "1":
-    import fd_data_generation_patch
-    fd_data_generation_patch.patch()
-"""
 INJECTED_SINE_GAUSSIAN_VALUES_PATH = (
     SCRIPT_DIR / "runbooks" / "injected_sine_gaussian_values.json"
 )
@@ -956,13 +945,6 @@ def build_interferometers(
     return interferometers
 
 
-def write_frequency_domain_data_generation_patch(stage_dir: Path) -> None:
-    if not FD_PATCH_SOURCE_PATH.is_file():
-        raise FileNotFoundError(f"Missing FD data-generation patch: {FD_PATCH_SOURCE_PATH}")
-    shutil.copy2(FD_PATCH_SOURCE_PATH, stage_dir / FD_PATCH_SOURCE_PATH.name)
-    (stage_dir / "sitecustomize.py").write_text(FD_SITE_CUSTOMIZE, encoding="utf-8")
-
-
 def write_time_series(
     path: Path,
     detector: str,
@@ -1087,8 +1069,6 @@ def stage_injection_bundle(
         parameters=injection_parameters,
         waveform_generator=waveform_generator,
     )
-    if args.frequency_domain_injection:
-        write_frequency_domain_data_generation_patch(stage_dir)
 
     data_paths = {}
     psd_paths = {}
@@ -1187,66 +1167,14 @@ def format_ini_dict(mapping: dict[str, str], *, quote_values: bool = False) -> s
     return "{ " + ", ".join(items) + ", }"
 
 
-def get_ini_value(text: str, key: str) -> str | None:
-    prefix = f"{key}="
-    for line in text.splitlines():
-        if line.startswith(prefix):
-            return line.split("=", 1)[1]
-    return None
-
-
-def parse_environment_variables(raw_value: str | None) -> dict[str, object]:
-    if raw_value is None:
-        return {}
-    parsed = parse_template_value(raw_value)
-    if isinstance(parsed, dict):
-        return dict(parsed)
-    if isinstance(parsed, str):
-        normalized = re.sub(
-            r"([\"'][^\"']+[\"'])\s*=",
-            r"\1:",
-            parsed.strip(),
-        )
-        try:
-            parsed = ast.literal_eval(normalized)
-        except (ValueError, SyntaxError):
-            parsed = parse_ini_dict_string(parsed)
-        if isinstance(parsed, dict):
-            return dict(parsed)
-    raise ValueError(f"Unable to parse environment-variables={raw_value}")
-
-
-def build_frequency_domain_pythonpath(
-    stage_dir: Path,
-    _existing_pythonpath: object | None,
-) -> str:
-    return stage_dir.name
-
-
-def add_frequency_domain_environment(text: str, stage_dir: Path) -> str:
-    environment = parse_environment_variables(
-        get_ini_value(text, "environment-variables")
-    )
-    environment["PYTHONPATH"] = build_frequency_domain_pythonpath(
-        stage_dir,
-        environment.get("PYTHONPATH"),
-    )
-    environment["BILBY_FD_DATA_PATCH"] = "1"
-    return replace_or_append_line(
-        text,
-        "environment-variables",
-        repr(environment),
-    )
-
-
-def apply_frequency_domain_injection_ini_settings(text: str, stage_dir: Path) -> str:
+def apply_frequency_domain_injection_ini_settings(text: str) -> str:
     rendered = replace_line(text, "data-format", FD_DATA_FORMAT)
     rendered = replace_or_append_line(rendered, "gaussian-noise", "False")
     rendered = replace_or_append_line(rendered, "zero-noise", "False")
     rendered = replace_or_append_line(rendered, "injection", "False")
     rendered = replace_or_append_line(rendered, "plot-data", "False")
     rendered = replace_or_append_line(rendered, "plot-spectrogram", "False")
-    return add_frequency_domain_environment(rendered, stage_dir)
+    return rendered
 
 
 def replace_line(text: str, key: str, value: str) -> str:
@@ -1516,7 +1444,7 @@ def render_ini(
     )
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     if args.frequency_domain_injection:
-        rendered = apply_frequency_domain_injection_ini_settings(rendered, stage_dir)
+        rendered = apply_frequency_domain_injection_ini_settings(rendered)
     else:
         rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = disable_calibration_settings(rendered)

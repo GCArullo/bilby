@@ -426,11 +426,6 @@ def test_stage_injection_bundle_writes_psd_on_staged_frequency_grid(
     )
     monkeypatch.setattr(
         module,
-        "write_frequency_domain_data_generation_patch",
-        lambda stage_dir: None,
-    )
-    monkeypatch.setattr(
-        module,
         "load_test_injection_chirp_mass_bounds",
         lambda posterior_path: (1.0, 2.0),
     )

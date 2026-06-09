@@ -218,6 +218,8 @@ def run_sampler(
     gzip=False,
     result_class=None,
     npool=1,
+    railing_bins=100,
+    railing_tolerance=2.0,
     **kwargs,
 ):
     """
@@ -251,6 +253,12 @@ def run_sampler(
         using simulated data). Appended to the result object and saved.
     plot: bool
         If true, generate a corner plot and, if applicable diagnostic plots
+    railing_bins: int
+        Number of bins to use in the posterior railing check run during
+        postprocessing when ``plot=True``.
+    railing_tolerance: float
+        Percentage threshold used in the posterior railing check run during
+        postprocessing when ``plot=True``.
     conversion_function: function, optional
         Function to apply to posterior to generate additional parameters.
         This function should take one positional argument, a dictionary or
@@ -431,6 +439,13 @@ def run_sampler(
         result.save_to_file(overwrite=True, extension=save, gzip=gzip, outdir=outdir)
 
     if plot:
+        try:
+            result.check_railing(
+                bins=railing_bins,
+                tolerance=railing_tolerance,
+            )
+        except Exception as error:
+            logger.warning(f"Prior railing check failed with error: {error}")
         result.plot_corner()
     if (
         not sampler.cached_result

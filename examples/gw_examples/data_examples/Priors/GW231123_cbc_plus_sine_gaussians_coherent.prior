@@ -23,13 +23,13 @@ phi_12 = Uniform(name='phi_12', minimum=0, maximum=2 * np.pi, boundary='periodic
 phi_jl = Uniform(name='phi_jl', minimum=0, maximum=2 * np.pi, boundary='periodic')
 
 sine_gaussian_0_hrss = LogUniform(name='sine_gaussian_0_hrss', minimum=1e-24, maximum=1e-20)
-sine_gaussian_0_Q = Uniform(name='sine_gaussian_0_Q', minimum=3, maximum=30)
+sine_gaussian_0_Q = Uniform(name='sine_gaussian_0_Q', minimum=0.1, maximum=30)
 sine_gaussian_0_frequency = Uniform(name='sine_gaussian_0_frequency', minimum=50, maximum=1024)
 sine_gaussian_0_time_offset = Uniform(name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)
 sine_gaussian_0_phase_offset = Uniform(name='sine_gaussian_0_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
 
 sine_gaussian_1_hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform(name='sine_gaussian_1_hrss', minimum=1e-24, maximum=1e-20, upper_bound_name='sine_gaussian_0_hrss')
-sine_gaussian_1_Q = Uniform(name='sine_gaussian_1_Q', minimum=3, maximum=30)
+sine_gaussian_1_Q = Uniform(name='sine_gaussian_1_Q', minimum=0.1, maximum=30)
 sine_gaussian_1_frequency = Uniform(name='sine_gaussian_1_frequency', minimum=50, maximum=1024)
 sine_gaussian_1_time_offset = Uniform(name='sine_gaussian_1_time_offset', minimum=-0.15, maximum=0.15)
 sine_gaussian_1_phase_offset = Uniform(name='sine_gaussian_1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')

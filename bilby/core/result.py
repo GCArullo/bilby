@@ -4,6 +4,7 @@ import inspect
 import json
 import os
 import packaging
+import re
 from collections import namedtuple
 from copy import copy
 from importlib import import_module
@@ -31,6 +32,42 @@ from .prior import Prior, PriorDict, DeltaFunction, ConditionalDeltaFunction
 
 
 EXTENSIONS = ["json", "hdf5", "h5", "pickle", "pkl"]
+RAILING_HARD_BOUND_EXACT_NAMES = {
+    "a_1",
+    "a_2",
+    "azimuth",
+    "cos_tilt_1",
+    "cos_tilt_2",
+    "dec",
+    "iota",
+    "phase",
+    "phi_1",
+    "phi_12",
+    "phi_2",
+    "phi_jl",
+    "psi",
+    "ra",
+    "theta_jn",
+    "tilt_1",
+    "tilt_2",
+    "zenith",
+}
+RAILING_HARD_BOUND_NAME_TOKENS = {
+    "angle",
+    "angles",
+    "azimuth",
+    "chi",
+    "dec",
+    "iota",
+    "phase",
+    "phi",
+    "psi",
+    "ra",
+    "spin",
+    "theta",
+    "tilt",
+    "zenith",
+}
 
 
 def result_file_name(outdir, label, extension='json', gzip=False):
@@ -937,6 +974,230 @@ class Result(object):
 
         logger.info("Writing samples file to {}".format(filename))
         df.to_csv(filename, index=False, header=True, sep=' ')
+
+    @staticmethod
+    def _railing_check(samples, prior_bins, tolerance):
+        hist, _ = np.histogram(samples, bins=prior_bins, density=True)
+        highest_hist = np.amax(hist)
+        if not np.isfinite(highest_hist) or highest_hist <= 0:
+            return False, False
+        lower_support = hist[0] / highest_hist * 100
+        higher_support = hist[-1] / highest_hist * 100
+        low_end_railing = lower_support > tolerance
+        high_end_railing = higher_support > tolerance
+        return low_end_railing, high_end_railing
+
+    @staticmethod
+    def _is_hard_bound_railing_parameter(key, prior):
+        if getattr(prior, "boundary", None) in {"periodic", "reflective"}:
+            return True
+        if prior.__class__.__name__ in {"AlignedSpin", "Cosine", "Sine"}:
+            return True
+        key = key.lower()
+        if key in RAILING_HARD_BOUND_EXACT_NAMES:
+            return True
+        tokens = set(re.split(r"[^0-9a-zA-Z]+", key))
+        tokens.discard("")
+        return bool(tokens.intersection(RAILING_HARD_BOUND_NAME_TOKENS))
+
+    @staticmethod
+    def _adjust_railing_flags_for_exempt_bounds(key, prior, lower_rail, upper_rail):
+        minimum = getattr(prior, "minimum", np.nan)
+        maximum = getattr(prior, "maximum", np.nan)
+        key = key.lower()
+        tokens = set(re.split(r"[^0-9a-zA-Z]+", key))
+        tokens.discard("")
+
+        if key == "mass_ratio" and np.isfinite(maximum) and np.isclose(maximum, 1):
+            upper_rail = False
+        if "hrss" in tokens and np.isfinite(minimum) and np.isclose(minimum, 0):
+            lower_rail = False
+
+        return lower_rail, upper_rail
+
+    @latex_plot_format
+    def check_railing(
+        self, bins=100, tolerance=2.0, save=True, outdir=None, label=None
+    ):
+        """Check the posterior for railing against prior bounds.
+
+        Parameters
+        ==========
+        bins: int
+            Number of bins spanning the prior support.
+        tolerance: float
+            Percentage threshold used to flag support in the edge bins.
+        save: bool
+            If true, save a text summary and table figure to disk.
+        outdir, label: str, optional
+            Alternative outdir and label to use for saved outputs.
+
+        Returns
+        =======
+        pandas.DataFrame
+            Table summarising the railing status of each parameter.
+        """
+        import matplotlib.pyplot as plt
+
+        posterior = self.posterior
+        priors = self.priors
+
+        if label is None:
+            label = self.label
+        if outdir is None:
+            outdir = self.outdir
+
+        parameter_keys = self.search_parameter_keys
+        if parameter_keys is None:
+            parameter_keys = posterior.select_dtypes([np.number]).columns
+
+        rows = []
+        for key in parameter_keys:
+            prior = priors.get(key, None)
+            if prior is None or key not in posterior:
+                continue
+
+            if self._is_hard_bound_railing_parameter(key, prior):
+                rows.append(
+                    dict(
+                        parameter=key,
+                        status="ignored_hard_bound",
+                        lower_rail=False,
+                        upper_rail=False,
+                        notes="hard_bound",
+                    )
+                )
+                continue
+
+            minimum = getattr(prior, "minimum", np.nan)
+            maximum = getattr(prior, "maximum", np.nan)
+            if not np.all(np.isfinite([minimum, maximum])) or maximum <= minimum:
+                rows.append(
+                    dict(
+                        parameter=key,
+                        status="not_checked",
+                        lower_rail=False,
+                        upper_rail=False,
+                        notes="finite_prior_bounds_required",
+                    )
+                )
+                continue
+
+            samples = posterior[key].to_numpy()
+            samples = samples[np.isfinite(samples)]
+            if len(samples) == 0:
+                rows.append(
+                    dict(
+                        parameter=key,
+                        status="not_checked",
+                        lower_rail=False,
+                        upper_rail=False,
+                        notes="no_finite_samples",
+                    )
+                )
+                continue
+
+            prior_bins = np.linspace(minimum, maximum, bins)
+            lower_rail, upper_rail = self._railing_check(
+                samples=samples,
+                prior_bins=prior_bins,
+                tolerance=tolerance,
+            )
+            lower_rail, upper_rail = self._adjust_railing_flags_for_exempt_bounds(
+                key=key,
+                prior=prior,
+                lower_rail=lower_rail,
+                upper_rail=upper_rail,
+            )
+            status = "railing" if lower_rail or upper_rail else "not_railing"
+            if lower_rail and upper_rail:
+                notes = "lower_and_upper"
+            elif lower_rail:
+                notes = "lower"
+            elif upper_rail:
+                notes = "upper"
+            else:
+                notes = "checked"
+            rows.append(
+                dict(
+                    parameter=key,
+                    status=status,
+                    lower_rail=lower_rail,
+                    upper_rail=upper_rail,
+                    notes=notes,
+                )
+            )
+
+        summary = pd.DataFrame(
+            rows,
+            columns=["parameter", "status", "lower_rail", "upper_rail", "notes"],
+        )
+
+        railing_parameters = summary.loc[summary.status == "railing", "parameter"].tolist()
+        if railing_parameters:
+            logger.warning(
+                "Posterior railing detected for parameters: %s",
+                ", ".join(railing_parameters),
+            )
+
+        if save:
+            outdir = self._safe_outdir_creation(outdir, self.check_railing)
+            filename = os.path.join(outdir, f"{label}_prior_railing.txt")
+            logger.info("Writing railing summary to {}".format(filename))
+            summary.to_csv(filename, index=False, sep="\t")
+
+            display = summary.loc[:, ["parameter", "status", "notes"]].copy()
+            display["status"] = display["status"].replace(
+                {
+                    "not_railing": "not railing",
+                    "ignored_hard_bound": "ignored",
+                    "not_checked": "not checked",
+                }
+            )
+            display["notes"] = display["notes"].replace(
+                {
+                    "hard_bound": "hard bound",
+                    "finite_prior_bounds_required": "finite bounds required",
+                    "no_finite_samples": "no finite samples",
+                    "lower_and_upper": "lower + upper",
+                }
+            )
+
+            colors = {
+                "not_railing": "#d9ead3",
+                "railing": "#f4cccc",
+                "ignored_hard_bound": "#e6e6e6",
+                "not_checked": "#e6e6e6",
+            }
+            figure_name = os.path.join(outdir, f"{label}_prior_railing.png")
+            nrows = max(len(display), 1)
+            fig_height = max(1.5, 0.45 * nrows + 1.0)
+            fig, ax = plt.subplots(figsize=(8, fig_height))
+            ax.axis("off")
+            table = ax.table(
+                cellText=display.values,
+                colLabels=["parameter", "status", "notes"],
+                cellLoc="left",
+                loc="center",
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(10)
+            table.scale(1, 1.4)
+
+            for (row, col), cell in table.get_celld().items():
+                if row == 0:
+                    cell.set_facecolor("#d9d9d9")
+                    cell.set_text_props(weight="bold")
+                    continue
+                status = summary.iloc[row - 1]["status"]
+                if col in [0, 1]:
+                    cell.set_facecolor(colors.get(status, "#ffffff"))
+
+            fig.tight_layout()
+            safe_save_figure(fig=fig, filename=figure_name, dpi=300)
+            plt.close(fig)
+
+        return summary
 
     def get_latex_labels_from_parameter_keys(self, keys):
         """ Returns a list of latex_labels corresponding to the given keys

@@ -435,6 +435,64 @@ class TestResult(unittest.TestCase):
         df = pd.read_csv(filename, sep=" ")
         self.assertTrue(len(data.dtype) == len(df.keys()))
 
+    def test_check_railing_saves_outputs_and_ignores_hard_bounds(self):
+        priors = bilby.prior.PriorDict(
+            dict(
+                mass_ratio=bilby.prior.Uniform(0, 1, "mass_ratio"),
+                distance=bilby.prior.Uniform(0, 1, "distance"),
+                phase=bilby.prior.Uniform(
+                    0, 2 * np.pi, "phase", boundary="periodic"
+                ),
+                chi_1=bilby.prior.Uniform(0, 0.99, "chi_1"),
+            )
+        )
+        result = bilby.core.result.Result(
+            label="railing",
+            outdir=self.outdir,
+            sampler="emcee",
+            search_parameter_keys=["mass_ratio", "distance", "phase", "chi_1"],
+            fixed_parameter_keys=[],
+            priors=priors,
+            meta_data=dict(),
+        )
+        nsamples = 500
+        result.posterior = pd.DataFrame(
+            dict(
+                mass_ratio=np.linspace(0.2, 0.8, nsamples),
+                distance=np.random.uniform(0, 0.005, nsamples),
+                phase=np.random.uniform(0, 0.005, nsamples),
+                chi_1=np.random.uniform(0.985, 0.99, nsamples),
+            )
+        )
+
+        summary = result.check_railing()
+
+        filename = os.path.join(self.outdir, "railing_prior_railing.txt")
+        figure = os.path.join(self.outdir, "railing_prior_railing.png")
+        self.assertTrue(os.path.isfile(filename))
+        self.assertTrue(os.path.isfile(figure))
+
+        self.assertEqual(
+            summary.set_index("parameter").loc["mass_ratio", "status"],
+            "not_railing",
+        )
+        self.assertEqual(
+            summary.set_index("parameter").loc["distance", "status"],
+            "railing",
+        )
+        self.assertEqual(
+            summary.set_index("parameter").loc["phase", "status"],
+            "ignored_hard_bound",
+        )
+        self.assertEqual(
+            summary.set_index("parameter").loc["chi_1", "status"],
+            "ignored_hard_bound",
+        )
+
+        saved = pd.read_csv(filename, sep="\t")
+        self.assertListEqual(saved["parameter"].tolist(), summary["parameter"].tolist())
+        self.assertListEqual(saved["status"].tolist(), summary["status"].tolist())
+
     def test_samples_to_posterior_simple(self):
         self.result.posterior = None
         x = [1, 2, 3]
@@ -718,6 +776,81 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
     def init_outdir(self, tmp_path):
         self.outdir = str(tmp_path / "test")
 
+    def setUp(self):
+        bilby.utils.command_line_args.bilby_test_mode = False
+
+    def tearDown(self):
+        bilby.utils.command_line_args.bilby_test_mode = True
+
+    def test_run_sampler_passes_custom_railing_settings_to_postprocessing(self):
+        check_railing_mock = None
+
+        class SimpleLikelihood(bilby.Likelihood):
+            def __init__(self):
+                super().__init__(parameters={"x": None})
+                self.meta_data = {"likelihood_class": "SimpleLikelihood"}
+
+            def log_likelihood(self, parameters=None):
+                return -1.0
+
+        class FakeSampler:
+            def __init__(
+                self,
+                likelihood,
+                priors,
+                outdir,
+                label,
+                injection_parameters,
+                meta_data,
+                use_ratio,
+                plot,
+                result_class,
+                npool,
+                **kwargs,
+            ):
+                nonlocal check_railing_mock
+                self.cached_result = None
+                self.use_ratio = True
+                self.result = bilby.core.result.Result(
+                    label=label,
+                    outdir=outdir,
+                    sampler="fake",
+                    search_parameter_keys=["x"],
+                    priors=priors,
+                    meta_data=meta_data,
+                    log_evidence=12.3,
+                    log_evidence_err=0.4,
+                    use_ratio=True,
+                )
+                self.result.posterior = pd.DataFrame(dict(x=[0.5]))
+                self.result.plot_corner = MagicMock()
+                check_railing_mock = MagicMock()
+                self.result.check_railing = check_railing_mock
+
+            def run_sampler(self):
+                return self.result
+
+        likelihood = SimpleLikelihood()
+        priors = bilby.core.prior.PriorDict(
+            dict(x=bilby.core.prior.Uniform(0, 1, "x"))
+        )
+
+        with patch("bilby.core.sampler.get_sampler_class", return_value=FakeSampler):
+            result = bilby.run_sampler(
+                likelihood=likelihood,
+                priors=priors,
+                sampler="fake",
+                outdir=self.outdir,
+                label="label",
+                plot=True,
+                save=False,
+                railing_bins=123,
+                railing_tolerance=4.5,
+            )
+
+        check_railing_mock.assert_called_once_with(bins=123, tolerance=4.5)
+        result.plot_corner.assert_called_once_with()
+
     def test_free_noise_parameter_evidence_runs_after_plotting(self):
         order = []
         save_states = []
@@ -773,11 +906,15 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
             def plot_side_effect(*args, **kwargs):
                 order.append("plot")
 
+            def railing_side_effect(*args, **kwargs):
+                order.append("railing")
+
             result.save_to_file = MagicMock(side_effect=save_side_effect)
             result.samples_to_posterior = MagicMock(
                 side_effect=samples_to_posterior_side_effect
             )
             result.plot_corner = MagicMock(side_effect=plot_side_effect)
+            result.check_railing = MagicMock(side_effect=railing_side_effect)
             return result
 
         class FakeSampler:
@@ -826,7 +963,7 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
 
         self.assertEqual(
             order,
-            ["run", "save_1", "posterior", "save_2", "plot", "noise", "save_3"],
+            ["run", "save_1", "posterior", "save_2", "railing", "plot", "noise", "save_3"],
         )
         self.assertTrue(np.isnan(save_states[0]["log_noise_evidence"]))
         self.assertTrue(np.isnan(save_states[0]["log_evidence"]))

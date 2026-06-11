@@ -232,6 +232,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--noise-generation-seed",
+        type=int,
+        default=None,
+        help=(
+            "Random seed used to generate the staged injection noise. "
+            "Defaults to the template sampling-seed when it is an integer; "
+            f"otherwise defaults to {DEFAULT_STAGING_RANDOM_SEED}."
+        ),
+    )
+    parser.add_argument(
         "--injection-duration",
         type=positive_float,
         default=None,
@@ -1017,12 +1027,16 @@ def stage_injection_bundle(
     data_dir = ensure_dir(stage_dir / "data")
     psd_dir = ensure_dir(stage_dir / "psds")
 
-    template_seed = template_settings.get("sampling_seed")
-    staging_seed = (
-        int(template_seed)
-        if isinstance(template_seed, (int, np.integer))
-        else DEFAULT_STAGING_RANDOM_SEED
-    )
+    noise_generation_seed = getattr(args, "noise_generation_seed", None)
+    if noise_generation_seed is not None:
+        staging_seed = int(noise_generation_seed)
+    else:
+        template_seed = template_settings.get("sampling_seed")
+        staging_seed = (
+            int(template_seed)
+            if isinstance(template_seed, (int, np.integer))
+            else DEFAULT_STAGING_RANDOM_SEED
+        )
     bilby.core.utils.random.seed(staging_seed)
 
     injection_parameters, maxl_log_likelihood, maxl_index = (

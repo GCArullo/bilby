@@ -44,6 +44,7 @@ def test_num_frequency_bands_defaults_to_one():
 
     assert args.injection_noise == "student"
     assert args.num_frequency_bands is None
+    assert args.noise_generation_seed is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -66,6 +67,15 @@ def test_zero_gaussian_injection_noise_is_available():
     args = parser.parse_args(["--injection-noise", "zero-gaussian"])
 
     assert args.injection_noise == "zero-gaussian"
+
+
+def test_noise_generation_seed_is_available():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--noise-generation-seed", "98765"])
+
+    assert args.noise_generation_seed == 98765
 
 
 def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
@@ -359,6 +369,7 @@ def test_stage_injection_bundle_writes_psd_on_staged_frequency_grid(
             num_frequency_bands=1,
             detector_dependent_nu=False,
             nu_injection="2.1",
+            noise_generation_seed=98765,
             frequency_domain_injection=True,
         ),
     )()
@@ -402,6 +413,8 @@ def test_stage_injection_bundle_writes_psd_on_staged_frequency_grid(
             self.injected_parameters = parameters
             self.waveform_generator = waveform_generator
 
+    seed_calls = []
+    monkeypatch.setattr(module.bilby.core.utils.random, "seed", seed_calls.append)
     monkeypatch.setattr(
         module,
         "load_maximum_likelihood_injection",
@@ -439,6 +452,7 @@ def test_stage_injection_bundle_writes_psd_on_staged_frequency_grid(
     )
 
     psd = np.loadtxt(bundle["psd_paths"]["H1"])
+    assert seed_calls == [98765]
     np.testing.assert_array_equal(psd[:, 0], staged_frequencies)
     np.testing.assert_array_equal(psd[:, 1], staged_psd)
 

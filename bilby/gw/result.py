@@ -6,7 +6,7 @@ import numpy as np
 
 from ..core.result import Result as CoreResult
 from ..core.utils import (
-    infft, logger, check_directory_exists_and_if_not_mkdir,
+    logger, check_directory_exists_and_if_not_mkdir,
     latex_plot_format, safe_file_dump, safe_save_figure,
 )
 from .utils import (
@@ -204,6 +204,19 @@ class CompactBinaryCoalescenceResult(CoreResult):
         except AttributeError:
             logger.info("No injection for detector {}".format(detector))
             return None
+
+    def _get_waveform_plot_injection_parameters(self, interferometer):
+        if self.injection_parameters is not None:
+            return self.injection_parameters
+
+        try:
+            injection_properties = self.detector_injection_properties(
+                interferometer.name)
+        except TypeError:
+            return None
+        if isinstance(injection_properties, dict):
+            return injection_properties.get("parameters", None)
+        return None
 
     @staticmethod
     def _parse_reference_frame(reference_frame):
@@ -750,16 +763,17 @@ class CompactBinaryCoalescenceResult(CoreResult):
                 color=WAVEFORM_COLOR,
                 alpha=0.3)
 
-        if self.injection_parameters is not None:
+        injection_parameters = self._get_waveform_plot_injection_parameters(
+            interferometer)
+        if injection_parameters is not None:
             try:
                 hf_inj = waveform_generator.frequency_domain_strain(
-                    self.injection_parameters)
+                    injection_parameters)
                 hf_inj_det = interferometer.get_detector_response(
-                    hf_inj, self.injection_parameters)
-                ht_inj_det = infft(
-                    hf_inj_det * np.sqrt(2. / interferometer.sampling_frequency) /
-                    interferometer.amplitude_spectral_density_array,
-                    self.sampling_frequency)[time_idxs]
+                    hf_inj, injection_parameters)
+                ht_inj_det = interferometer.get_whitened_time_series_from_whitened_frequency_series(
+                    interferometer.whiten_frequency_series(hf_inj_det)
+                )[time_idxs]
                 if format == "html":
                     fig.add_trace(
                         go.Scatter(

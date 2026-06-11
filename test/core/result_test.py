@@ -597,6 +597,20 @@ class TestResult(unittest.TestCase):
 
         self.assertEqual(mock_corner.call_args.kwargs["truths"], [0.8, 1.1])
 
+    def test_plot_corner_with_single_parameter_uses_injection_truth(self):
+        import matplotlib.pyplot as plt
+
+        self.result.injection_parameters = dict(x=0.8, y=1.1)
+        fig = self.result.plot_corner(parameters=["x"], save=False, titles=False)
+        x_lines = [
+            line.get_xdata()
+            for line in fig.axes[0].lines
+            if np.array_equal(line.get_xdata(), [0.8, 0.8])
+        ]
+
+        self.assertEqual(len(x_lines), 1)
+        plt.close(fig)
+
     def test_plot_corner_with_priors(self):
         priors = bilby.core.prior.PriorDict()
         priors["x"] = bilby.core.prior.Uniform(-1, 1, "x")

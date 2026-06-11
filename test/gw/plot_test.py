@@ -126,6 +126,24 @@ class TestCBCResult(unittest.TestCase):
         self.assertNotIn("Mean reconstructed", labels)
         plt.close(fig)
 
+    def test_waveform_plotting_uses_detector_injection_metadata(self):
+        import matplotlib.pyplot as plt
+
+        self.result.injection_parameters = None
+        fig = self.result.plot_interferometer_waveform_posterior(
+            interferometer=self.result.interferometers[0],
+            n_samples=10,
+            save=False,
+        )
+        labels = [
+            artist.get_label()
+            for axis in fig.axes
+            for artist in axis.get_children()
+        ]
+
+        self.assertIn("Injection", labels)
+        plt.close(fig)
+
     def test_waveform_plotting_accepts_detector_frame_time(self):
         import matplotlib.pyplot as plt
 

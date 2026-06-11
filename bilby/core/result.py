@@ -1681,11 +1681,31 @@ class Result(object):
         if len(plot_parameter_keys) > 1:
             fig = corner.corner(xs, **kwargs)
         else:
-            ax = kwargs.get("ax", plt.subplot())
+            ax = kwargs.get("ax", None)
+            if ax is None:
+                fig = kwargs.get("fig", None)
+                if fig is None:
+                    fig, ax = plt.subplots()
+                elif len(fig.axes) == 0:
+                    ax = fig.add_subplot(111)
+                else:
+                    ax = fig.axes[0]
+            else:
+                fig = ax.get_figure()
             ax.hist(xs, bins=kwargs["bins"], color=kwargs["color"],
                     histtype="step", **kwargs["hist_kwargs"])
+            truth = kwargs.get("truths", [np.nan])[0]
+            try:
+                plot_truth = np.isfinite(truth)
+            except TypeError:
+                plot_truth = False
+            if plot_truth:
+                ax.axvline(
+                    truth,
+                    color=kwargs["truth_color"],
+                    linestyle="-",
+                )
             ax.set_xlabel(kwargs["labels"][0])
-            fig = plt.gcf()
 
         axes = fig.get_axes()
 

@@ -313,6 +313,22 @@ class CompactBinaryCoalescenceResult(CoreResult):
             samples = self.posterior.sample(n_samples, replace=False)
         return self._add_sky_frame_parameters_to_samples(samples)
 
+    def _get_save_data_dictionary(self):
+        dictionary = super()._get_save_data_dictionary()
+        posterior = dictionary.get("posterior")
+        if posterior is None:
+            return dictionary
+
+        try:
+            dictionary["posterior"] = self._add_sky_frame_parameters_to_samples(
+                posterior
+            )
+        except (KeyError, ValueError) as error:
+            logger.info(
+                "Unable to add sky-frame parameters to saved result: {}".format(error)
+            )
+        return dictionary
+
     @latex_plot_format
     def plot_calibration_posterior(self, level=.9, format="png"):
         """ Plots the calibration amplitude and phase uncertainty.

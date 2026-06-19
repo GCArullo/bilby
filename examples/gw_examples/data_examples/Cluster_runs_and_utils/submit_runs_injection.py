@@ -100,7 +100,7 @@ LEGACY_POSTERIOR_PATHS = (
 DEFAULT_STAGING_RANDOM_SEED = 12345
 TEST_INJECTION_CHIRP_MASS_CREDIBLE_INTERVAL = 0.99
 TEST_INJECTION_NU_MAX = 100.0
-DEFAULT_NLIVE = 1000
+DEFAULT_NLIVE = 2000
 TEST_INJECTION_NLIVE = 256
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 DEFAULT_INJECTION_NOISE = "student"
@@ -298,7 +298,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Base nested-sampler live points written into sampler-kwargs before "
-            "the automatic +500-per-sine-Gaussian uplift. Defaults to "
+            "the automatic sine-Gaussian uplift: +500 for one recovered SG, "
+            "+1000 for two or more. Defaults to "
             f"{TEST_INJECTION_NLIVE} for --test-injection and "
             f"{DEFAULT_NLIVE} otherwise."
         ),

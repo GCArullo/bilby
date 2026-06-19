@@ -14,7 +14,17 @@ BASE="$HOME/GW231123/t_Student/Runs_injections_gw231123_sine_gaussians"
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files.
 
+The generated recovery configs use `nlive=2000` for the baseline CBC run,
+`nlive=2500` for one recovered SG, and `nlive=3000` for two or more recovered
+SGs in total. This includes incoherent `H1=1 L1=1`.
+
 ## Real Runs
+
+GW231123 NRsur baseline:
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian
+```
 
 GW231123 NRsur + 1 SG (coherent):
 

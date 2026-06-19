@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
-NLIVE_PER_SINE_GAUSSIAN = 500
+NLIVE_ONE_SINE_GAUSSIAN_UPLIFT = 500
+NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT = 1000
 SINE_GAUSSIAN_HRSS_BOUNDS = (1e-24, 1e-20)
 SINE_GAUSSIAN_Q_BOUNDS = (0.1, 30.0)
 SINE_GAUSSIAN_TIME_OFFSET_BOUNDS = (-0.15, 0.15)
@@ -396,7 +397,11 @@ def apply_sine_gaussian_waveform_settings(
 
 
 def effective_nlive(base_nlive: int, config: SineGaussianConfiguration) -> int:
-    return base_nlive + NLIVE_PER_SINE_GAUSSIAN * config.total_components
+    if config.total_components <= 0:
+        return base_nlive
+    if config.total_components == 1:
+        return base_nlive + NLIVE_ONE_SINE_GAUSSIAN_UPLIFT
+    return base_nlive + NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT
 
 
 def sine_gaussian_frequency_bounds(minimum_frequency, maximum_frequency) -> tuple[float, float]:

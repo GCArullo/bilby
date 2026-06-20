@@ -225,9 +225,12 @@ class CBCResultsGlobalMetaDataTest(BaseCBCResultTest):
 
     def test_cosmology(self):
         bilby.core.utils.meta_data.logger.propagate = True
+        expected = self.meta_data["global_meta_data"]["cosmology"]
+        if isinstance(expected, str):
+            expected = bilby.gw.cosmology.get_cosmology(expected)
         self.assertEqual(
             self.result.cosmology,
-            self.meta_data["global_meta_data"]["cosmology"],
+            expected,
         )
 
 

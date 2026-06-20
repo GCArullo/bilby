@@ -435,6 +435,9 @@ def build_pesummary_arguments(template_settings: dict[str, object]) -> dict[str,
     calibration = template_settings["spline_calibration_envelope_dict"]
     if calibration not in (None, "None"):
         arguments["calibration"] = calibration
+    psd_dict = template_settings.get("psd_dict")
+    if psd_dict not in (None, "None"):
+        arguments["psd"] = psd_dict
     return arguments
 
 

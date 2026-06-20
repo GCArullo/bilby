@@ -16,6 +16,33 @@ from .utils import (
 from .detector import get_empty_interferometer, Interferometer, InterferometerList
 
 
+def _serialize_cosmology_for_meta_data(cosmology):
+    try:
+        from astropy import cosmology as cosmo
+    except ImportError:
+        return cosmology
+
+    cosmology_types = tuple(
+        getattr(cosmo, name)
+        for name in ("Cosmology", "FLRW")
+        if hasattr(cosmo, name)
+    )
+    if cosmology_types and isinstance(cosmology, cosmology_types):
+        return cosmology.name or repr(cosmology)
+    return cosmology
+
+
+def _get_cosmology_from_meta_data(cosmology):
+    if isinstance(cosmology, str):
+        from .cosmology import get_cosmology
+
+        try:
+            return get_cosmology(cosmology)
+        except AttributeError:
+            return cosmology
+    return cosmology
+
+
 class CompactBinaryCoalescenceResult(CoreResult):
     """
     Result class with additional methods and attributes specific to analyses
@@ -25,14 +52,22 @@ class CompactBinaryCoalescenceResult(CoreResult):
 
         if "meta_data" not in kwargs:
             kwargs["meta_data"] = dict()
-        if "global_meta_data" not in kwargs:
+        if "global_meta_data" not in kwargs["meta_data"]:
             from ..core.utils.meta_data import global_meta_data
 
-            kwargs["meta_data"]["global_meta_data"] = global_meta_data
+            kwargs["meta_data"]["global_meta_data"] = dict(global_meta_data)
+        else:
+            kwargs["meta_data"]["global_meta_data"] = dict(
+                kwargs["meta_data"]["global_meta_data"]
+            )
+        global_meta_data = kwargs["meta_data"]["global_meta_data"]
         # Ensure cosmology is always stored in the meta_data
-        if "cosmology" not in kwargs["meta_data"]["global_meta_data"]:
+        if "cosmology" not in global_meta_data:
             from .cosmology import get_cosmology
-            kwargs["meta_data"]["global_meta_data"]["cosmology"] = get_cosmology()
+            global_meta_data["cosmology"] = get_cosmology()
+        global_meta_data["cosmology"] = _serialize_cosmology_for_meta_data(
+            global_meta_data["cosmology"]
+        )
 
         super(CompactBinaryCoalescenceResult, self).__init__(**kwargs)
 
@@ -169,9 +204,10 @@ class CompactBinaryCoalescenceResult(CoreResult):
         .. versionadded:: 2.5.0
         """
         try:
-            return self.__get_from_nested_meta_data(
-                'global_meta_data', 'cosmology'
+            cosmology = self.__get_from_nested_meta_data(
+                "global_meta_data", "cosmology"
             )
+            return _get_cosmology_from_meta_data(cosmology)
         except AttributeError as e:
             logger.warning(
                 "No cosmology found in result. "

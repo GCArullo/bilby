@@ -225,9 +225,12 @@ class CBCResultsGlobalMetaDataTest(BaseCBCResultTest):
 
     def test_cosmology(self):
         bilby.core.utils.meta_data.logger.propagate = True
+        expected = self.meta_data["global_meta_data"]["cosmology"]
+        if isinstance(expected, str):
+            expected = bilby.gw.cosmology.get_cosmology(expected)
         self.assertEqual(
             self.result.cosmology,
-            self.meta_data["global_meta_data"]["cosmology"],
+            expected,
         )
 
 
@@ -269,6 +272,30 @@ class TestCBCResultSaveAndLoad(BaseCBCResultTest):
         self.assertEqual(self.result.waveform_generator_class, loaded_result.waveform_generator_class)
         self.assertEqual(self.result.waveform_arguments, loaded_result.waveform_arguments)
         self.assertEqual(self.result.interferometers, loaded_result.interferometers)
+
+    def test_detector_frame_posterior_save_adds_sky_frame_parameters(self):
+        posterior = self.result.posterior.copy()
+        posterior["L1_time"] = posterior["geocent_time"]
+        posterior["zenith"] = 0.5
+        posterior["azimuth"] = 1.0
+        posterior = posterior.drop(columns=["ra", "dec", "geocent_time"])
+
+        self.result.posterior = posterior
+        self.result.meta_data["likelihood"]["reference_frame"] = "L1H1"
+        self.result.meta_data["likelihood"]["time_reference"] = "L1"
+
+        self.result.save_to_file(extension="hdf5")
+        loaded_result = bilby.core.result.read_in_result(
+            outdir=self.result.outdir,
+            label=self.result.label,
+            extension="hdf5",
+            result_class=bilby.gw.result.CBCResult,
+        )
+
+        self.assertNotIn("geocent_time", self.result.posterior)
+        self.assertIn("ra", loaded_result.posterior)
+        self.assertIn("dec", loaded_result.posterior)
+        self.assertIn("geocent_time", loaded_result.posterior)
 
 
 if __name__ == "__main__":

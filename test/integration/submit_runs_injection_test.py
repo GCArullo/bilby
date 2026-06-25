@@ -1,7 +1,9 @@
 import importlib.util
+import ast
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 
@@ -42,6 +44,7 @@ def test_num_frequency_bands_defaults_to_one():
 
     assert args.injection_noise == "student"
     assert args.num_frequency_bands is None
+    assert args.noise_generation_seed is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -64,6 +67,84 @@ def test_zero_gaussian_injection_noise_is_available():
     args = parser.parse_args(["--injection-noise", "zero-gaussian"])
 
     assert args.injection_noise == "zero-gaussian"
+
+
+def test_noise_generation_seed_is_available():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--noise-generation-seed", "98765"])
+
+    assert args.noise_generation_seed == 98765
+
+
+def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--injection-duration", "12.5"])
+    args.accounting_user = "acct"
+    args.require_epnfs = False
+    args.test_injection = False
+    args.nlive = 10
+    args.naccept = 3
+    args.frequency_domain_injection = False
+
+    ini_template = "\n".join(
+        [
+            "accounting-user=old",
+            "queue=None",
+            "create-summary=False",
+            "summarypages-arguments=None",
+            "duration=8.0",
+            "data-dict=None",
+            "data-format=gwf",
+            "calibration-model=CubicSpline",
+            "calibration-correction-type=data",
+            "spline-calibration-envelope-dict={H1: old.dat}",
+            "channel-dict=None",
+            "psd-dict=None",
+            "additional-transfer-paths=None",
+            "sampler-kwargs={'nlive': 1}",
+            "likelihood-type=old",
+            "extra-likelihood-kwargs=old",
+            "",
+        ]
+    )
+    template_settings = dict(
+        detectors=("H1",),
+        duration=args.injection_duration,
+        minimum_frequency={"H1": 20.0, "waveform": 10.0},
+        maximum_frequency=448.0,
+        reference_frequency=10.0,
+        waveform_approximant="NRSur7dq4",
+        sampler_kwargs={"nlive": 1},
+    )
+
+    rendered = module.render_ini(
+        ini_template,
+        args=args,
+        template_settings=template_settings,
+        num_frequency_bands=1,
+        detector_dependent_nu=False,
+        likelihood_nu=None,
+        label="label",
+        outdir=tmp_path / "out",
+        webdir=tmp_path / "web",
+        prior_path=tmp_path / "prior.prior",
+        data_paths={"H1": str(tmp_path / "H1.hdf5")},
+        psd_paths={"H1": str(tmp_path / "H1_psd.dat")},
+        stage_dir=tmp_path / "staged_data",
+        hypothesis="gaussian",
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+
+    assert args.injection_duration == 12.5
+    assert "duration=12.5\n" in rendered
 
 
 def test_injected_sine_gaussian_values_are_loaded_from_json_and_within_bounds():
@@ -231,6 +312,149 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert "distance-marginalization=False\n" in gaussian_ini
     assert "generation-function=None\n" in gaussian_ini
     assert "queue=EPNFS\n" in gaussian_ini
+
+
+def test_main_creates_summarypages_without_recalib_parameters_by_default(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "gaussian",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    gaussian_ini = next(base_dir.rglob("*.ini")).read_text(encoding="utf-8")
+    summary_line = next(
+        line for line in gaussian_ini.splitlines()
+        if line.startswith("summarypages-arguments=")
+    )
+    summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
+    assert "create-summary=True\n" in gaussian_ini
+    assert summary_arguments["ignore_parameters"] == ["recalib*"]
+    assert summary_arguments["disable_interactive"] is True
+    assert summary_arguments["f_ref"] == 10.0
+    assert summary_arguments["f_low"] == 20
+    assert summary_arguments["f_start"] == 10.0
+    assert summary_arguments["f_final"] == 448.0
+    assert summary_arguments["approximant"] == ["NRSur7dq4"]
+    assert "calibration" not in summary_arguments
+    assert set(summary_arguments["psd"]) == {"H1", "L1"}
+
+
+def test_stage_injection_bundle_writes_psd_on_staged_frequency_grid(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    args = type(
+        "Args",
+        (),
+        dict(
+            label_prefix="label",
+            injection_noise="gaussian",
+            likelihood="gaussian",
+            num_frequency_bands=1,
+            detector_dependent_nu=False,
+            nu_injection="2.1",
+            noise_generation_seed=98765,
+            frequency_domain_injection=True,
+        ),
+    )()
+    template_settings = dict(
+        detectors=("H1",),
+        duration=12.0,
+        trigger_time=100.0,
+        post_trigger_duration=2.0,
+        sampling_frequency=4.0,
+        sampling_seed=123,
+        minimum_frequency={"H1": 0.0, "waveform": 0.0},
+        maximum_frequency=2.0,
+        reference_frequency=1.0,
+        waveform_approximant="NRSur7dq4",
+    )
+    sine_gaussian_config = type(
+        "Config",
+        (),
+        dict(
+            enabled=False,
+            mode="none",
+            total_components=0,
+            detector_counts=(),
+            label_suffix="",
+        ),
+    )()
+    staged_frequencies = np.array([0.0, 0.5, 1.0, 1.5, 2.0])
+    staged_psd = np.array([10.0, 11.0, 12.0, 13.0, 14.0])
+
+    class FakeInterferometer:
+        name = "H1"
+        frequency_array = staged_frequencies
+        power_spectral_density_array = staged_psd
+        frequency_domain_strain = np.zeros_like(staged_frequencies, dtype=complex)
+        start_time = 90.0
+        duration = 12.0
+        sampling_frequency = 4.0
+
+    class FakeInterferometers(list):
+        def inject_signal(self, parameters, waveform_generator):
+            self.injected_parameters = parameters
+            self.waveform_generator = waveform_generator
+
+    seed_calls = []
+    monkeypatch.setattr(module.bilby.core.utils.random, "seed", seed_calls.append)
+    monkeypatch.setattr(
+        module,
+        "load_maximum_likelihood_injection",
+        lambda posterior_path: ({"mass_1": 30.0}, 1.0, 0),
+    )
+    monkeypatch.setattr(
+        module,
+        "load_psds",
+        lambda posterior_path, detectors: {
+            "H1": (np.array([0.0, 1.0, 2.0]), np.array([1.0, 2.0, 3.0]))
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "build_interferometers",
+        lambda *args, **kwargs: FakeInterferometers([FakeInterferometer()]),
+    )
+    monkeypatch.setattr(
+        module,
+        "build_waveform_generator",
+        lambda *args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        module,
+        "load_test_injection_chirp_mass_bounds",
+        lambda posterior_path: (1.0, 2.0),
+    )
+
+    bundle = module.stage_injection_bundle(
+        tmp_path,
+        args,
+        template_settings,
+        tmp_path / "posterior.h5",
+        sine_gaussian_config,
+    )
+
+    psd = np.loadtxt(bundle["psd_paths"]["H1"])
+    assert seed_calls == [98765]
+    np.testing.assert_array_equal(psd[:, 0], staged_frequencies)
+    np.testing.assert_array_equal(psd[:, 1], staged_psd)
 
 
 def test_main_student_multi_band_writes_single_gaussian_companion(

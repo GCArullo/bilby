@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
-NLIVE_PER_SINE_GAUSSIAN = 500
+NLIVE_ONE_SINE_GAUSSIAN_UPLIFT = 500
+NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT = 1000
 SINE_GAUSSIAN_HRSS_BOUNDS = (1e-24, 1e-20)
-SINE_GAUSSIAN_Q_BOUNDS = (3.0, 30.0)
-SINE_GAUSSIAN_TIME_OFFSET_BOUNDS = (-0.05, 0.05)
+SINE_GAUSSIAN_Q_BOUNDS = (0.1, 30.0)
+SINE_GAUSSIAN_TIME_OFFSET_BOUNDS = (-0.15, 0.15)
 
 
 def positive_int(value: str) -> int:
@@ -195,6 +196,14 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
             # Some templates still contain unresolved placeholders at parse time.
             pass
 
+    psd_dict = parsed.get("psd-dict")
+    if isinstance(psd_dict, str):
+        try:
+            psd_dict = parse_ini_dict_string(psd_dict)
+        except (ValueError, SyntaxError):
+            # Some templates still contain unresolved placeholders at parse time.
+            pass
+
     return dict(
         detectors=tuple(parsed["detectors"]),
         trigger_time=float(parsed["trigger-time"]),
@@ -208,6 +217,7 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
         sampler_kwargs=sampler_kwargs,
         sampling_seed=parsed.get("sampling-seed"),
         spline_calibration_envelope_dict=calibration_envelopes,
+        psd_dict=psd_dict,
         frequency_domain_source_model=str(parsed["frequency-domain-source-model"]),
         conversion_function=parsed["conversion-function"],
         generation_function=parsed["generation-function"],
@@ -386,13 +396,21 @@ def apply_sine_gaussian_waveform_settings(
         "conversion-function",
         "bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters",
     )
-    updated = replace_line(updated, "generation-function", "None")
+    updated = replace_line(
+        updated,
+        "generation-function",
+        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters",
+    )
     updated = replace_line(updated, "distance-marginalization", "False")
     return updated
 
 
 def effective_nlive(base_nlive: int, config: SineGaussianConfiguration) -> int:
-    return base_nlive + NLIVE_PER_SINE_GAUSSIAN * config.total_components
+    if config.total_components <= 0:
+        return base_nlive
+    if config.total_components == 1:
+        return base_nlive + NLIVE_ONE_SINE_GAUSSIAN_UPLIFT
+    return base_nlive + NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT
 
 
 def sine_gaussian_frequency_bounds(minimum_frequency, maximum_frequency) -> tuple[float, float]:

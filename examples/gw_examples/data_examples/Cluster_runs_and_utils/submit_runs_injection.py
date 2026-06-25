@@ -26,7 +26,6 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import h5py
 import numpy as np
-from gwpy.timeseries import TimeSeries
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
@@ -43,6 +42,7 @@ from submission_sine_gaussian_utils import (
     build_sine_gaussian_prior_block,
     combine_prior_blocks,
     effective_nlive,
+    parse_ini_dict_string,
     parse_template_value,
     positive_int,
     read_template_settings,
@@ -68,6 +68,19 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
+DEFAULT_PESUMMARY_ARGUMENTS = {
+    "multi_process": 6,
+    "disable_expert": True,
+    "disable_interactive": True,
+    "gw": True,
+    "no_ligo_skymap": True,
+    "redshift_method": "exact",
+    "evolve_spins_forwards": True,
+    "evolve_spins_backwards": True,
+    "NRSur_fits": True,
+    "calculate_multipole_snr": True,
+    "ignore_parameters": ["recalib*"],
+}
 INI_TEMPLATE_PATH = (
     SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
 )
@@ -87,10 +100,11 @@ LEGACY_POSTERIOR_PATHS = (
 DEFAULT_STAGING_RANDOM_SEED = 12345
 TEST_INJECTION_CHIRP_MASS_CREDIBLE_INTERVAL = 0.99
 TEST_INJECTION_NU_MAX = 100.0
-DEFAULT_NLIVE = 1000
+DEFAULT_NLIVE = 2000
 TEST_INJECTION_NLIVE = 256
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 DEFAULT_INJECTION_NOISE = "student"
+FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
 INJECTED_SINE_GAUSSIAN_VALUES_PATH = (
     SCRIPT_DIR / "runbooks" / "injected_sine_gaussian_values.json"
 )
@@ -140,6 +154,16 @@ def outdir_label(value: str) -> str:
     if any(separator and separator in label for separator in (os.sep, os.altsep)):
         raise argparse.ArgumentTypeError("outdir label must not contain path separators")
     return label
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive finite number") from exc
+    if not np.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive finite number")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -208,6 +232,36 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--noise-generation-seed",
+        type=int,
+        default=None,
+        help=(
+            "Random seed used to generate the staged injection noise. "
+            "Defaults to the template sampling-seed when it is an integer; "
+            f"otherwise defaults to {DEFAULT_STAGING_RANDOM_SEED}."
+        ),
+    )
+    parser.add_argument(
+        "--injection-duration",
+        type=positive_float,
+        default=None,
+        help=(
+            "Duration in seconds used to stage injected data and write the "
+            "generated recovery ini files. Defaults to the template duration."
+        ),
+    )
+    parser.add_argument(
+        "--frequency-domain-injection",
+        "--fd-injection",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Stage injected data as frequency-domain strain and make the "
+            "generated bilby_pipe jobs load it directly into the likelihood. "
+            "This avoids the time-domain HDF5 round-trip and Tukey window."
+        ),
+    )
+    parser.add_argument(
         "--num-frequency-bands",
         type=positive_int,
         default=None,
@@ -244,7 +298,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Base nested-sampler live points written into sampler-kwargs before "
-            "the automatic +500-per-sine-Gaussian uplift. Defaults to "
+            "the automatic sine-Gaussian uplift: +500 for one recovered SG, "
+            "+1000 for two or more. Defaults to "
             f"{TEST_INJECTION_NLIVE} for --test-injection and "
             f"{DEFAULT_NLIVE} otherwise."
         ),
@@ -518,6 +573,17 @@ def load_psds(
             )
             for detector in detectors
         }
+
+
+def template_settings_with_injection_duration(
+    template_settings: dict[str, object],
+    injection_duration: float | None,
+) -> dict[str, object]:
+    if injection_duration is None:
+        return template_settings
+    updated_settings = dict(template_settings)
+    updated_settings["duration"] = float(injection_duration)
+    return updated_settings
 
 
 def build_waveform_generator(
@@ -897,6 +963,8 @@ def write_time_series(
     start_time: float,
     sampling_frequency: float,
 ) -> None:
+    from gwpy.timeseries import TimeSeries
+
     series = TimeSeries(
         strain,
         t0=start_time,
@@ -906,7 +974,36 @@ def write_time_series(
     series.write(str(path), format="hdf5", overwrite=True)
 
 
+def write_frequency_domain_strain(
+    path: Path,
+    detector: str,
+    frequency_domain_strain: np.ndarray,
+    frequencies: np.ndarray,
+    start_time: float,
+    duration: float,
+    sampling_frequency: float,
+) -> None:
+    if np.shape(frequency_domain_strain) != np.shape(frequencies):
+        raise ValueError("Frequency-domain strain and frequency array shapes differ")
+    with h5py.File(path, "w") as h5_file:
+        h5_file.create_dataset(
+            "frequency_array",
+            data=np.asarray(frequencies, dtype=float),
+        )
+        h5_file.create_dataset(
+            "frequency_domain_strain",
+            data=np.asarray(frequency_domain_strain, dtype=complex),
+        )
+        h5_file.attrs["detector"] = detector
+        h5_file.attrs["duration"] = float(duration)
+        h5_file.attrs["sampling_frequency"] = float(sampling_frequency)
+        h5_file.attrs["start_time"] = float(start_time)
+        h5_file.attrs["data_format"] = FD_DATA_FORMAT
+
+
 def write_psd(path: Path, frequencies: np.ndarray, psd: np.ndarray) -> None:
+    if np.shape(frequencies) != np.shape(psd):
+        raise ValueError("PSD and frequency array shapes differ")
     np.savetxt(
         path,
         np.column_stack([frequencies, psd]),
@@ -931,12 +1028,16 @@ def stage_injection_bundle(
     data_dir = ensure_dir(stage_dir / "data")
     psd_dir = ensure_dir(stage_dir / "psds")
 
-    template_seed = template_settings.get("sampling_seed")
-    staging_seed = (
-        int(template_seed)
-        if isinstance(template_seed, (int, np.integer))
-        else DEFAULT_STAGING_RANDOM_SEED
-    )
+    noise_generation_seed = getattr(args, "noise_generation_seed", None)
+    if noise_generation_seed is not None:
+        staging_seed = int(noise_generation_seed)
+    else:
+        template_seed = template_settings.get("sampling_seed")
+        staging_seed = (
+            int(template_seed)
+            if isinstance(template_seed, (int, np.integer))
+            else DEFAULT_STAGING_RANDOM_SEED
+        )
     bilby.core.utils.random.seed(staging_seed)
 
     injection_parameters, maxl_log_likelihood, maxl_index = (
@@ -988,17 +1089,34 @@ def stage_injection_bundle(
     psd_paths = {}
     for interferometer in interferometers:
         detector = interferometer.name
-        data_path = data_dir / f"{detector}_{staged_label_prefix}.hdf5"
+        if args.frequency_domain_injection:
+            data_path = data_dir / f"{detector}_{staged_label_prefix}_fd.hdf5"
+        else:
+            data_path = data_dir / f"{detector}_{staged_label_prefix}.hdf5"
         psd_path = psd_dir / f"{detector}_{staged_label_prefix}_psd.dat"
-        write_time_series(
-            data_path,
-            detector,
-            interferometer.time_domain_strain,
-            interferometer.start_time,
-            interferometer.sampling_frequency,
+        if args.frequency_domain_injection:
+            write_frequency_domain_strain(
+                data_path,
+                detector,
+                interferometer.frequency_domain_strain,
+                interferometer.frequency_array,
+                interferometer.start_time,
+                interferometer.duration,
+                interferometer.sampling_frequency,
+            )
+        else:
+            write_time_series(
+                data_path,
+                detector,
+                interferometer.time_domain_strain,
+                interferometer.start_time,
+                interferometer.sampling_frequency,
+            )
+        write_psd(
+            psd_path,
+            interferometer.frequency_array,
+            interferometer.power_spectral_density_array,
         )
-        frequencies, psd_array = psds[detector]
-        write_psd(psd_path, frequencies, psd_array)
         data_paths[detector] = str(data_path.resolve())
         psd_paths[detector] = str(psd_path.resolve())
 
@@ -1006,9 +1124,21 @@ def stage_injection_bundle(
         maxl_index=maxl_index,
         maxl_log_likelihood=maxl_log_likelihood,
         injection_noise_model=args.injection_noise,
+        injection_data_domain=(
+            "frequency" if args.frequency_domain_injection else "time"
+        ),
+        injection_data_format=(
+            FD_DATA_FORMAT if args.frequency_domain_injection else "hdf5"
+        ),
         nu_injection=injected_noise_nu,
         likelihood_nu=likelihood_nu,
         num_frequency_bands=args.num_frequency_bands,
+        injection_duration=template_settings["duration"],
+        injection_start_time=(
+            template_settings["trigger_time"]
+            + template_settings["post_trigger_duration"]
+            - template_settings["duration"]
+        ),
         detector_dependent_nu=effective_detector_dependent_nu,
         posterior_path=str(posterior_path.resolve()),
         waveform_approximant=template_settings["waveform_approximant"],
@@ -1050,6 +1180,16 @@ def format_ini_dict(mapping: dict[str, str], *, quote_values: bool = False) -> s
         rendered = f"'{value}'" if quote_values else value
         items.append(f"{key}: {rendered}")
     return "{ " + ", ".join(items) + ", }"
+
+
+def apply_frequency_domain_injection_ini_settings(text: str) -> str:
+    rendered = replace_line(text, "data-format", FD_DATA_FORMAT)
+    rendered = replace_or_append_line(rendered, "gaussian-noise", "False")
+    rendered = replace_or_append_line(rendered, "zero-noise", "False")
+    rendered = replace_or_append_line(rendered, "injection", "False")
+    rendered = replace_or_append_line(rendered, "plot-data", "False")
+    rendered = replace_or_append_line(rendered, "plot-spectrogram", "False")
+    return rendered
 
 
 def replace_line(text: str, key: str, value: str) -> str:
@@ -1235,6 +1375,43 @@ def render_prior(
     return rendered
 
 
+def minimum_frequency_for_pesummary(minimum_frequency):
+    if isinstance(minimum_frequency, dict):
+        detector_frequencies = [
+            value for key, value in minimum_frequency.items()
+            if key != "waveform"
+        ]
+        if detector_frequencies:
+            return min(detector_frequencies)
+        return minimum_frequency["waveform"]
+    return minimum_frequency
+
+
+def maximum_frequency_for_pesummary(maximum_frequency):
+    if isinstance(maximum_frequency, dict):
+        return max(maximum_frequency.values())
+    return maximum_frequency
+
+
+def build_pesummary_arguments(
+    template_settings: dict[str, object],
+    *,
+    psd_paths: dict[str, str],
+) -> dict[str, object]:
+    arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
+    f_low = minimum_frequency_for_pesummary(template_settings["minimum_frequency"])
+    f_ref = template_settings["reference_frequency"]
+    arguments.update(
+        f_low=f_low,
+        f_start=f_ref,
+        f_ref=f_ref,
+        f_final=maximum_frequency_for_pesummary(template_settings["maximum_frequency"]),
+        approximant=[template_settings["waveform_approximant"]],
+        psd=psd_paths,
+    )
+    return arguments
+
+
 def render_ini(
     ini_template: str,
     *,
@@ -1265,11 +1442,26 @@ def render_ini(
     for placeholder, value in placeholders.items():
         rendered = rendered.replace(placeholder, value)
 
+    if "duration" in template_settings:
+        rendered = replace_or_append_line(
+            rendered,
+            "duration",
+            repr(float(template_settings["duration"])),
+        )
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
+    rendered = replace_line(rendered, "create-summary", "True")
+    rendered = replace_line(
+        rendered,
+        "summarypages-arguments",
+        repr(build_pesummary_arguments(template_settings, psd_paths=psd_paths)),
+    )
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
-    rendered = replace_line(rendered, "data-format", "hdf5")
+    if args.frequency_domain_injection:
+        rendered = apply_frequency_domain_injection_ini_settings(rendered)
+    else:
+        rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = disable_calibration_settings(rendered)
     rendered = replace_line(
         rendered,
@@ -1425,6 +1617,10 @@ def prepare_runs(args: argparse.Namespace) -> list[Path]:
     ini_template = load_template(INI_TEMPLATE_PATH)
     prior_template = load_template(PRIOR_TEMPLATE_PATH)
     template_settings = read_template_settings(ini_template)
+    template_settings = template_settings_with_injection_duration(
+        template_settings,
+        args.injection_duration,
+    )
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
         range_mode=args.sine_gaussian_range,

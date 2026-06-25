@@ -39,6 +39,32 @@ def replace_line(text: str, key: str, value: str) -> str:
     raise ValueError(f"Unable to find config key {key!r}")
 
 
+def test_effective_nlive_uses_runbook_sine_gaussian_schedule():
+    module = load_submission_sine_gaussian_utils_module()
+
+    baseline = module.SineGaussianConfiguration()
+    coherent_1 = module.SineGaussianConfiguration(total_components=1, mode="coherent")
+    incoherent_1 = module.SineGaussianConfiguration(
+        total_components=1,
+        mode="incoherent",
+        detector_counts=(("H1", 1),),
+    )
+    coherent_2 = module.SineGaussianConfiguration(total_components=2, mode="coherent")
+    coherent_3 = module.SineGaussianConfiguration(total_components=3, mode="coherent")
+    incoherent_h1_l1 = module.SineGaussianConfiguration(
+        total_components=2,
+        mode="incoherent",
+        detector_counts=(("H1", 1), ("L1", 1)),
+    )
+
+    assert module.effective_nlive(2000, baseline) == 2000
+    assert module.effective_nlive(2000, coherent_1) == 2500
+    assert module.effective_nlive(2000, incoherent_1) == 2500
+    assert module.effective_nlive(2000, coherent_2) == 3000
+    assert module.effective_nlive(2000, coherent_3) == 3000
+    assert module.effective_nlive(2000, incoherent_h1_l1) == 3000
+
+
 def test_sine_gaussian_submission_settings_disable_distance_and_generation():
     module = load_submission_sine_gaussian_utils_module()
     config = module.SineGaussianConfiguration(total_components=1, mode="coherent")

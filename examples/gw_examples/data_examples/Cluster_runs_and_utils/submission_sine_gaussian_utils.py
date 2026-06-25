@@ -196,6 +196,14 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
             # Some templates still contain unresolved placeholders at parse time.
             pass
 
+    psd_dict = parsed.get("psd-dict")
+    if isinstance(psd_dict, str):
+        try:
+            psd_dict = parse_ini_dict_string(psd_dict)
+        except (ValueError, SyntaxError):
+            # Some templates still contain unresolved placeholders at parse time.
+            pass
+
     return dict(
         detectors=tuple(parsed["detectors"]),
         trigger_time=float(parsed["trigger-time"]),
@@ -209,6 +217,7 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
         sampler_kwargs=sampler_kwargs,
         sampling_seed=parsed.get("sampling-seed"),
         spline_calibration_envelope_dict=calibration_envelopes,
+        psd_dict=psd_dict,
         frequency_domain_source_model=str(parsed["frequency-domain-source-model"]),
         conversion_function=parsed["conversion-function"],
         generation_function=parsed["generation-function"],

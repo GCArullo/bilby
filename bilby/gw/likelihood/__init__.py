@@ -5,6 +5,7 @@ from .roq import BilbyROQParamsRangeError, ROQGravitationalWaveTransient
 from .multiband import MBGravitationalWaveTransient
 from .relative import RelativeBinningGravitationalWaveTransient
 from .studentt import StudentTGravitationalWaveTransient
+from .whittle import WhittleGravitationalWaveTransient
 
 from ..source import lal_binary_black_hole
 from ..waveform_generator import WaveformGenerator
@@ -32,4 +33,3 @@ def get_binary_black_hole_likelihood(interferometers):
         waveform_arguments={'waveform_approximant': 'IMRPhenomPv2',
                             'reference_frequency': 50})
     return GravitationalWaveTransient(interferometers, waveform_generator)
-

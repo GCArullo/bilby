@@ -15,8 +15,9 @@ class _HyperbolicNoiseOnlyLikelihood(Likelihood):
     """Auxiliary likelihood for marginalizing the hyperbolic noise evidence."""
 
     def __init__(self, hyperbolic_likelihood):
-        super().__init__(
-            parameters=hyperbolic_likelihood._get_default_shape_parameter_dict()
+        super().__init__()
+        self._parameters.update(
+            hyperbolic_likelihood._get_default_shape_parameter_dict()
         )
         self.hyperbolic_likelihood = hyperbolic_likelihood
 
@@ -152,10 +153,10 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
         if self.infer_alpha:
             for key, value in zip(self.alpha_parameter_keys, self._fixed_alpha):
-                self.parameters.setdefault(key, float(value))
+                self._parameters.setdefault(key, float(value))
         if self.infer_delta:
             for key, value in zip(self.delta_parameter_keys, self._fixed_delta):
-                self.parameters.setdefault(key, float(value))
+                self._parameters.setdefault(key, float(value))
 
         if (
             self.time_marginalization
@@ -170,14 +171,14 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
     @property
     def alpha(self):
-        values = self._get_alpha_values(self.parameters)
+        values = self._get_alpha_values(self._parameters)
         if self.num_frequency_bands == 1:
             return float(values[0])
         return values.copy()
 
     @property
     def delta(self):
-        values = self._get_delta_values(self.parameters)
+        values = self._get_delta_values(self._parameters)
         if self.num_frequency_bands == 1:
             return float(values[0])
         return values.copy()
@@ -345,11 +346,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _store_alpha_values(self, alpha_values):
         for key, value in zip(self.alpha_parameter_keys, alpha_values):
-            self.parameters[key] = float(value)
+            self._parameters[key] = float(value)
 
     def _store_delta_values(self, delta_values):
         for key, value in zip(self.delta_parameter_keys, delta_values):
-            self.parameters[key] = float(value)
+            self._parameters[key] = float(value)
 
     def _get_frequency_band_masks(self, frequencies):
         frequencies = np.asarray(frequencies, dtype=float)
@@ -442,7 +443,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 return None
 
             constant = (
-                order * np.log(delta / alpha)
+                order * np.log(alpha / delta)
                 + 0.5 * (1.0 - dimension) * np.log(2.0 * np.pi)
                 - np.log(2.0 * alpha)
                 - np.log(scaled_bessel)
@@ -453,10 +454,10 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _resolve_likelihood_parameters(self, parameters=None):
         parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self.parameters:
+        if parameters is self._parameters:
             parameters = parameters.copy()
         else:
-            merged_parameters = self.parameters.copy()
+            merged_parameters = self._parameters.copy()
             merged_parameters.update(parameters)
             parameters = merged_parameters
         parameters.update(self.get_sky_frame_parameters(parameters))
@@ -510,23 +511,27 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             if not np.all(np.isfinite(quadratic_contribution)):
                 return None
 
-            detector_frequency_data.append((frequencies, quadratic_contribution))
+            detector_frequency_data.append(
+                (frequencies, quadratic_contribution, np.log(scale2))
+            )
             active_frequencies.append(frequencies)
 
         if len(active_frequencies) == 0:
             empty_float = np.array([], dtype=float)
             empty_int = np.array([], dtype=int)
-            return empty_float, empty_float, empty_int
+            return empty_float, empty_float, empty_int, empty_float
 
         network_frequencies = np.unique(np.concatenate(active_frequencies))
         quadratic_forms = np.zeros(len(network_frequencies), dtype=float)
+        log_scale2_terms = np.zeros(len(network_frequencies), dtype=float)
         active_counts = np.zeros(len(network_frequencies), dtype=int)
 
-        for frequencies, quadratic_contribution in detector_frequency_data:
+        for frequencies, quadratic_contribution, log_scale2 in detector_frequency_data:
             indices = self._map_frequencies_to_network_grid(network_frequencies, frequencies)
             if indices is None:
                 return None
             quadratic_forms[indices] += quadratic_contribution
+            log_scale2_terms[indices] += log_scale2
             active_counts[indices] += 1
 
         active_mask = active_counts > 0
@@ -534,6 +539,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             network_frequencies[active_mask],
             quadratic_forms[active_mask],
             2 * active_counts[active_mask],
+            log_scale2_terms[active_mask],
         )
 
     def _compute_network_log_likelihood(
@@ -543,6 +549,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         delta_values,
         parameters=None,
         waveform_polarizations=None,
+        include_log_scale2=True,
     ):
         frequency_bin_data = self._get_frequency_bin_data(
             interferometers=interferometers,
@@ -552,7 +559,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if frequency_bin_data is None:
             return -np.inf
 
-        frequencies, quadratic_forms, dimensions = frequency_bin_data
+        frequencies, quadratic_forms, dimensions, log_scale2_terms = frequency_bin_data
         if len(frequencies) == 0:
             return 0.0
 
@@ -570,6 +577,8 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             )
             if band_log_terms is None or not np.all(np.isfinite(band_log_terms)):
                 return -np.inf
+            if include_log_scale2:
+                band_log_terms = band_log_terms - log_scale2_terms[band_mask]
             logl += np.sum(band_log_terms)
 
         return float(logl)
@@ -591,10 +600,10 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def _get_default_shape_parameter_dict(self):
-        if self.parameters is None:
+        if self._parameters is None:
             parameters = dict()
         else:
-            parameters = self.parameters.copy()
+            parameters = self._parameters.copy()
 
         shape_parameters = dict()
         alpha_values = self._get_alpha_values(parameters)
@@ -776,7 +785,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self.parameters.copy())
+        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
         if priors is None:
@@ -824,11 +833,13 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             delta_values=delta_values,
             parameters=parameters,
             waveform_polarizations=pols,
+            include_log_scale2=False,
         )
         noise_logl = self._compute_network_log_likelihood(
             interferometers=self.interferometers,
             alpha_values=alpha_values,
             delta_values=delta_values,
+            include_log_scale2=False,
         )
         if not np.isfinite(signal_logl) or not np.isfinite(noise_logl):
             return np.nan_to_num(-np.inf)
@@ -857,11 +868,13 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 delta_values=delta_values,
                 parameters=parameters,
                 waveform_polarizations=pols,
+                include_log_scale2=False,
             )
             detector_noise_logl = self._compute_network_log_likelihood(
                 interferometers=[interferometer],
                 alpha_values=alpha_values,
                 delta_values=delta_values,
+                include_log_scale2=False,
             )
             parameters[f"{interferometer.name}_log_likelihood"] = float(
                 detector_signal_logl - detector_noise_logl

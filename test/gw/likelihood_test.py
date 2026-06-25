@@ -912,7 +912,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             order = 0.5 * (dimension + 1.0)
             mask = dimensions == dimension
             log_density[mask] = (
-                order * np.log(delta / alpha)
+                order * np.log(alpha / delta)
                 + 0.5 * (1.0 - dimension) * np.log(2.0 * np.pi)
                 - np.log(2.0 * alpha)
                 - np.log(kve(order, alpha * delta))
@@ -949,6 +949,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
                     alpha=alpha,
                     delta=delta,
                 )
+                - np.log(scale2)
             )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
@@ -993,6 +994,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
                         alpha=alpha,
                         delta=delta,
                     )
+                    - np.log(scale2[band_mask])
                 )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
@@ -1031,6 +1033,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             )
         )
         quadratic_forms = np.zeros(len(network_frequencies), dtype=float)
+        log_scale2_terms = np.zeros(len(network_frequencies), dtype=float)
         active_counts = np.zeros(len(network_frequencies), dtype=int)
 
         for interferometer in interferometers:
@@ -1042,6 +1045,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             q_contribution = (residual.real ** 2 + residual.imag ** 2) / scale2
             indices = np.searchsorted(network_frequencies, frequencies)
             quadratic_forms[indices] += q_contribution
+            log_scale2_terms[indices] += np.log(scale2)
             active_counts[indices] += 1
 
         manual = np.sum(
@@ -1051,6 +1055,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
                 alpha=alpha,
                 delta=delta,
             )
+            - log_scale2_terms
         )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
@@ -1124,6 +1129,42 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         logl_swapped = likelihood.log_likelihood()
 
         self.assertNotEqual(logl_split, logl_swapped)
+
+    def test_initialization_works_when_parameters_as_state_is_disabled(self):
+        previous_level = bilby.core.likelihood.PARAMETERS_AS_STATE
+        try:
+            bilby.core.likelihood.set_parameters_as_state("FALSE")
+            likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                alpha=[10.0, 12.0],
+                delta=[1.0, 1.5],
+                infer_alpha=True,
+                infer_delta=True,
+                num_frequency_bands=2,
+                noise_evidence_method="nested",
+            )
+            priors = bilby.core.prior.PriorDict(
+                dict(
+                    alpha_1=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_1"),
+                    alpha_2=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_2"),
+                    delta_1=bilby.core.prior.Uniform(0.5, 5.0, name="delta_1"),
+                    delta_2=bilby.core.prior.Uniform(0.5, 5.0, name="delta_2"),
+                )
+            )
+            with patch(
+                "bilby.core.sampler.run_sampler",
+                return_value=MagicMock(log_evidence=-10.0),
+            ):
+                noise_log_evidence = likelihood.noise_log_evidence(priors=priors)
+        finally:
+            bilby.core.likelihood.set_parameters_as_state(previous_level)
+
+        self.assertEqual(likelihood._parameters["alpha_1"], 10.0)
+        self.assertEqual(likelihood._parameters["alpha_2"], 12.0)
+        self.assertEqual(likelihood._parameters["delta_1"], 1.0)
+        self.assertEqual(likelihood._parameters["delta_2"], 1.5)
+        self.assertEqual(noise_log_evidence, -10.0)
 
     def test_meta_data_includes_hyperbolic_configuration(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(

@@ -105,6 +105,8 @@ TEST_INJECTION_NLIVE = 256
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 DEFAULT_INJECTION_NOISE = "student"
 FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
+NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
+NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
 INJECTED_SINE_GAUSSIAN_VALUES_PATH = (
     SCRIPT_DIR / "runbooks" / "injected_sine_gaussian_values.json"
 )
@@ -343,6 +345,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--noise-only-inference",
+        action="store_true",
+        help=(
+            "Generate a Student-t recovery run that infers only the noise "
+            "parameters. The recovery waveform source model is replaced with "
+            "an identically zero waveform and the generated prior keeps only "
+            "the Student-t nu parameter(s)."
+        ),
+    )
+    parser.add_argument(
         "--test-injection",
         action="store_true",
         help=(
@@ -389,7 +401,27 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def validate_noise_only_arguments(args: argparse.Namespace) -> None:
+    if not getattr(args, "noise_only_inference", False):
+        return
+    if args.likelihood != "student":
+        raise ValueError(
+            "--noise-only-inference requires --likelihood student because "
+            "Gaussian recovery has no sampled noise parameters."
+        )
+    if args.add_gaussian is True:
+        raise ValueError(
+            "--noise-only-inference cannot be combined with --add-gaussian "
+            "because the Gaussian companion run has no sampled noise parameters."
+        )
+    if args.test_injection:
+        raise ValueError(
+            "--noise-only-inference cannot be combined with --test-injection."
+        )
+
+
 def hypothesis_list(args: argparse.Namespace) -> list[str]:
+    validate_noise_only_arguments(args)
     explicit_num_frequency_bands = getattr(
         args,
         "num_frequency_bands_was_explicit",
@@ -412,6 +444,8 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
                 f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
             )
         return ["gaussian"]
+    if args.noise_only_inference:
+        return ["student"]
     if args.add_gaussian is not False:
         return ["student", "gaussian"]
     if args.likelihood == "student":
@@ -1237,6 +1271,20 @@ def disable_calibration_settings(text: str) -> str:
     return rendered
 
 
+def apply_noise_only_inference_settings(text: str) -> str:
+    rendered = replace_line(text, "default-prior", NOISE_ONLY_DEFAULT_PRIOR)
+    rendered = replace_line(rendered, "distance-marginalization", "False")
+    rendered = replace_line(rendered, "phase-marginalization", "False")
+    rendered = replace_line(rendered, "time-marginalization", "False")
+    rendered = replace_line(rendered, "jitter-time", "False")
+    rendered = replace_line(
+        rendered,
+        "frequency-domain-source-model",
+        NOISE_ONLY_SOURCE_MODEL,
+    )
+    return rendered
+
+
 def replace_or_append_prior_line(
     text: str,
     key: str,
@@ -1262,6 +1310,47 @@ def replace_or_append_prior_line(
 
 def format_prior_value(value: float) -> str:
     return repr(float(value))
+
+
+def time_parameter_name(time_reference: str) -> str:
+    normalized = str(time_reference).strip().lower()
+    if normalized in {"geocent", "geocenter"}:
+        return "geocent_time"
+    return f"{time_reference}_time"
+
+
+def render_noise_only_prior(
+    *,
+    args: argparse.Namespace,
+    include_nu_prior: bool,
+    detectors: tuple[str, ...],
+    num_frequency_bands: int,
+    detector_dependent_nu: bool,
+    template_settings: dict[str, object],
+) -> str:
+    prior_blocks = []
+    if include_nu_prior:
+        nu_prior_block = build_nu_priors(
+            args,
+            include_nu_prior=True,
+            detectors=detectors,
+            num_frequency_bands=num_frequency_bands,
+            detector_dependent_nu=detector_dependent_nu,
+        )
+        if nu_prior_block:
+            prior_blocks.append(nu_prior_block)
+
+    time_parameter = time_parameter_name(
+        str(template_settings.get("time_reference", "geocent"))
+    )
+    prior_blocks.append(
+        "{} = DeltaFunction(name='{}', peak={})".format(
+            time_parameter,
+            time_parameter,
+            format_prior_value(template_settings["trigger_time"]),
+        )
+    )
+    return "\n\n".join(prior_blocks) + "\n"
 
 
 def build_nu_priors(
@@ -1314,6 +1403,16 @@ def render_prior(
     sine_gaussian_config,
     bundle: dict[str, object],
 ) -> str:
+    if args.noise_only_inference:
+        return render_noise_only_prior(
+            args=args,
+            include_nu_prior=include_nu_prior,
+            detectors=detectors,
+            num_frequency_bands=num_frequency_bands,
+            detector_dependent_nu=detector_dependent_nu,
+            template_settings=template_settings,
+        )
+
     nu_prior_block = build_nu_priors(
         args,
         include_nu_prior=include_nu_prior,
@@ -1451,18 +1550,24 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
-    rendered = replace_line(rendered, "create-summary", "True")
-    rendered = replace_line(
-        rendered,
-        "summarypages-arguments",
-        repr(build_pesummary_arguments(template_settings, psd_paths=psd_paths)),
-    )
+    if args.noise_only_inference:
+        rendered = replace_line(rendered, "create-summary", "False")
+        rendered = replace_line(rendered, "summarypages-arguments", "None")
+    else:
+        rendered = replace_line(rendered, "create-summary", "True")
+        rendered = replace_line(
+            rendered,
+            "summarypages-arguments",
+            repr(build_pesummary_arguments(template_settings, psd_paths=psd_paths)),
+        )
     rendered = replace_line(rendered, "data-dict", format_ini_dict(data_paths))
     if args.frequency_domain_injection:
         rendered = apply_frequency_domain_injection_ini_settings(rendered)
     else:
         rendered = replace_line(rendered, "data-format", "hdf5")
     rendered = disable_calibration_settings(rendered)
+    if args.noise_only_inference:
+        rendered = apply_noise_only_inference_settings(rendered)
     rendered = replace_line(
         rendered,
         "channel-dict",
@@ -1641,6 +1746,13 @@ def prepare_runs(args: argparse.Namespace) -> list[Path]:
         raise ValueError(
             "--test-injection cannot be combined with recovery sine-Gaussian "
             "parameters. Disable --test-injection or set --num-sine-gaussians 0."
+        )
+    if args.noise_only_inference and any(
+        config.enabled for config in sine_gaussian_configs
+    ):
+        raise ValueError(
+            "--noise-only-inference cannot be combined with recovery "
+            "sine-Gaussian parameters."
         )
     for sine_gaussian_config in [
         *sine_gaussian_configs,

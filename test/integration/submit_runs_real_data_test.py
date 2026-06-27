@@ -76,6 +76,19 @@ def test_student_likelihood_can_disable_default_gaussian():
     assert module.hypothesis_list(args) == ["student"]
 
 
+def test_noise_only_inference_requires_student_likelihood():
+    module = load_submit_runs_real_data_module()
+    parser = module.build_argument_parser(SCRIPT_PATH.parent)
+
+    args = parser.parse_args(["--noise-only-inference"])
+
+    with pytest.raises(
+        ValueError,
+        match="--noise-only-inference requires --likelihood student",
+    ):
+        module.hypothesis_list(args)
+
+
 def test_gaussian_likelihood_rejects_explicit_num_frequency_bands():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)
@@ -155,7 +168,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
     assert "distance-marginalization=False\n" in ini_text
-    assert "generation-function=None\n" in ini_text
+    assert (
+        "generation-function="
+        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
+    ) in ini_text
     assert "queue=EPNFS\n" in ini_text
 
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
@@ -271,3 +287,62 @@ def test_main_student_range_writes_single_gaussian_run_without_n_suffix(
 
     gaussian_ini = gaussian_ini_paths[0].read_text(encoding="utf-8")
     assert "gaussian_N" not in gaussian_ini
+
+
+def test_main_noise_only_inference_writes_zero_waveform_student_run(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+    outdir_base = tmp_path / "out"
+    webdir_base = tmp_path / "web"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "student",
+            "--noise-only-inference",
+            "--num-frequency-bands",
+            "2",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--outdir-base",
+            str(outdir_base),
+            "--webdir-base",
+            str(webdir_base),
+        ],
+    )
+
+    assert module.main() == 0
+
+    student_ini_paths = sorted(ini_dir.glob("*_t_student*.ini"))
+    gaussian_ini_paths = sorted(ini_dir.glob("*_gaussian*.ini"))
+    prior_paths = sorted(prior_dir.glob("*.prior"))
+
+    assert len(student_ini_paths) == 1
+    assert gaussian_ini_paths == []
+    assert len(prior_paths) == 1
+
+    student_ini = student_ini_paths[0].read_text(encoding="utf-8")
+    prior_text = prior_paths[0].read_text(encoding="utf-8")
+
+    assert "default-prior=bilby.core.prior.PriorDict\n" in student_ini
+    assert "frequency-domain-source-model=bilby.gw.source.zero_waveform\n" in student_ini
+    assert "create-summary=False\n" in student_ini
+    assert "calibration-model=None\n" in student_ini
+    assert "spline-calibration-envelope-dict=None\n" in student_ini
+    assert "jitter-time=False\n" in student_ini
+    assert "chirp_mass =" not in prior_text
+    assert "luminosity_distance =" not in prior_text
+    assert "nu_1 = Uniform(name='nu_1', minimum=2.1, maximum=1000)" in prior_text
+    assert "nu_2 = Uniform(name='nu_2', minimum=2.1, maximum=1000)" in prior_text
+    assert "L1_time = DeltaFunction(name='L1_time'" in prior_text

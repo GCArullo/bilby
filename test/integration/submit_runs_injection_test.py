@@ -239,6 +239,19 @@ def test_student_likelihood_can_disable_default_gaussian():
     assert module.hypothesis_list(args) == ["student"]
 
 
+def test_noise_only_inference_requires_student_likelihood():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--noise-only-inference"])
+
+    with pytest.raises(
+        ValueError,
+        match="--noise-only-inference requires --likelihood student",
+    ):
+        module.hypothesis_list(args)
+
+
 def test_gaussian_likelihood_rejects_explicit_num_frequency_bands():
     module = load_submit_runs_injection_module()
     parser = module.build_parser()
@@ -310,7 +323,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in gaussian_ini
     assert "distance-marginalization=False\n" in gaussian_ini
-    assert "generation-function=None\n" in gaussian_ini
+    assert (
+        "generation-function="
+        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
+    ) in gaussian_ini
     assert "queue=EPNFS\n" in gaussian_ini
 
 
@@ -497,6 +513,58 @@ def test_main_student_multi_band_writes_single_gaussian_companion(
         assert "calibration-model=None" in ini_text
         assert "calibration-correction-type=None" in ini_text
         assert "spline-calibration-envelope-dict=None" in ini_text
+
+
+def test_main_noise_only_inference_writes_zero_waveform_student_run(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "student",
+            "--noise-only-inference",
+            "--num-frequency-bands",
+            "2",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    student_ini_paths = sorted(base_dir.rglob("*_student.ini"))
+    gaussian_ini_paths = sorted(base_dir.rglob("*_gaussian.ini"))
+    prior_paths = sorted(base_dir.rglob("*.prior"))
+
+    assert len(student_ini_paths) == 1
+    assert gaussian_ini_paths == []
+    assert len(prior_paths) == 1
+
+    student_ini = student_ini_paths[0].read_text(encoding="utf-8")
+    prior_text = prior_paths[0].read_text(encoding="utf-8")
+
+    assert "default-prior=bilby.core.prior.PriorDict\n" in student_ini
+    assert "frequency-domain-source-model=bilby.gw.source.zero_waveform\n" in student_ini
+    assert "create-summary=False\n" in student_ini
+    assert "jitter-time=False\n" in student_ini
+    assert (
+        "likelihood-type=bilby.gw.likelihood.StudentTGravitationalWaveTransient\n"
+        in student_ini
+    )
+    assert "chirp_mass =" not in prior_text
+    assert "luminosity_distance =" not in prior_text
+    assert "nu_1 = Uniform(name='nu_1', minimum=2.1, maximum=1000.0)" in prior_text
+    assert "nu_2 = Uniform(name='nu_2', minimum=2.1, maximum=1000.0)" in prior_text
+    assert "L1_time = DeltaFunction(name='L1_time'" in prior_text
 
 
 def test_main_submits_by_default(monkeypatch, tmp_path):

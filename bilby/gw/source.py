@@ -17,6 +17,14 @@ Unused waveform_kwargs: {waveform_kwargs}
 """
 
 
+def zero_waveform(frequency_array, **kwargs):
+    """Return identically zero plus/cross polarizations."""
+
+    del kwargs
+    zeros = np.zeros_like(frequency_array, dtype=complex)
+    return dict(plus=zeros, cross=zeros)
+
+
 def gwsignal_binary_black_hole(frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
                                phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, **kwargs):
     """

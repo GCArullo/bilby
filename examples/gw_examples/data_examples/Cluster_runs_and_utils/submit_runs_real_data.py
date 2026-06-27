@@ -46,6 +46,8 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
+NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
+NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
     "disable_expert": True,
@@ -174,6 +176,16 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--noise-only-inference",
+        action="store_true",
+        help=(
+            "Generate Student-t runs that infer only the noise parameter(s). "
+            "The recovery waveform source model is replaced with an identically "
+            "zero waveform and the generated prior keeps only the Student-t "
+            "nu parameter(s)."
+        ),
+    )
+    parser.add_argument(
         "--detector-dependent-nu",
         action="store_true",
         help="Generate detector-specific Student-t nu parameters.",
@@ -277,6 +289,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
 
 
 def hypothesis_list(args: argparse.Namespace) -> list[str]:
+    validate_noise_only_arguments(args)
     explicit_num_frequency_bands = getattr(
         args,
         "num_frequency_bands_was_explicit",
@@ -299,9 +312,26 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
                 f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
             )
         return ["gaussian"]
+    if args.noise_only_inference:
+        return ["student"]
     if args.add_gaussian is not False:
         return ["student", "gaussian"]
     return ["student"]
+
+
+def validate_noise_only_arguments(args: argparse.Namespace) -> None:
+    if not getattr(args, "noise_only_inference", False):
+        return
+    if args.likelihood != "student":
+        raise ValueError(
+            "--noise-only-inference requires --likelihood student because "
+            "Gaussian recovery has no sampled noise parameters."
+        )
+    if args.add_gaussian is True:
+        raise ValueError(
+            "--noise-only-inference cannot be combined with --add-gaussian "
+            "because the Gaussian companion run has no sampled noise parameters."
+        )
 
 
 def build_run_requests(
@@ -309,10 +339,13 @@ def build_run_requests(
     *,
     band_counts,
 ) -> list[tuple[str, int]]:
+    validate_noise_only_arguments(args)
     if args.likelihood == "gaussian":
         return [("gaussian", DEFAULT_NUM_FREQUENCY_BANDS)]
 
     requests = [("student", band_count) for band_count in band_counts]
+    if args.noise_only_inference:
+        return requests
     if args.add_gaussian is not False:
         requests.append(("gaussian", DEFAULT_NUM_FREQUENCY_BANDS))
     return requests
@@ -384,7 +417,16 @@ def render_prior(
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
     template_settings: dict[str, object],
     sine_gaussian_config,
+    noise_only_inference: bool = False,
 ) -> str:
+    if noise_only_inference:
+        return render_noise_only_prior(
+            band_count=band_count,
+            detector_dependent_nu=detector_dependent_nu,
+            detectors=detectors,
+            template_settings=template_settings,
+        )
+
     nu_prior_block = ""
     if include_nu_priors:
         nu_prior_block = build_nu_priors(
@@ -451,6 +493,64 @@ def replace_line(text: str, key: str, value: str) -> str:
     raise ValueError(f"Unable to find config key '{key}' in template")
 
 
+def disable_calibration_settings(text: str) -> str:
+    rendered = replace_line(text, "calibration-model", "None")
+    rendered = replace_line(rendered, "spline-calibration-envelope-dict", "None")
+    return rendered
+
+
+def apply_noise_only_inference_settings(text: str) -> str:
+    rendered = replace_line(text, "default-prior", NOISE_ONLY_DEFAULT_PRIOR)
+    rendered = replace_line(rendered, "distance-marginalization", "False")
+    rendered = replace_line(rendered, "phase-marginalization", "False")
+    rendered = replace_line(rendered, "time-marginalization", "False")
+    rendered = replace_line(rendered, "jitter-time", "False")
+    rendered = replace_line(
+        rendered,
+        "frequency-domain-source-model",
+        NOISE_ONLY_SOURCE_MODEL,
+    )
+    return disable_calibration_settings(rendered)
+
+
+def format_prior_value(value: float) -> str:
+    return repr(float(value))
+
+
+def time_parameter_name(time_reference: str) -> str:
+    normalized = str(time_reference).strip().lower()
+    if normalized in {"geocent", "geocenter"}:
+        return "geocent_time"
+    return f"{time_reference}_time"
+
+
+def render_noise_only_prior(
+    *,
+    band_count: int,
+    detector_dependent_nu: bool,
+    detectors: list[str] | tuple[str, ...],
+    template_settings: dict[str, object],
+) -> str:
+    prior_blocks = [
+        build_nu_priors(
+            band_count,
+            detector_dependent_nu=detector_dependent_nu,
+            detectors=detectors,
+        )
+    ]
+    time_parameter = time_parameter_name(
+        str(template_settings.get("time_reference", "geocent"))
+    )
+    prior_blocks.append(
+        "{} = DeltaFunction(name='{}', peak={})".format(
+            time_parameter,
+            time_parameter,
+            format_prior_value(template_settings["trigger_time"]),
+        )
+    )
+    return "\n\n".join(block for block in prior_blocks if block) + "\n"
+
+
 def render_ini(
     ini_template: str,
     *,
@@ -466,6 +566,7 @@ def render_ini(
     require_epnfs: bool,
     template_settings: dict[str, object],
     sine_gaussian_config,
+    noise_only_inference: bool = False,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -482,12 +583,18 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", accounting_user)
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
-    rendered = replace_line(rendered, "create-summary", "True")
-    rendered = replace_line(
-        rendered,
-        "summarypages-arguments",
-        repr(build_pesummary_arguments(template_settings)),
-    )
+    if hypothesis == "student" and noise_only_inference:
+        rendered = replace_line(rendered, "create-summary", "False")
+        rendered = replace_line(rendered, "summarypages-arguments", "None")
+    else:
+        rendered = replace_line(rendered, "create-summary", "True")
+        rendered = replace_line(
+            rendered,
+            "summarypages-arguments",
+            repr(build_pesummary_arguments(template_settings)),
+        )
+    if hypothesis == "student" and noise_only_inference:
+        rendered = apply_noise_only_inference_settings(rendered)
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(
         int(sampler_kwargs["nlive"]),
@@ -538,6 +645,7 @@ def prepare_run(
     accounting_user: str,
     require_epnfs: bool,
     sine_gaussian_config,
+    noise_only_inference: bool,
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix
     if hypothesis == "student":
@@ -585,6 +693,7 @@ def prepare_run(
             detectors=detectors,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
+            noise_only_inference=noise_only_inference,
         ),
         encoding="utf-8",
     )
@@ -603,6 +712,7 @@ def prepare_run(
             require_epnfs=require_epnfs,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
+            noise_only_inference=noise_only_inference,
         ),
         encoding="utf-8",
     )
@@ -668,6 +778,11 @@ def main() -> int:
         detectors=detectors,
     )
     for sine_gaussian_config in sine_gaussian_configs:
+        if args.noise_only_inference and sine_gaussian_config.enabled:
+            raise ValueError(
+                "--noise-only-inference cannot be combined with recovery "
+                "sine-Gaussian parameters."
+            )
         require_supported_sine_gaussian_source_model(
             template_settings,
             sine_gaussian_config,
@@ -705,6 +820,7 @@ def main() -> int:
                 accounting_user=args.accounting_user,
                 require_epnfs=args.require_epnfs,
                 sine_gaussian_config=sine_gaussian_config,
+                noise_only_inference=args.noise_only_inference,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

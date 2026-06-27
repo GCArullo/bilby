@@ -110,6 +110,27 @@ class TestLalBBH(unittest.TestCase):
         self.assertFalse(np.all(out_v223["plus"] == out_v102["plus"]))
 
 
+class TestZeroWaveform(unittest.TestCase):
+    def test_zero_waveform_returns_zero_polarizations(self):
+        frequency_array = bilby.core.utils.create_frequency_series(2048, 4)
+
+        waveform = bilby.gw.source.zero_waveform(
+            frequency_array,
+            waveform_approximant="unused",
+            mass_1=30.0,
+        )
+
+        self.assertEqual(set(waveform), {"plus", "cross"})
+        np.testing.assert_array_equal(
+            waveform["plus"],
+            np.zeros_like(frequency_array, dtype=complex),
+        )
+        np.testing.assert_array_equal(
+            waveform["cross"],
+            np.zeros_like(frequency_array, dtype=complex),
+        )
+
+
 class TestCBCPlusSineGaussians(unittest.TestCase):
     def setUp(self):
         self.frequency_array = bilby.core.utils.create_frequency_series(2048, 4)

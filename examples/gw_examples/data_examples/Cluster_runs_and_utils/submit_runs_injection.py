@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-"""Stage a GW231123 Student-t injection and generate bilby_pipe configs.
+"""Stage a GW231123 heavy-tailed injection and generate bilby_pipe configs.
 
 The generated ini/prior files are rendered from the same GW231123 template files
 used for the real-data analyses in this directory. Only the path- and
 injection-specific settings are replaced, so the resulting configs stay as close
 as possible to the production templates. `--injection-noise` chooses the staged
 noise model, `--likelihood` chooses the recovery likelihood, and
-Student-t runs also generate a single-band Gaussian companion run by default.
+heavy-tailed runs also generate a single-band Gaussian companion run by default.
 """
 
 from __future__ import annotations
@@ -104,6 +104,13 @@ DEFAULT_NLIVE = 2000
 TEST_INJECTION_NLIVE = 256
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 DEFAULT_INJECTION_NOISE = "student"
+HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
+DEFAULT_HYPERBOLIC_ALPHA = "10.0"
+DEFAULT_HYPERBOLIC_DELTA = "1.0"
+DEFAULT_HYPERBOLIC_ALPHA_MIN = 0.5
+DEFAULT_HYPERBOLIC_ALPHA_MAX = 200.0
+DEFAULT_HYPERBOLIC_DELTA_MIN = 0.1
+DEFAULT_HYPERBOLIC_DELTA_MAX = 20.0
 FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
@@ -224,6 +231,22 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--alpha-injection",
+        default=DEFAULT_HYPERBOLIC_ALPHA,
+        help=(
+            "Hyperbolic alpha specification used to seed Hyperbolic recovery "
+            "runs. Accepts a scalar or a per-band list."
+        ),
+    )
+    parser.add_argument(
+        "--delta-injection",
+        default=DEFAULT_HYPERBOLIC_DELTA,
+        help=(
+            "Hyperbolic delta specification used to seed Hyperbolic recovery "
+            "runs. Accepts a scalar or a per-band list."
+        ),
+    )
+    parser.add_argument(
         "--injection-noise",
         choices=("student", "gaussian", "zero-gaussian"),
         default=DEFAULT_INJECTION_NOISE,
@@ -269,17 +292,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Number of frequency bands for Student-t noise generation and "
-            "Student likelihood nu parameterization. "
+            "for heavy-tailed recovery likelihood parameterization. "
             f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
         ),
     )
     parser.add_argument(
+        "--detector-dependent-noise",
         "--detector-dependent-nu",
+        dest="detector_dependent_noise",
         action="store_true",
         help=(
-            "Use detector-dependent nu in the Student likelihood. If --nu-injection "
-            "is not a detector dictionary, the same nu specification is repeated "
-            "for each detector in the staged injection."
+            "Use detector-dependent noise parameters in heavy-tailed likelihoods. "
+            "If --nu-injection, --alpha-injection, or --delta-injection is not a "
+            "detector dictionary, the same per-band specification is repeated for "
+            "each detector."
         ),
     )
     parser.add_argument(
@@ -293,6 +319,30 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1000.0,
         help="Upper prior bound for the inferred Student-t nu parameter.",
+    )
+    parser.add_argument(
+        "--alpha-min",
+        type=float,
+        default=DEFAULT_HYPERBOLIC_ALPHA_MIN,
+        help="Lower prior bound for the inferred Hyperbolic alpha parameter.",
+    )
+    parser.add_argument(
+        "--alpha-max",
+        type=float,
+        default=DEFAULT_HYPERBOLIC_ALPHA_MAX,
+        help="Upper prior bound for the inferred Hyperbolic alpha parameter.",
+    )
+    parser.add_argument(
+        "--delta-min",
+        type=float,
+        default=DEFAULT_HYPERBOLIC_DELTA_MIN,
+        help="Lower prior bound for the inferred Hyperbolic delta parameter.",
+    )
+    parser.add_argument(
+        "--delta-max",
+        type=float,
+        default=DEFAULT_HYPERBOLIC_DELTA_MAX,
+        help="Upper prior bound for the inferred Hyperbolic delta parameter.",
     )
     parser.add_argument(
         "--nlive",
@@ -327,7 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--likelihood",
-        choices=("student", "gaussian"),
+        choices=(*HEAVY_TAILED_LIKELIHOODS, "gaussian"),
         default="gaussian",
         help=(
             "Primary recovery likelihood to generate. Gaussian runs always use "
@@ -339,19 +389,19 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "When --likelihood student is selected, also generate a single-band "
-            "Gaussian companion run. Enabled by default for Student runs; pass "
-            "--no-add-gaussian to disable it."
+            "When a heavy-tailed recovery likelihood is selected, also generate "
+            "a single-band Gaussian companion run. Enabled by default for "
+            "Student-t and Hyperbolic runs; pass --no-add-gaussian to disable it."
         ),
     )
     parser.add_argument(
         "--noise-only-inference",
         action="store_true",
         help=(
-            "Generate a Student-t recovery run that infers only the noise "
+            "Generate a heavy-tailed recovery run that infers only the noise "
             "parameters. The recovery waveform source model is replaced with "
             "an identically zero waveform and the generated prior keeps only "
-            "the Student-t nu parameter(s)."
+            "the Student-t nu or Hyperbolic alpha/delta parameter(s)."
         ),
     )
     parser.add_argument(
@@ -360,8 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Generate the standard staged injection runs, but edit the standard "
             "prior template to fix the maximum-likelihood injection parameters "
-            "read by this script. In this mode, only nu (for Student-t runs) "
-            "and chirp_mass are sampled."
+            "read by this script. In this mode, only the heavy-tailed noise "
+            "parameter(s) and chirp_mass are sampled."
         ),
     )
     parser.add_argument(
@@ -401,13 +451,17 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def heavy_tailed_likelihood_selected(likelihood: str) -> bool:
+    return likelihood in HEAVY_TAILED_LIKELIHOODS
+
+
 def validate_noise_only_arguments(args: argparse.Namespace) -> None:
     if not getattr(args, "noise_only_inference", False):
         return
-    if args.likelihood != "student":
+    if not heavy_tailed_likelihood_selected(args.likelihood):
         raise ValueError(
-            "--noise-only-inference requires --likelihood student because "
-            "Gaussian recovery has no sampled noise parameters."
+            "--noise-only-inference requires --likelihood student or hyperbolic "
+            "because Gaussian recovery has no sampled noise parameters."
         )
     if args.add_gaussian is True:
         raise ValueError(
@@ -420,8 +474,12 @@ def validate_noise_only_arguments(args: argparse.Namespace) -> None:
         )
 
 
-def hypothesis_list(args: argparse.Namespace) -> list[str]:
+def validate_likelihood_arguments(args: argparse.Namespace) -> None:
     validate_noise_only_arguments(args)
+
+
+def hypothesis_list(args: argparse.Namespace) -> list[str]:
+    validate_likelihood_arguments(args)
     explicit_num_frequency_bands = getattr(
         args,
         "num_frequency_bands_was_explicit",
@@ -435,7 +493,7 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
     if args.likelihood == "gaussian":
         if args.add_gaussian is True:
             raise ValueError(
-                "--add-gaussian requires --likelihood student. "
+                "--add-gaussian requires --likelihood student or hyperbolic. "
                 "Gaussian is already the selected primary likelihood."
             )
         if explicit_num_frequency_bands:
@@ -445,11 +503,11 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
             )
         return ["gaussian"]
     if args.noise_only_inference:
-        return ["student"]
+        return [args.likelihood]
     if args.add_gaussian is not False:
-        return ["student", "gaussian"]
-    if args.likelihood == "student":
-        return ["student"]
+        return [args.likelihood, "gaussian"]
+    if heavy_tailed_likelihood_selected(args.likelihood):
+        return [args.likelihood]
     raise ValueError(f"Unknown likelihood selection: {args.likelihood}")
 
 
@@ -482,23 +540,27 @@ def resolve_posterior_path(args: argparse.Namespace) -> Path:
     return posterior_path
 
 
-def _coerce_nu_per_band(nu_value, num_frequency_bands: int) -> list[float]:
-    nu_array = np.asarray(nu_value, dtype=float)
-    if nu_array.ndim == 0:
-        nu_array = np.repeat(nu_array[None], num_frequency_bands)
-    elif nu_array.ndim == 1:
-        if len(nu_array) == 1:
-            nu_array = np.repeat(nu_array, num_frequency_bands)
-        elif len(nu_array) != num_frequency_bands:
+def _coerce_positive_per_band(values, num_frequency_bands: int, name: str) -> list[float]:
+    values_array = np.asarray(values, dtype=float)
+    if values_array.ndim == 0:
+        values_array = np.repeat(values_array[None], num_frequency_bands)
+    elif values_array.ndim == 1:
+        if len(values_array) == 1:
+            values_array = np.repeat(values_array, num_frequency_bands)
+        elif len(values_array) != num_frequency_bands:
             raise ValueError(
-                "nu list must contain one entry or exactly one entry per frequency band"
+                f"{name} list must contain one entry or exactly one entry per frequency band"
             )
     else:
-        raise ValueError("nu values must be scalar or one-dimensional")
+        raise ValueError(f"{name} values must be scalar or one-dimensional")
 
-    if not np.all(np.isfinite(nu_array)) or np.any(nu_array <= 0):
-        raise ValueError("All nu values must be positive and finite")
-    return [float(value) for value in nu_array]
+    if not np.all(np.isfinite(values_array)) or np.any(values_array <= 0):
+        raise ValueError(f"All {name} values must be positive and finite")
+    return [float(value) for value in values_array]
+
+
+def _coerce_nu_per_band(nu_value, num_frequency_bands: int) -> list[float]:
+    return _coerce_positive_per_band(nu_value, num_frequency_bands, "nu")
 
 
 def parse_nu_injection_spec(raw_value: str):
@@ -508,12 +570,19 @@ def parse_nu_injection_spec(raw_value: str):
     return parsed
 
 
+def parse_hyperbolic_shape_spec(raw_value: str, name: str):
+    parsed = parse_template_value(raw_value)
+    if parsed is None:
+        raise ValueError(f"{name} cannot be None")
+    return parsed
+
+
 def resolve_nu_configuration(
     *,
     raw_nu_injection: str,
     detectors: tuple[str, ...],
     num_frequency_bands: int,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
 ) -> tuple[object, object, bool]:
     if int(num_frequency_bands) < 1:
         raise ValueError("num-frequency-bands must be a positive integer")
@@ -528,19 +597,19 @@ def resolve_nu_configuration(
             resolved_detector_nu[detector] = _coerce_nu_per_band(
                 parsed_nu[detector], num_frequency_bands
             )
-        effective_detector_dependent_nu = True
+        effective_detector_dependent_noise = True
     else:
         shared_nu = _coerce_nu_per_band(parsed_nu, num_frequency_bands)
-        if detector_dependent_nu:
+        if detector_dependent_noise:
             resolved_detector_nu = {
                 detector: list(shared_nu) for detector in detectors
             }
-            effective_detector_dependent_nu = True
+            effective_detector_dependent_noise = True
         else:
             resolved_detector_nu = list(shared_nu)
-            effective_detector_dependent_nu = False
+            effective_detector_dependent_noise = False
 
-    if effective_detector_dependent_nu:
+    if effective_detector_dependent_noise:
         if num_frequency_bands == 1:
             likelihood_nu = [resolved_detector_nu[detector][0] for detector in detectors]
             noise_nu = {detector: values[0] for detector, values in resolved_detector_nu.items()}
@@ -555,7 +624,67 @@ def resolve_nu_configuration(
             likelihood_nu = resolved_detector_nu
             noise_nu = resolved_detector_nu
 
-    return noise_nu, likelihood_nu, effective_detector_dependent_nu
+    return noise_nu, likelihood_nu, effective_detector_dependent_noise
+
+
+def resolve_hyperbolic_configuration(
+    *,
+    raw_alpha_injection: str,
+    raw_delta_injection: str,
+    detectors: tuple[str, ...],
+    num_frequency_bands: int,
+    detector_dependent_noise: bool,
+) -> tuple[object, object, bool]:
+    if int(num_frequency_bands) < 1:
+        raise ValueError("num-frequency-bands must be a positive integer")
+
+    parsed_alpha = parse_hyperbolic_shape_spec(raw_alpha_injection, "alpha-injection")
+    parsed_delta = parse_hyperbolic_shape_spec(raw_delta_injection, "delta-injection")
+    effective_detector_dependent_noise = (
+        detector_dependent_noise
+        or isinstance(parsed_alpha, dict)
+        or isinstance(parsed_delta, dict)
+    )
+
+    def resolve_parameter(parsed_value, name: str):
+        if effective_detector_dependent_noise:
+            if isinstance(parsed_value, dict):
+                resolved_values = {}
+                for detector in detectors:
+                    if detector not in parsed_value:
+                        raise ValueError(
+                            f"{name}-injection dictionary is missing detector '{detector}'"
+                        )
+                    resolved_values[detector] = _coerce_positive_per_band(
+                        parsed_value[detector],
+                        num_frequency_bands,
+                        name,
+                    )
+            else:
+                shared_values = _coerce_positive_per_band(
+                    parsed_value,
+                    num_frequency_bands,
+                    name,
+                )
+                resolved_values = {
+                    detector: list(shared_values) for detector in detectors
+                }
+            if num_frequency_bands == 1:
+                return [resolved_values[detector][0] for detector in detectors]
+            return [resolved_values[detector] for detector in detectors]
+
+        resolved_values = _coerce_positive_per_band(
+            parsed_value,
+            num_frequency_bands,
+            name,
+        )
+        if num_frequency_bands == 1:
+            return resolved_values[0]
+        return resolved_values
+
+    alpha = resolve_parameter(parsed_alpha, "alpha")
+    delta = resolve_parameter(parsed_delta, "delta")
+    return alpha, delta, effective_detector_dependent_noise
 
 
 def load_maximum_likelihood_injection(posterior_path: Path) -> tuple[dict, float, int]:
@@ -1086,18 +1215,36 @@ def stage_injection_bundle(
         args.injection_noise == "student" or args.likelihood == "student"
     )
     if need_nu_configuration:
-        configured_noise_nu, likelihood_nu, effective_detector_dependent_nu = (
+        configured_noise_nu, likelihood_nu, effective_detector_dependent_noise = (
             resolve_nu_configuration(
                 raw_nu_injection=args.nu_injection,
                 detectors=template_settings["detectors"],
                 num_frequency_bands=args.num_frequency_bands,
-                detector_dependent_nu=args.detector_dependent_nu,
+                detector_dependent_noise=args.detector_dependent_noise,
             )
         )
     else:
         configured_noise_nu = None
         likelihood_nu = None
-        effective_detector_dependent_nu = False
+        effective_detector_dependent_noise = False
+    if args.likelihood == "hyperbolic":
+        (
+            likelihood_alpha,
+            likelihood_delta,
+            effective_hyperbolic_detector_dependent_noise,
+        ) = resolve_hyperbolic_configuration(
+            raw_alpha_injection=args.alpha_injection,
+            raw_delta_injection=args.delta_injection,
+            detectors=template_settings["detectors"],
+            num_frequency_bands=args.num_frequency_bands,
+            detector_dependent_noise=args.detector_dependent_noise,
+        )
+        effective_detector_dependent_noise = (
+            effective_hyperbolic_detector_dependent_noise
+        )
+    else:
+        likelihood_alpha = None
+        likelihood_delta = None
 
     injected_noise_nu = (
         configured_noise_nu if args.injection_noise == "student" else None
@@ -1166,6 +1313,8 @@ def stage_injection_bundle(
         ),
         nu_injection=injected_noise_nu,
         likelihood_nu=likelihood_nu,
+        likelihood_alpha=likelihood_alpha,
+        likelihood_delta=likelihood_delta,
         num_frequency_bands=args.num_frequency_bands,
         injection_duration=template_settings["duration"],
         injection_start_time=(
@@ -1173,7 +1322,7 @@ def stage_injection_bundle(
             + template_settings["post_trigger_duration"]
             - template_settings["duration"]
         ),
-        detector_dependent_nu=effective_detector_dependent_nu,
+        detector_dependent_noise=effective_detector_dependent_noise,
         posterior_path=str(posterior_path.resolve()),
         waveform_approximant=template_settings["waveform_approximant"],
         sampling_seed=staging_seed,
@@ -1197,7 +1346,9 @@ def stage_injection_bundle(
         data_paths=data_paths,
         psd_paths=psd_paths,
         likelihood_nu=likelihood_nu,
-        detector_dependent_nu=effective_detector_dependent_nu,
+        likelihood_alpha=likelihood_alpha,
+        likelihood_delta=likelihood_delta,
+        detector_dependent_noise=effective_detector_dependent_noise,
         injection_parameters=injection_parameters,
         injected_sine_gaussian_configuration=injected_sine_gaussian_config,
         maxl_index=maxl_index,
@@ -1322,23 +1473,35 @@ def time_parameter_name(time_reference: str) -> str:
 def render_noise_only_prior(
     *,
     args: argparse.Namespace,
-    include_nu_prior: bool,
+    hypothesis: str,
     detectors: tuple[str, ...],
     num_frequency_bands: int,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
     template_settings: dict[str, object],
 ) -> str:
     prior_blocks = []
-    if include_nu_prior:
+    if hypothesis == "student":
         nu_prior_block = build_nu_priors(
             args,
             include_nu_prior=True,
             detectors=detectors,
             num_frequency_bands=num_frequency_bands,
-            detector_dependent_nu=detector_dependent_nu,
+            detector_dependent_noise=detector_dependent_noise,
         )
         if nu_prior_block:
             prior_blocks.append(nu_prior_block)
+    elif hypothesis == "hyperbolic":
+        hyperbolic_prior_block = build_hyperbolic_priors(
+            args,
+            include_hyperbolic_prior=True,
+            detectors=detectors,
+            num_frequency_bands=num_frequency_bands,
+            detector_dependent_noise=detector_dependent_noise,
+        )
+        if hyperbolic_prior_block:
+            prior_blocks.append(hyperbolic_prior_block)
+    elif hypothesis != "gaussian":
+        raise ValueError(f"Unknown hypothesis '{hypothesis}'")
 
     time_parameter = time_parameter_name(
         str(template_settings.get("time_reference", "geocent"))
@@ -1359,7 +1522,7 @@ def build_nu_priors(
     include_nu_prior: bool,
     detectors: tuple[str, ...],
     num_frequency_bands: int,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
 ) -> str:
     if not include_nu_prior:
         return ""
@@ -1370,7 +1533,7 @@ def build_nu_priors(
         else args.nu_max
     )
 
-    if detector_dependent_nu:
+    if detector_dependent_noise:
         if num_frequency_bands == 1:
             keys = [f"nu_{detector}" for detector in detectors]
         else:
@@ -1391,14 +1554,67 @@ def build_nu_priors(
     )
 
 
+def build_hyperbolic_priors(
+    args: argparse.Namespace,
+    *,
+    include_hyperbolic_prior: bool,
+    detectors: tuple[str, ...],
+    num_frequency_bands: int,
+    detector_dependent_noise: bool,
+) -> str:
+    if not include_hyperbolic_prior:
+        return ""
+
+    lines = []
+    if detector_dependent_noise:
+        if num_frequency_bands == 1:
+            parameter_keys = [
+                (f"alpha_{detector}", "alpha") for detector in detectors
+            ] + [
+                (f"delta_{detector}", "delta") for detector in detectors
+            ]
+        else:
+            parameter_keys = [
+                (f"alpha_{detector}_{index}", "alpha")
+                for detector in detectors
+                for index in range(1, num_frequency_bands + 1)
+            ] + [
+                (f"delta_{detector}_{index}", "delta")
+                for detector in detectors
+                for index in range(1, num_frequency_bands + 1)
+            ]
+    elif num_frequency_bands == 1:
+        parameter_keys = [("alpha", "alpha"), ("delta", "delta")]
+    else:
+        parameter_keys = [
+            (f"alpha_{index}", "alpha")
+            for index in range(1, num_frequency_bands + 1)
+        ] + [
+            (f"delta_{index}", "delta")
+            for index in range(1, num_frequency_bands + 1)
+        ]
+
+    for key, parameter_name in parameter_keys:
+        if parameter_name == "alpha":
+            minimum = format_prior_value(args.alpha_min)
+            maximum = format_prior_value(args.alpha_max)
+        else:
+            minimum = format_prior_value(args.delta_min)
+            maximum = format_prior_value(args.delta_max)
+        lines.append(
+            f"{key} = LogUniform(name='{key}', minimum={minimum}, maximum={maximum})"
+        )
+    return "\n".join(lines)
+
+
 def render_prior(
     prior_template: str,
     *,
     args: argparse.Namespace,
-    include_nu_prior: bool,
+    hypothesis: str,
     detectors: tuple[str, ...],
     num_frequency_bands: int,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
     template_settings: dict[str, object],
     sine_gaussian_config,
     bundle: dict[str, object],
@@ -1406,20 +1622,34 @@ def render_prior(
     if args.noise_only_inference:
         return render_noise_only_prior(
             args=args,
-            include_nu_prior=include_nu_prior,
+            hypothesis=hypothesis,
             detectors=detectors,
             num_frequency_bands=num_frequency_bands,
-            detector_dependent_nu=detector_dependent_nu,
+            detector_dependent_noise=detector_dependent_noise,
             template_settings=template_settings,
         )
 
-    nu_prior_block = build_nu_priors(
-        args,
-        include_nu_prior=include_nu_prior,
-        detectors=detectors,
-        num_frequency_bands=num_frequency_bands,
-        detector_dependent_nu=detector_dependent_nu,
-    )
+    if hypothesis == "student":
+        heavy_tailed_prior_block = build_nu_priors(
+            args,
+            include_nu_prior=True,
+            detectors=detectors,
+            num_frequency_bands=num_frequency_bands,
+            detector_dependent_noise=detector_dependent_noise,
+        )
+    elif hypothesis == "hyperbolic":
+        heavy_tailed_prior_block = build_hyperbolic_priors(
+            args,
+            include_hyperbolic_prior=True,
+            detectors=detectors,
+            num_frequency_bands=num_frequency_bands,
+            detector_dependent_noise=detector_dependent_noise,
+        )
+    elif hypothesis == "gaussian":
+        heavy_tailed_prior_block = ""
+    else:
+        raise ValueError(f"Unknown hypothesis '{hypothesis}'")
+
     sine_gaussian_prior_block = build_sine_gaussian_prior_block(
         sine_gaussian_config,
         minimum_frequency=template_settings["minimum_frequency"],
@@ -1427,7 +1657,7 @@ def render_prior(
     )
     rendered = prior_template.replace(
         "__NU_PRIORS__",
-        combine_prior_blocks(nu_prior_block, sine_gaussian_prior_block),
+        combine_prior_blocks(heavy_tailed_prior_block, sine_gaussian_prior_block),
     )
     if not args.test_injection:
         return rendered
@@ -1517,8 +1747,10 @@ def render_ini(
     args: argparse.Namespace,
     template_settings: dict[str, object],
     num_frequency_bands: int,
-    detector_dependent_nu: bool,
-    likelihood_nu,
+    detector_dependent_noise: bool,
+    likelihood_nu=None,
+    likelihood_alpha=None,
+    likelihood_delta=None,
     label: str,
     outdir: Path,
     webdir: Path,
@@ -1536,7 +1768,7 @@ def render_ini(
         "__WEBDIR__": str(webdir.resolve()),
         "__PRIOR_FILE__": str(prior_path.resolve()),
         "__NUM_FREQUENCY_BANDS__": str(num_frequency_bands),
-        "__DETECTOR_DEPENDENT_NU__": str(detector_dependent_nu),
+        "__DETECTOR_DEPENDENT_NOISE__": str(detector_dependent_noise),
     }
     for placeholder, value in placeholders.items():
         rendered = rendered.replace(placeholder, value)
@@ -1615,7 +1847,25 @@ def render_ini(
                 "{'nu': "
                 f"{repr(likelihood_nu)}, 'infer_nu': True, "
                 f"'num_frequency_bands': {num_frequency_bands}, "
-                f"'detector_dependent_nu': {detector_dependent_nu}"
+                f"'detector_dependent_noise': {detector_dependent_noise}"
+                "}"
+            ),
+        )
+    elif hypothesis == "hyperbolic":
+        rendered = replace_line(
+            rendered,
+            "likelihood-type",
+            "bilby.gw.likelihood.HyperbolicGravitationalWaveTransient",
+        )
+        rendered = replace_line(
+            rendered,
+            "extra-likelihood-kwargs",
+            (
+                "{'alpha': "
+                f"{repr(likelihood_alpha)}, 'delta': {repr(likelihood_delta)}, "
+                f"'infer_alpha': True, 'infer_delta': True, "
+                f"'num_frequency_bands': {num_frequency_bands}, "
+                f"'detector_dependent_noise': {detector_dependent_noise}"
                 "}"
             ),
         )
@@ -1663,13 +1913,21 @@ def write_run_files(
     )
     run_num_frequency_bands = (
         args.num_frequency_bands
-        if hypothesis == "student"
+        if heavy_tailed_likelihood_selected(hypothesis)
         else DEFAULT_NUM_FREQUENCY_BANDS
     )
-    run_detector_dependent_nu = (
-        bundle["detector_dependent_nu"] if hypothesis == "student" else False
+    run_detector_dependent_noise = (
+        bundle["detector_dependent_noise"]
+        if heavy_tailed_likelihood_selected(hypothesis)
+        else False
     )
     run_likelihood_nu = bundle["likelihood_nu"] if hypothesis == "student" else None
+    run_likelihood_alpha = (
+        bundle["likelihood_alpha"] if hypothesis == "hyperbolic" else None
+    )
+    run_likelihood_delta = (
+        bundle["likelihood_delta"] if hypothesis == "hyperbolic" else None
+    )
     run_directory_name = build_run_directory_name(label, args.outdir_label)
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
@@ -1680,10 +1938,10 @@ def write_run_files(
         render_prior(
             prior_template,
             args=args,
-            include_nu_prior=(hypothesis == "student"),
+            hypothesis=hypothesis,
             detectors=template_settings["detectors"],
             num_frequency_bands=run_num_frequency_bands,
-            detector_dependent_nu=run_detector_dependent_nu,
+            detector_dependent_noise=run_detector_dependent_noise,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             bundle=bundle,
@@ -1696,8 +1954,10 @@ def write_run_files(
             args=args,
             template_settings=template_settings,
             num_frequency_bands=run_num_frequency_bands,
-            detector_dependent_nu=run_detector_dependent_nu,
+            detector_dependent_noise=run_detector_dependent_noise,
             likelihood_nu=run_likelihood_nu,
+            likelihood_alpha=run_likelihood_alpha,
+            likelihood_delta=run_likelihood_delta,
             label=label,
             outdir=outdir,
             webdir=webdir,

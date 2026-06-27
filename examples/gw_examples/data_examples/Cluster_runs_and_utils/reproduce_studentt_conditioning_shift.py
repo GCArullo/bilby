@@ -476,7 +476,7 @@ def compute_fixed_signal_nu_posterior(
         nu=3.0,
         infer_nu=True,
         num_frequency_bands=1,
-        detector_dependent_nu=False,
+        detector_dependent_noise=False,
         phase_marginalization=False,
         time_marginalization=False,
         distance_marginalization=False,

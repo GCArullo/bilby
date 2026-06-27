@@ -319,6 +319,7 @@ class TestStudentTGWTransient(unittest.TestCase):
         )
         self.assertEqual(likelihood.meta_data["nu"], [8.0, 12.0])
         self.assertTrue(likelihood.meta_data["infer_nu"])
+        self.assertFalse(likelihood.meta_data["detector_dependent_noise"])
         self.assertFalse(likelihood.meta_data["detector_dependent_nu"])
         self.assertEqual(likelihood.meta_data["num_frequency_bands"], 2)
         self.assertEqual(likelihood.meta_data["noise_evidence_method"], "quadrature")
@@ -683,7 +684,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             waveform_generator=self.waveform_generator,
             nu=detector_nus,
             num_frequency_bands=2,
-            detector_dependent_nu=True,
+            detector_dependent_noise=True,
         )
         likelihood.parameters = self.parameters.copy()
 
@@ -731,7 +732,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
             num_frequency_bands=2,
-            detector_dependent_nu=True,
+            detector_dependent_noise=True,
         )
 
         for key in ["nu_H1_1", "nu_H1_2", "nu_L1_1", "nu_L1_2"]:
@@ -841,7 +842,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             waveform_generator=waveform_generator,
             nu=nu,
             num_frequency_bands=1,
-            detector_dependent_nu=False,
+            detector_dependent_noise=False,
         )
 
         shifted_parameters = injection_parameters.copy()
@@ -1183,8 +1184,125 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         self.assertEqual(likelihood.meta_data["delta"], [1.0, 1.5])
         self.assertTrue(likelihood.meta_data["infer_alpha"])
         self.assertTrue(likelihood.meta_data["infer_delta"])
+        self.assertFalse(likelihood.meta_data["detector_dependent_noise"])
         self.assertEqual(likelihood.meta_data["num_frequency_bands"], 2)
         self.assertEqual(likelihood.meta_data["noise_evidence_method"], "quadrature")
+
+    def test_detector_dependent_fixed_shape_matches_direct_calculation(self):
+        interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
+        interferometers.set_strain_data_from_power_spectral_densities(
+            sampling_frequency=self.sampling_frequency, duration=self.duration
+        )
+        detector_alphas = np.array([[4.0, 10.0], [8.0, 25.0]])
+        detector_deltas = np.array([[0.7, 1.3], [1.1, 2.0]])
+        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=detector_alphas,
+            delta=detector_deltas,
+            num_frequency_bands=2,
+            detector_dependent_noise=True,
+        )
+        likelihood.parameters = self.parameters.copy()
+
+        calculated = likelihood.log_likelihood()
+
+        pols = self.waveform_generator.frequency_domain_strain(self.parameters)
+        manual = 0.0
+        band_edges = likelihood._frequency_band_edges
+        for detector_index, ifo in enumerate(interferometers):
+            h_f = ifo.get_detector_response(pols, self.parameters)
+            mask = ifo.frequency_mask
+            frequencies = ifo.frequency_array[mask]
+            r = ifo.frequency_domain_strain[mask] - h_f[mask]
+            scale2 = ifo.power_spectral_density_array[mask] * self.duration / 4.0
+            quadratic_forms = (r.real ** 2 + r.imag ** 2) / scale2
+
+            for band_index, (alpha, delta) in enumerate(
+                zip(detector_alphas[detector_index], detector_deltas[detector_index])
+            ):
+                lower = band_edges[band_index]
+                upper = band_edges[band_index + 1]
+                if band_index == detector_alphas.shape[1] - 1:
+                    band_mask = (frequencies >= lower) & (frequencies <= upper)
+                else:
+                    band_mask = (frequencies >= lower) & (frequencies < upper)
+
+                manual += np.sum(
+                    self._manual_log_density(
+                        quadratic_forms=quadratic_forms[band_mask],
+                        dimensions=np.full(np.sum(band_mask), 2, dtype=int),
+                        alpha=alpha,
+                        delta=delta,
+                    )
+                    - np.log(scale2[band_mask])
+                )
+
+        self.assertAlmostEqual(calculated, float(manual), 7)
+
+    def test_detector_dependent_infer_shape_uses_detector_specific_parameters(self):
+        interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
+        interferometers.set_strain_data_from_power_spectral_densities(
+            sampling_frequency=self.sampling_frequency, duration=self.duration
+        )
+        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=10.0,
+            delta=1.0,
+            infer_alpha=True,
+            infer_delta=True,
+            num_frequency_bands=2,
+            detector_dependent_noise=True,
+        )
+
+        for key in [
+            "alpha_H1_1",
+            "alpha_H1_2",
+            "alpha_L1_1",
+            "alpha_L1_2",
+            "delta_H1_1",
+            "delta_H1_2",
+            "delta_L1_1",
+            "delta_L1_2",
+        ]:
+            self.assertIn(key, likelihood.parameters)
+
+        likelihood.parameters = self.parameters.copy()
+        likelihood.parameters.update(
+            {
+                "alpha_H1_1": 4.0,
+                "alpha_H1_2": 40.0,
+                "alpha_L1_1": 8.0,
+                "alpha_L1_2": 15.0,
+                "delta_H1_1": 0.5,
+                "delta_H1_2": 2.5,
+                "delta_L1_1": 1.0,
+                "delta_L1_2": 1.8,
+            }
+        )
+
+        np.testing.assert_allclose(
+            likelihood.alpha,
+            np.array([[4.0, 40.0], [8.0, 15.0]]),
+        )
+        np.testing.assert_allclose(
+            likelihood.delta,
+            np.array([[0.5, 2.5], [1.0, 1.8]]),
+        )
+
+        logl_a = likelihood.log_likelihood()
+        likelihood.parameters.update(
+            {
+                "alpha_H1_1": 40.0,
+                "alpha_H1_2": 4.0,
+                "delta_H1_1": 2.5,
+                "delta_H1_2": 0.5,
+            }
+        )
+        logl_b = likelihood.log_likelihood()
+
+        self.assertNotEqual(logl_a, logl_b)
 
     def test_invalid_alpha_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(

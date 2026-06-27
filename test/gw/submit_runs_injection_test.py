@@ -139,6 +139,7 @@ def test_render_ini_frequency_domain_injection_uses_native_fd_loader(monkeypatch
             nlive=10,
             naccept=3,
             frequency_domain_injection=True,
+            noise_only_inference=False,
         ),
     )()
     template_settings = dict(
@@ -156,7 +157,7 @@ def test_render_ini_frequency_domain_injection_uses_native_fd_loader(monkeypatch
         args=args,
         template_settings=template_settings,
         num_frequency_bands=1,
-        detector_dependent_nu=False,
+        detector_dependent_noise=False,
         likelihood_nu=None,
         label="label",
         outdir=tmp_path / "out",

@@ -22,7 +22,7 @@ python "$REAL" --event GW231123 --likelihood student --range --num-frequency-ban
 Det-dependent `nu`, up to 4 frequency bands:
 
 ```
-python "$REAL" --event GW231123 --likelihood student --range --num-frequency-bands 4 --detector-dependent-nu
+python "$REAL" --event GW231123 --likelihood student --range --num-frequency-bands 4 --detector-dependent-noise
 ```
 
 ## Injections
@@ -45,7 +45,7 @@ python "$INJ" \
   --label-prefix "GW231123_gaussianinj_studentrec_dd_N${n}" \
   --injection-noise gaussian \
   --likelihood student \
-  --detector-dependent-nu
+  --detector-dependent-noise
 ```
 
 Student injections with Student recovery, det-independent `nu`, bands 1..4:
@@ -72,7 +72,7 @@ for n in 1 2 3 4; do
     --injection-noise student \
     --nu-injection 2.1 \
     --likelihood student \
-    --detector-dependent-nu \
+    --detector-dependent-noise \
     --num-frequency-bands "$n"
 done
 ```

@@ -309,7 +309,7 @@ def build_likelihood(
             nu=nu_injection,
             infer_nu=True,
             num_frequency_bands=1,
-            detector_dependent_nu=False,
+            detector_dependent_noise=False,
         )
     raise ValueError(f"Unknown hypothesis: {hypothesis}")
 

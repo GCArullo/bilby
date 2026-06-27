@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-"""Generate and optionally submit Student-t bilby_pipe runs.
+"""Generate and optionally submit heavy-tailed bilby_pipe runs.
 
-Generate either Student-t or Gaussian-likelihood runs. Student-t runs may
-also generate a single-band Gaussian companion run by default.
+Generate either Student-t, Hyperbolic, or Gaussian-likelihood runs.
+Heavy-tailed runs may also generate a single-band Gaussian companion run by
+default.
 """
 
 from __future__ import annotations
@@ -46,6 +47,13 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
+HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
+DEFAULT_HYPERBOLIC_ALPHA = 10.0
+DEFAULT_HYPERBOLIC_DELTA = 1.0
+DEFAULT_HYPERBOLIC_ALPHA_MIN = 0.5
+DEFAULT_HYPERBOLIC_ALPHA_MAX = 200.0
+DEFAULT_HYPERBOLIC_DELTA_MIN = 0.1
+DEFAULT_HYPERBOLIC_DELTA_MAX = 20.0
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
 DEFAULT_PESUMMARY_ARGUMENTS = {
@@ -108,8 +116,8 @@ def outdir_label(value: str) -> str:
 def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate bilby_pipe ini/prior files for Student-t or Gaussian runs "
-            "and optionally submit them."
+            "Generate bilby_pipe ini/prior files for Student-t, Hyperbolic, or "
+            "Gaussian runs and optionally submit them."
         )
     )
     parser.add_argument(
@@ -158,7 +166,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--likelihood",
-        choices=("student", "gaussian"),
+        choices=(*HEAVY_TAILED_LIKELIHOODS, "gaussian"),
         default="gaussian",
         help=(
             "Primary recovery likelihood to generate. Gaussian runs always use "
@@ -170,33 +178,38 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "When --likelihood student is selected, also generate a single-band "
-            "Gaussian companion run. Enabled by default for Student runs; pass "
-            "--no-add-gaussian to disable it."
+            "When a heavy-tailed likelihood is selected, also generate a "
+            "single-band Gaussian companion run. Enabled by default for "
+            "Student-t and Hyperbolic runs; pass --no-add-gaussian to disable it."
         ),
     )
     parser.add_argument(
         "--noise-only-inference",
         action="store_true",
         help=(
-            "Generate Student-t runs that infer only the noise parameter(s). "
-            "The recovery waveform source model is replaced with an identically "
-            "zero waveform and the generated prior keeps only the Student-t "
-            "nu parameter(s)."
+            "Generate a heavy-tailed run that infers only the noise "
+            "parameter(s). The recovery waveform source model is replaced with "
+            "an identically zero waveform and the generated prior keeps only "
+            "the Student-t nu or Hyperbolic alpha/delta parameter(s)."
         ),
     )
     parser.add_argument(
+        "--detector-dependent-noise",
         "--detector-dependent-nu",
+        dest="detector_dependent_noise",
         action="store_true",
-        help="Generate detector-specific Student-t nu parameters.",
+        help=(
+            "Generate detector-specific noise parameters for heavy-tailed "
+            "likelihoods."
+        ),
     )
     parser.add_argument(
         "--detectors",
         nargs="+",
         default=None,
         help=(
-            "Detector names used when building detector-dependent nu priors. "
-            "Defaults to the selected event."
+            "Detector names used when building detector-dependent noise-parameter "
+            "priors. Defaults to the selected event."
         ),
     )
     parser.add_argument(
@@ -289,7 +302,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
 
 
 def hypothesis_list(args: argparse.Namespace) -> list[str]:
-    validate_noise_only_arguments(args)
+    validate_likelihood_arguments(args)
     explicit_num_frequency_bands = getattr(
         args,
         "num_frequency_bands_was_explicit",
@@ -303,7 +316,7 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
     if args.likelihood == "gaussian":
         if args.add_gaussian is True:
             raise ValueError(
-                "--add-gaussian requires --likelihood student. "
+                "--add-gaussian requires --likelihood student or hyperbolic. "
                 "Gaussian is already the selected primary likelihood."
             )
         if explicit_num_frequency_bands:
@@ -313,18 +326,24 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
             )
         return ["gaussian"]
     if args.noise_only_inference:
-        return ["student"]
+        return [args.likelihood]
     if args.add_gaussian is not False:
-        return ["student", "gaussian"]
-    return ["student"]
+        return [args.likelihood, "gaussian"]
+    if args.likelihood in HEAVY_TAILED_LIKELIHOODS:
+        return [args.likelihood]
+    raise ValueError(f"Unknown likelihood selection: {args.likelihood}")
+
+
+def heavy_tailed_likelihood_selected(likelihood: str) -> bool:
+    return likelihood in HEAVY_TAILED_LIKELIHOODS
 
 
 def validate_noise_only_arguments(args: argparse.Namespace) -> None:
     if not getattr(args, "noise_only_inference", False):
         return
-    if args.likelihood != "student":
+    if not heavy_tailed_likelihood_selected(args.likelihood):
         raise ValueError(
-            "--noise-only-inference requires --likelihood student because "
+            "--noise-only-inference requires --likelihood student or hyperbolic because "
             "Gaussian recovery has no sampled noise parameters."
         )
     if args.add_gaussian is True:
@@ -334,16 +353,20 @@ def validate_noise_only_arguments(args: argparse.Namespace) -> None:
         )
 
 
+def validate_likelihood_arguments(args: argparse.Namespace) -> None:
+    validate_noise_only_arguments(args)
+
+
 def build_run_requests(
     args: argparse.Namespace,
     *,
     band_counts,
 ) -> list[tuple[str, int]]:
-    validate_noise_only_arguments(args)
+    validate_likelihood_arguments(args)
     if args.likelihood == "gaussian":
         return [("gaussian", DEFAULT_NUM_FREQUENCY_BANDS)]
 
-    requests = [("student", band_count) for band_count in band_counts]
+    requests = [(args.likelihood, band_count) for band_count in band_counts]
     if args.noise_only_inference:
         return requests
     if args.add_gaussian is not False:
@@ -387,10 +410,10 @@ def load_template(path: Path) -> str:
 def build_nu_priors(
     band_count: int,
     *,
-    detector_dependent_nu: bool = False,
+    detector_dependent_noise: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
 ) -> str:
-    if not detector_dependent_nu:
+    if not detector_dependent_noise:
         if band_count == 1:
             return "nu = Uniform(name='nu', minimum=2.1, maximum=1000)"
         return "\n".join(
@@ -408,12 +431,60 @@ def build_nu_priors(
     )
 
 
+def build_hyperbolic_priors(
+    band_count: int,
+    *,
+    detector_dependent_noise: bool = False,
+    detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+) -> str:
+    lines = []
+    if detector_dependent_noise:
+        if band_count == 1:
+            parameter_keys = [
+                (f"alpha_{detector}", "alpha") for detector in detectors
+            ] + [
+                (f"delta_{detector}", "delta") for detector in detectors
+            ]
+        else:
+            parameter_keys = [
+                (f"alpha_{detector}_{index}", "alpha")
+                for detector in detectors
+                for index in range(1, band_count + 1)
+            ] + [
+                (f"delta_{detector}_{index}", "delta")
+                for detector in detectors
+                for index in range(1, band_count + 1)
+            ]
+    elif band_count == 1:
+        parameter_keys = [("alpha", "alpha"), ("delta", "delta")]
+    else:
+        parameter_keys = [
+            (f"alpha_{index}", "alpha")
+            for index in range(1, band_count + 1)
+        ] + [
+            (f"delta_{index}", "delta")
+            for index in range(1, band_count + 1)
+        ]
+
+    for key, parameter_name in parameter_keys:
+        if parameter_name == "alpha":
+            minimum = DEFAULT_HYPERBOLIC_ALPHA_MIN
+            maximum = DEFAULT_HYPERBOLIC_ALPHA_MAX
+        else:
+            minimum = DEFAULT_HYPERBOLIC_DELTA_MIN
+            maximum = DEFAULT_HYPERBOLIC_DELTA_MAX
+        lines.append(
+            f"{key} = LogUniform(name='{key}', minimum={minimum}, maximum={maximum})"
+        )
+    return "\n".join(lines)
+
+
 def render_prior(
     prior_template: str,
     band_count: int,
     *,
-    include_nu_priors: bool = True,
-    detector_dependent_nu: bool = False,
+    hypothesis: str,
+    detector_dependent_noise: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
     template_settings: dict[str, object],
     sine_gaussian_config,
@@ -421,19 +492,29 @@ def render_prior(
 ) -> str:
     if noise_only_inference:
         return render_noise_only_prior(
+            hypothesis=hypothesis,
             band_count=band_count,
-            detector_dependent_nu=detector_dependent_nu,
+            detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
             template_settings=template_settings,
         )
 
-    nu_prior_block = ""
-    if include_nu_priors:
-        nu_prior_block = build_nu_priors(
+    if hypothesis == "student":
+        heavy_tailed_prior_block = build_nu_priors(
             band_count,
-            detector_dependent_nu=detector_dependent_nu,
+            detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
         )
+    elif hypothesis == "hyperbolic":
+        heavy_tailed_prior_block = build_hyperbolic_priors(
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+        )
+    elif hypothesis == "gaussian":
+        heavy_tailed_prior_block = ""
+    else:
+        raise ValueError(f"Unknown hypothesis '{hypothesis}'")
     sine_gaussian_prior_block = build_sine_gaussian_prior_block(
         sine_gaussian_config,
         minimum_frequency=template_settings["minimum_frequency"],
@@ -441,7 +522,7 @@ def render_prior(
     )
     return prior_template.replace(
         "__NU_PRIORS__",
-        combine_prior_blocks(nu_prior_block, sine_gaussian_prior_block),
+        combine_prior_blocks(heavy_tailed_prior_block, sine_gaussian_prior_block),
     )
 
 
@@ -526,18 +607,30 @@ def time_parameter_name(time_reference: str) -> str:
 
 def render_noise_only_prior(
     *,
+    hypothesis: str,
     band_count: int,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
     detectors: list[str] | tuple[str, ...],
     template_settings: dict[str, object],
 ) -> str:
-    prior_blocks = [
-        build_nu_priors(
+    if hypothesis == "student":
+        noise_prior_block = build_nu_priors(
             band_count,
-            detector_dependent_nu=detector_dependent_nu,
+            detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
         )
-    ]
+    elif hypothesis == "hyperbolic":
+        noise_prior_block = build_hyperbolic_priors(
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+        )
+    elif hypothesis == "gaussian":
+        noise_prior_block = ""
+    else:
+        raise ValueError(f"Unknown hypothesis '{hypothesis}'")
+
+    prior_blocks = [noise_prior_block]
     time_parameter = time_parameter_name(
         str(template_settings.get("time_reference", "geocent"))
     )
@@ -560,7 +653,7 @@ def render_ini(
     webdir: str,
     prior_file: Path,
     band_count: int,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
     working_directory: Path,
     accounting_user: str,
     require_epnfs: bool,
@@ -574,7 +667,7 @@ def render_ini(
         "__WEBDIR__": webdir,
         "__PRIOR_FILE__": str(prior_file),
         "__NUM_FREQUENCY_BANDS__": str(band_count),
-        "__DETECTOR_DEPENDENT_NU__": str(detector_dependent_nu),
+        "__DETECTOR_DEPENDENT_NOISE__": str(detector_dependent_noise),
         "__WORKING_DIRECTORY__": str(working_directory),
     }
     rendered = ini_template
@@ -583,7 +676,7 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", accounting_user)
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
-    if hypothesis == "student" and noise_only_inference:
+    if noise_only_inference:
         rendered = replace_line(rendered, "create-summary", "False")
         rendered = replace_line(rendered, "summarypages-arguments", "None")
     else:
@@ -593,7 +686,7 @@ def render_ini(
             "summarypages-arguments",
             repr(build_pesummary_arguments(template_settings)),
         )
-    if hypothesis == "student" and noise_only_inference:
+    if noise_only_inference:
         rendered = apply_noise_only_inference_settings(rendered)
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(
@@ -607,6 +700,34 @@ def render_ini(
             rendered,
             "likelihood-type",
             "bilby.gw.likelihood.StudentTGravitationalWaveTransient",
+        )
+        rendered = replace_line(
+            rendered,
+            "extra-likelihood-kwargs",
+            (
+                "{'nu': 8.0, 'infer_nu': True, "
+                f"'num_frequency_bands': {band_count}, "
+                f"'detector_dependent_noise': {detector_dependent_noise}"
+                "}"
+            ),
+        )
+    elif hypothesis == "hyperbolic":
+        rendered = replace_line(
+            rendered,
+            "likelihood-type",
+            "bilby.gw.likelihood.HyperbolicGravitationalWaveTransient",
+        )
+        rendered = replace_line(
+            rendered,
+            "extra-likelihood-kwargs",
+            (
+                "{'alpha': "
+                f"{DEFAULT_HYPERBOLIC_ALPHA}, 'delta': {DEFAULT_HYPERBOLIC_DELTA}, "
+                "'infer_alpha': True, 'infer_delta': True, "
+                f"'num_frequency_bands': {band_count}, "
+                f"'detector_dependent_noise': {detector_dependent_noise}"
+                "}"
+            ),
         )
     elif hypothesis == "gaussian":
         rendered = replace_line(
@@ -634,7 +755,7 @@ def prepare_run(
     template_settings: dict[str, object],
     ini_dir: Path,
     prior_dir: Path,
-    detector_dependent_nu: bool,
+    detector_dependent_noise: bool,
     detectors: list[str] | tuple[str, ...],
     label_prefix: str,
     outdir_base: str,
@@ -650,7 +771,7 @@ def prepare_run(
     waveform_suffix = sine_gaussian_config.label_suffix
     if hypothesis == "student":
         run_band_count = band_count
-        mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
+        mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
         label = f"{label_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}"
         run_directory_name = build_run_directory_name(
             f"student{mode_suffix}_N{run_band_count}{waveform_suffix}",
@@ -666,8 +787,28 @@ def prepare_run(
             ini_dir
             / f"{file_prefix}_t_student{mode_suffix}_N{run_band_count}{waveform_suffix}.ini"
         ).resolve()
-        include_nu_priors = True
-        run_detector_dependent_nu = detector_dependent_nu
+        run_detector_dependent_noise = detector_dependent_noise
+    elif hypothesis == "hyperbolic":
+        run_band_count = band_count
+        mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
+        label = (
+            f"{label_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}"
+        )
+        run_directory_name = build_run_directory_name(
+            f"hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}",
+            outdir_label,
+        )
+        run_outdir = f"{outdir_base}/{run_directory_name}"
+        run_webdir = f"{webdir_base}/{run_directory_name}"
+        prior_path = (
+            prior_dir
+            / f"{file_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}.prior"
+        ).resolve()
+        ini_path = (
+            ini_dir
+            / f"{file_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}.ini"
+        ).resolve()
+        run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "gaussian":
         run_band_count = DEFAULT_NUM_FREQUENCY_BANDS
         label = f"{label_prefix}_gaussian{waveform_suffix}"
@@ -679,8 +820,7 @@ def prepare_run(
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior").resolve()
         ini_path = (ini_dir / f"{file_prefix}_gaussian{waveform_suffix}.ini").resolve()
-        include_nu_priors = False
-        run_detector_dependent_nu = False
+        run_detector_dependent_noise = False
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
 
@@ -688,8 +828,8 @@ def prepare_run(
         render_prior(
             prior_template,
             run_band_count,
-            include_nu_priors=include_nu_priors,
-            detector_dependent_nu=run_detector_dependent_nu,
+            hypothesis=hypothesis,
+            detector_dependent_noise=run_detector_dependent_noise,
             detectors=detectors,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
@@ -706,7 +846,7 @@ def prepare_run(
             webdir=run_webdir,
             prior_file=prior_path,
             band_count=run_band_count,
-            detector_dependent_nu=run_detector_dependent_nu,
+            detector_dependent_noise=run_detector_dependent_noise,
             working_directory=working_directory,
             accounting_user=accounting_user,
             require_epnfs=require_epnfs,
@@ -717,7 +857,11 @@ def prepare_run(
         encoding="utf-8",
     )
 
-    band_fragment = f" N={run_band_count}" if hypothesis == "student" else ""
+    band_fragment = (
+        f" N={run_band_count}"
+        if heavy_tailed_likelihood_selected(hypothesis)
+        else ""
+    )
     print(
         f"Prepared {hypothesis}{band_fragment} "
         f"({sine_gaussian_config.description}):"
@@ -809,7 +953,7 @@ def main() -> int:
                 template_settings=template_settings,
                 ini_dir=ini_dir,
                 prior_dir=prior_dir,
-                detector_dependent_nu=args.detector_dependent_nu,
+                detector_dependent_noise=args.detector_dependent_noise,
                 detectors=detectors,
                 label_prefix=label_prefix,
                 outdir_base=outdir_base,

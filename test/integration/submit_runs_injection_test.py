@@ -126,7 +126,7 @@ def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
         args=args,
         template_settings=template_settings,
         num_frequency_bands=1,
-        detector_dependent_nu=False,
+        detector_dependent_noise=False,
         likelihood_nu=None,
         label="label",
         outdir=tmp_path / "out",
@@ -239,6 +239,25 @@ def test_student_likelihood_can_disable_default_gaussian():
     assert module.hypothesis_list(args) == ["student"]
 
 
+def test_hyperbolic_likelihood_runs_hyperbolic_and_gaussian_by_default():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--likelihood", "hyperbolic"])
+
+    assert args.num_frequency_bands is None
+    assert module.hypothesis_list(args) == ["hyperbolic", "gaussian"]
+
+
+def test_hyperbolic_likelihood_can_disable_default_gaussian():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--likelihood", "hyperbolic", "--no-add-gaussian"])
+
+    assert module.hypothesis_list(args) == ["hyperbolic"]
+
+
 def test_noise_only_inference_requires_student_likelihood():
     module = load_submit_runs_injection_module()
     parser = module.build_parser()
@@ -247,7 +266,7 @@ def test_noise_only_inference_requires_student_likelihood():
 
     with pytest.raises(
         ValueError,
-        match="--noise-only-inference requires --likelihood student",
+        match="--noise-only-inference requires --likelihood student or hyperbolic",
     ):
         module.hypothesis_list(args)
 
@@ -273,7 +292,7 @@ def test_add_gaussian_requires_student_likelihood():
 
     with pytest.raises(
         ValueError,
-        match="--add-gaussian requires --likelihood student",
+        match="--add-gaussian requires --likelihood student or hyperbolic",
     ):
         module.hypothesis_list(args)
 
@@ -285,6 +304,17 @@ def test_student_likelihood_keeps_gaussian_companion_for_multiple_frequency_band
     args = parser.parse_args(["--likelihood", "student", "--num-frequency-bands", "4"])
 
     assert module.hypothesis_list(args) == ["student", "gaussian"]
+
+
+def test_hyperbolic_accepts_detector_dependent_noise():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(
+        ["--likelihood", "hyperbolic", "--detector-dependent-noise"]
+    )
+
+    assert module.hypothesis_list(args) == ["hyperbolic", "gaussian"]
 
 
 def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_path):
@@ -383,7 +413,7 @@ def test_stage_injection_bundle_writes_psd_on_staged_frequency_grid(
             injection_noise="gaussian",
             likelihood="gaussian",
             num_frequency_bands=1,
-            detector_dependent_nu=False,
+            detector_dependent_noise=False,
             nu_injection="2.1",
             noise_generation_seed=98765,
             frequency_domain_injection=True,
@@ -515,6 +545,138 @@ def test_main_student_multi_band_writes_single_gaussian_companion(
         assert "spline-calibration-envelope-dict=None" in ini_text
 
 
+def test_main_hyperbolic_multi_band_writes_single_gaussian_companion(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "hyperbolic",
+            "--num-frequency-bands",
+            "4",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    gaussian_ini_paths = sorted(base_dir.rglob("*_gaussian.ini"))
+    hyperbolic_ini_paths = sorted(base_dir.rglob("*_hyperbolic.ini"))
+    hyperbolic_prior_paths = sorted(base_dir.rglob("*_hyperbolic.prior"))
+
+    assert len(gaussian_ini_paths) == 1
+    assert len(hyperbolic_ini_paths) == 1
+    assert len(hyperbolic_prior_paths) == 1
+
+    gaussian_ini = gaussian_ini_paths[0].read_text(encoding="utf-8")
+    hyperbolic_ini = hyperbolic_ini_paths[0].read_text(encoding="utf-8")
+    hyperbolic_prior = hyperbolic_prior_paths[0].read_text(encoding="utf-8")
+
+    assert "__NUM_FREQUENCY_BANDS__" not in gaussian_ini
+    assert "num-frequency-bands=4" not in gaussian_ini
+    assert "'num_frequency_bands': 4" not in gaussian_ini
+    assert (
+        "likelihood-type=bilby.gw.likelihood.HyperbolicGravitationalWaveTransient\n"
+        in hyperbolic_ini
+    )
+    assert "'infer_alpha': True" in hyperbolic_ini
+    assert "'infer_delta': True" in hyperbolic_ini
+    assert "'num_frequency_bands': 4" in hyperbolic_ini
+    assert "extra-likelihood-kwargs=None" in gaussian_ini
+    assert "alpha_1 = LogUniform(name='alpha_1', minimum=0.5, maximum=200.0)" in hyperbolic_prior
+    assert "delta_4 = LogUniform(name='delta_4', minimum=0.1, maximum=20.0)" in hyperbolic_prior
+
+
+def test_main_student_detector_dependent_noise_writes_detector_specific_priors(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "student",
+            "--num-frequency-bands",
+            "2",
+            "--detector-dependent-noise",
+            "--no-add-gaussian",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    student_ini = next(base_dir.rglob("*_student.ini")).read_text(encoding="utf-8")
+    student_prior = next(base_dir.rglob("*_student.prior")).read_text(encoding="utf-8")
+
+    assert "'detector_dependent_noise': True" in student_ini
+    assert "nu_H1_1 = Uniform(name='nu_H1_1', minimum=2.1, maximum=1000" in student_prior
+    assert "nu_L1_2 = Uniform(name='nu_L1_2', minimum=2.1, maximum=1000" in student_prior
+
+
+def test_main_hyperbolic_detector_dependent_noise_writes_detector_specific_priors(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "hyperbolic",
+            "--num-frequency-bands",
+            "2",
+            "--detector-dependent-noise",
+            "--no-add-gaussian",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    hyperbolic_ini = next(base_dir.rglob("*_hyperbolic.ini")).read_text(
+        encoding="utf-8"
+    )
+    hyperbolic_prior = next(base_dir.rglob("*_hyperbolic.prior")).read_text(
+        encoding="utf-8"
+    )
+
+    assert "'detector_dependent_noise': True" in hyperbolic_ini
+    assert (
+        "alpha_H1_1 = LogUniform(name='alpha_H1_1', minimum=0.5, maximum=200.0)"
+        in hyperbolic_prior
+    )
+    assert (
+        "delta_L1_2 = LogUniform(name='delta_L1_2', minimum=0.1, maximum=20.0)"
+        in hyperbolic_prior
+    )
+
+
 def test_main_noise_only_inference_writes_zero_waveform_student_run(
     monkeypatch, tmp_path
 ):
@@ -564,6 +726,60 @@ def test_main_noise_only_inference_writes_zero_waveform_student_run(
     assert "luminosity_distance =" not in prior_text
     assert "nu_1 = Uniform(name='nu_1', minimum=2.1, maximum=1000.0)" in prior_text
     assert "nu_2 = Uniform(name='nu_2', minimum=2.1, maximum=1000.0)" in prior_text
+    assert "L1_time = DeltaFunction(name='L1_time'" in prior_text
+
+
+def test_main_noise_only_inference_writes_zero_waveform_hyperbolic_run(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "hyperbolic",
+            "--noise-only-inference",
+            "--num-frequency-bands",
+            "2",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    hyperbolic_ini_paths = sorted(base_dir.rglob("*_hyperbolic.ini"))
+    gaussian_ini_paths = sorted(base_dir.rglob("*_gaussian.ini"))
+    prior_paths = sorted(base_dir.rglob("*_hyperbolic.prior"))
+
+    assert len(hyperbolic_ini_paths) == 1
+    assert gaussian_ini_paths == []
+    assert len(prior_paths) == 1
+
+    hyperbolic_ini = hyperbolic_ini_paths[0].read_text(encoding="utf-8")
+    prior_text = prior_paths[0].read_text(encoding="utf-8")
+
+    assert "default-prior=bilby.core.prior.PriorDict\n" in hyperbolic_ini
+    assert "frequency-domain-source-model=bilby.gw.source.zero_waveform\n" in hyperbolic_ini
+    assert "create-summary=False\n" in hyperbolic_ini
+    assert "jitter-time=False\n" in hyperbolic_ini
+    assert (
+        "likelihood-type=bilby.gw.likelihood.HyperbolicGravitationalWaveTransient\n"
+        in hyperbolic_ini
+    )
+    assert "chirp_mass =" not in prior_text
+    assert "luminosity_distance =" not in prior_text
+    assert "alpha_1 = LogUniform(name='alpha_1', minimum=0.5, maximum=200.0)" in prior_text
+    assert "alpha_2 = LogUniform(name='alpha_2', minimum=0.5, maximum=200.0)" in prior_text
+    assert "delta_1 = LogUniform(name='delta_1', minimum=0.1, maximum=20.0)" in prior_text
+    assert "delta_2 = LogUniform(name='delta_2', minimum=0.1, maximum=20.0)" in prior_text
     assert "L1_time = DeltaFunction(name='L1_time'" in prior_text
 
 

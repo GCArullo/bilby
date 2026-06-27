@@ -52,6 +52,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         infer_alpha=False,
         infer_delta=False,
         num_frequency_bands=1,
+        detector_dependent_noise=False,
         time_marginalization=False,
         distance_marginalization=False,
         phase_marginalization=False,
@@ -85,13 +86,21 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             If True, treat the hyperbolic tail parameter as sampled. For a single band
             this uses the parameter name 'alpha'. For multiple bands this uses
             'alpha_1', ..., 'alpha_N'; you must add priors for each sampled parameter.
+            If `detector_dependent_noise=True`, sampled parameters become
+            detector-specific: 'alpha_H1', ... or 'alpha_H1_1', ..., 'alpha_L1_1', ... .
         infer_delta : bool
             If True, treat the hyperbolic scale parameter as sampled. For a single band
             this uses the parameter name 'delta'. For multiple bands this uses
             'delta_1', ..., 'delta_N'; you must add priors for each sampled parameter.
+            If `detector_dependent_noise=True`, sampled parameters become
+            detector-specific: 'delta_H1', ... or 'delta_H1_1', ..., 'delta_L1_1', ... .
         num_frequency_bands : int
             Number of contiguous frequency bands spanning the active analysis range. Each
             band has its own hyperbolic `alpha` and `delta` parameters.
+        detector_dependent_noise : bool
+            If True, allow distinct hyperbolic `alpha` and `delta` values for each
+            interferometer (and for each frequency band if `num_frequency_bands > 1`).
+            If False, the same hyperbolic shape parameters are shared by all detectors.
         noise_evidence_nlive : int, optional
             Number of live points to use when the noise evidence requires an
             auxiliary nested-sampling run. If not provided, use the internal
@@ -130,6 +139,8 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         )
 
         self.num_frequency_bands = self._validate_num_frequency_bands(num_frequency_bands)
+        self.detector_dependent_noise = bool(detector_dependent_noise)
+        self._detector_names = [ifo.name for ifo in self.interferometers]
         self._fixed_alpha = self._coerce_parameter_array(alpha, "alpha")
         self._fixed_delta = self._coerce_parameter_array(delta, "delta")
         self.infer_alpha = bool(infer_alpha)
@@ -152,11 +163,31 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             raise ValueError("All delta values must be positive and finite")
 
         if self.infer_alpha:
-            for key, value in zip(self.alpha_parameter_keys, self._fixed_alpha):
-                self._parameters.setdefault(key, float(value))
+            if not self.detector_dependent_noise:
+                for key, value in zip(self.alpha_parameter_keys, self._fixed_alpha):
+                    self._parameters.setdefault(key, float(value))
+            else:
+                for detector_index, detector_name in enumerate(self._detector_names):
+                    for band_index in range(self.num_frequency_bands):
+                        self._parameters.setdefault(
+                            self._detector_parameter_key(
+                                "alpha", detector_name, band_index
+                            ),
+                            float(self._fixed_alpha[detector_index, band_index]),
+                        )
         if self.infer_delta:
-            for key, value in zip(self.delta_parameter_keys, self._fixed_delta):
-                self._parameters.setdefault(key, float(value))
+            if not self.detector_dependent_noise:
+                for key, value in zip(self.delta_parameter_keys, self._fixed_delta):
+                    self._parameters.setdefault(key, float(value))
+            else:
+                for detector_index, detector_name in enumerate(self._detector_names):
+                    for band_index in range(self.num_frequency_bands):
+                        self._parameters.setdefault(
+                            self._detector_parameter_key(
+                                "delta", detector_name, band_index
+                            ),
+                            float(self._fixed_delta[detector_index, band_index]),
+                        )
 
         if (
             self.time_marginalization
@@ -172,28 +203,52 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
     @property
     def alpha(self):
         values = self._get_alpha_values(self._parameters)
+        if not self.detector_dependent_noise:
+            if self.num_frequency_bands == 1:
+                return float(values[0])
+            return values.copy()
         if self.num_frequency_bands == 1:
-            return float(values[0])
+            return values[:, 0].copy()
         return values.copy()
 
     @property
     def delta(self):
         values = self._get_delta_values(self._parameters)
+        if not self.detector_dependent_noise:
+            if self.num_frequency_bands == 1:
+                return float(values[0])
+            return values.copy()
         if self.num_frequency_bands == 1:
-            return float(values[0])
+            return values[:, 0].copy()
         return values.copy()
 
     @property
     def alpha_parameter_keys(self):
+        if not self.detector_dependent_noise:
+            if self.num_frequency_bands == 1:
+                return ["alpha"]
+            return [f"alpha_{index}" for index in range(1, self.num_frequency_bands + 1)]
         if self.num_frequency_bands == 1:
-            return ["alpha"]
-        return [f"alpha_{index}" for index in range(1, self.num_frequency_bands + 1)]
+            return [f"alpha_{detector_name}" for detector_name in self._detector_names]
+        return [
+            f"alpha_{detector_name}_{index}"
+            for detector_name in self._detector_names
+            for index in range(1, self.num_frequency_bands + 1)
+        ]
 
     @property
     def delta_parameter_keys(self):
+        if not self.detector_dependent_noise:
+            if self.num_frequency_bands == 1:
+                return ["delta"]
+            return [f"delta_{index}" for index in range(1, self.num_frequency_bands + 1)]
         if self.num_frequency_bands == 1:
-            return ["delta"]
-        return [f"delta_{index}" for index in range(1, self.num_frequency_bands + 1)]
+            return [f"delta_{detector_name}" for detector_name in self._detector_names]
+        return [
+            f"delta_{detector_name}_{index}"
+            for detector_name in self._detector_names
+            for index in range(1, self.num_frequency_bands + 1)
+        ]
 
     @property
     def noise_parameter_keys(self):
@@ -213,6 +268,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             delta=self._fixed_delta.tolist(),
             infer_alpha=self.infer_alpha,
             infer_delta=self.infer_delta,
+            detector_dependent_noise=self.detector_dependent_noise,
             num_frequency_bands=self.num_frequency_bands,
             noise_evidence_method=self.noise_evidence_method,
         )
@@ -283,13 +339,44 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _coerce_parameter_array(self, values, name):
         values = np.asarray(values, dtype=float)
+        if not self.detector_dependent_noise:
+            if values.ndim == 0:
+                values = np.repeat(values[None], self.num_frequency_bands)
+            elif values.ndim == 1 and len(values) == 1:
+                values = np.repeat(values, self.num_frequency_bands)
+            elif values.ndim != 1 or len(values) != self.num_frequency_bands:
+                raise ValueError(
+                    f"{name} must be a scalar or an array with one entry per frequency band"
+                )
+            return values.astype(float, copy=False)
+
+        num_detectors = len(self.interferometers)
         if values.ndim == 0:
-            values = np.repeat(values[None], self.num_frequency_bands)
-        elif values.ndim == 1 and len(values) == 1:
-            values = np.repeat(values, self.num_frequency_bands)
-        elif values.ndim != 1 or len(values) != self.num_frequency_bands:
+            values = np.full((num_detectors, self.num_frequency_bands), float(values))
+        elif values.ndim == 1:
+            if len(values) == 1:
+                values = np.full(
+                    (num_detectors, self.num_frequency_bands), float(values[0])
+                )
+            elif len(values) == self.num_frequency_bands:
+                values = np.repeat(values[None, :], num_detectors, axis=0)
+            elif len(values) == num_detectors and self.num_frequency_bands == 1:
+                values = values[:, None]
+            else:
+                raise ValueError(
+                    f"{name} must be a scalar, an array with one entry per frequency band, "
+                    "an array with one entry per detector when num_frequency_bands=1, "
+                    "or a 2D array with shape (num_detectors, num_frequency_bands)"
+                )
+        elif values.ndim == 2:
+            if values.shape != (num_detectors, self.num_frequency_bands):
+                raise ValueError(
+                    f"{name} must have shape (num_detectors, num_frequency_bands) "
+                    "when detector_dependent_noise=True"
+                )
+        else:
             raise ValueError(
-                f"{name} must be a scalar or an array with one entry per frequency band"
+                f"{name} must be scalar, 1D, or 2D when detector_dependent_noise=True"
             )
         return values.astype(float, copy=False)
 
@@ -308,20 +395,42 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         frequencies = np.unique(np.concatenate(active_frequencies))
         return np.linspace(frequencies[0], frequencies[-1], self.num_frequency_bands + 1)
 
+    def _detector_parameter_key(self, parameter_name, detector_name, band_index):
+        if self.num_frequency_bands == 1:
+            return f"{parameter_name}_{detector_name}"
+        return f"{parameter_name}_{detector_name}_{band_index + 1}"
+
     def _get_alpha_values(self, parameters):
         if not self.infer_alpha:
             return self._fixed_alpha
 
-        if self.num_frequency_bands == 1:
-            return self._coerce_parameter_array(parameters.get("alpha", self._fixed_alpha[0]), "alpha")
-
         if "alpha" in parameters:
             return self._coerce_parameter_array(parameters["alpha"], "alpha")
 
+        if not self.detector_dependent_noise:
+            if self.num_frequency_bands == 1:
+                return self._coerce_parameter_array(
+                    parameters.get("alpha", self._fixed_alpha[0]), "alpha"
+                )
+
+            return self._coerce_parameter_array(
+                [
+                    parameters.get(key, default)
+                    for key, default in zip(self.alpha_parameter_keys, self._fixed_alpha)
+                ],
+                "alpha",
+            )
+
         return self._coerce_parameter_array(
             [
-                parameters.get(key, default)
-                for key, default in zip(self.alpha_parameter_keys, self._fixed_alpha)
+                [
+                    parameters.get(
+                        self._detector_parameter_key("alpha", detector_name, band_index),
+                        self._fixed_alpha[detector_index, band_index],
+                    )
+                    for band_index in range(self.num_frequency_bands)
+                ]
+                for detector_index, detector_name in enumerate(self._detector_names)
             ],
             "alpha",
         )
@@ -330,27 +439,65 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if not self.infer_delta:
             return self._fixed_delta
 
-        if self.num_frequency_bands == 1:
-            return self._coerce_parameter_array(parameters.get("delta", self._fixed_delta[0]), "delta")
-
         if "delta" in parameters:
             return self._coerce_parameter_array(parameters["delta"], "delta")
 
+        if not self.detector_dependent_noise:
+            if self.num_frequency_bands == 1:
+                return self._coerce_parameter_array(
+                    parameters.get("delta", self._fixed_delta[0]), "delta"
+                )
+
+            return self._coerce_parameter_array(
+                [
+                    parameters.get(key, default)
+                    for key, default in zip(self.delta_parameter_keys, self._fixed_delta)
+                ],
+                "delta",
+            )
+
         return self._coerce_parameter_array(
             [
-                parameters.get(key, default)
-                for key, default in zip(self.delta_parameter_keys, self._fixed_delta)
+                [
+                    parameters.get(
+                        self._detector_parameter_key("delta", detector_name, band_index),
+                        self._fixed_delta[detector_index, band_index],
+                    )
+                    for band_index in range(self.num_frequency_bands)
+                ]
+                for detector_index, detector_name in enumerate(self._detector_names)
             ],
             "delta",
         )
 
     def _store_alpha_values(self, alpha_values):
-        for key, value in zip(self.alpha_parameter_keys, alpha_values):
-            self._parameters[key] = float(value)
+        if not self.detector_dependent_noise:
+            for key, value in zip(self.alpha_parameter_keys, alpha_values):
+                self._parameters[key] = float(value)
+            return
+
+        for detector_index, detector_name in enumerate(self._detector_names):
+            for band_index in range(self.num_frequency_bands):
+                self._parameters[
+                    self._detector_parameter_key("alpha", detector_name, band_index)
+                ] = float(alpha_values[detector_index, band_index])
 
     def _store_delta_values(self, delta_values):
-        for key, value in zip(self.delta_parameter_keys, delta_values):
-            self._parameters[key] = float(value)
+        if not self.detector_dependent_noise:
+            for key, value in zip(self.delta_parameter_keys, delta_values):
+                self._parameters[key] = float(value)
+            return
+
+        for detector_index, detector_name in enumerate(self._detector_names):
+            for band_index in range(self.num_frequency_bands):
+                self._parameters[
+                    self._detector_parameter_key("delta", detector_name, band_index)
+                ] = float(delta_values[detector_index, band_index])
+
+    def _get_interferometer_parameter_values(self, interferometer, parameter_values):
+        if not self.detector_dependent_noise:
+            return parameter_values
+        return parameter_values[self._detector_names.index(interferometer.name)]
 
     def _get_frequency_band_masks(self, frequencies):
         frequencies = np.asarray(frequencies, dtype=float)
@@ -583,6 +730,35 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
         return float(logl)
 
+    def _sum_detector_log_likelihoods(
+        self,
+        *,
+        interferometers,
+        alpha_values,
+        delta_values,
+        parameters=None,
+        waveform_polarizations=None,
+        include_log_scale2=True,
+    ):
+        logl = 0.0
+        for interferometer in interferometers:
+            detector_logl = self._compute_network_log_likelihood(
+                interferometers=[interferometer],
+                alpha_values=self._get_interferometer_parameter_values(
+                    interferometer, alpha_values
+                ),
+                delta_values=self._get_interferometer_parameter_values(
+                    interferometer, delta_values
+                ),
+                parameters=parameters,
+                waveform_polarizations=waveform_polarizations,
+                include_log_scale2=include_log_scale2,
+            )
+            if not np.isfinite(detector_logl):
+                return -np.inf
+            logl += detector_logl
+        return float(logl)
+
     def _noise_log_likelihood_from_parameters(self, parameters):
         alpha_values, delta_values = self._get_active_shape_parameters(
             parameters, update_state=False
@@ -590,11 +766,18 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
 
-        logl = self._compute_network_log_likelihood(
-            interferometers=self.interferometers,
-            alpha_values=alpha_values,
-            delta_values=delta_values,
-        )
+        if self.detector_dependent_noise:
+            logl = self._sum_detector_log_likelihoods(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+            )
+        else:
+            logl = self._compute_network_log_likelihood(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+            )
         if not np.isfinite(logl):
             return np.nan_to_num(-np.inf)
         return float(logl)
@@ -612,14 +795,14 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             shape_parameters.update(
                 {
                     key: float(value)
-                    for key, value in zip(self.alpha_parameter_keys, alpha_values)
+                    for key, value in zip(self.alpha_parameter_keys, np.ravel(alpha_values))
                 }
             )
         if self.infer_delta:
             shape_parameters.update(
                 {
                     key: float(value)
-                    for key, value in zip(self.delta_parameter_keys, delta_values)
+                    for key, value in zip(self.delta_parameter_keys, np.ravel(delta_values))
                 }
             )
         return shape_parameters
@@ -773,13 +956,22 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        logl = self._compute_network_log_likelihood(
-            interferometers=self.interferometers,
-            alpha_values=alpha_values,
-            delta_values=delta_values,
-            parameters=parameters,
-            waveform_polarizations=pols,
-        )
+        if self.detector_dependent_noise:
+            logl = self._sum_detector_log_likelihoods(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+            )
+        else:
+            logl = self._compute_network_log_likelihood(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+            )
         if not np.isfinite(logl):
             return np.nan_to_num(-np.inf)
         return float(logl)
@@ -827,20 +1019,36 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        signal_logl = self._compute_network_log_likelihood(
-            interferometers=self.interferometers,
-            alpha_values=alpha_values,
-            delta_values=delta_values,
-            parameters=parameters,
-            waveform_polarizations=pols,
-            include_log_scale2=False,
-        )
-        noise_logl = self._compute_network_log_likelihood(
-            interferometers=self.interferometers,
-            alpha_values=alpha_values,
-            delta_values=delta_values,
-            include_log_scale2=False,
-        )
+        if self.detector_dependent_noise:
+            signal_logl = self._sum_detector_log_likelihoods(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+                include_log_scale2=False,
+            )
+            noise_logl = self._sum_detector_log_likelihoods(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                include_log_scale2=False,
+            )
+        else:
+            signal_logl = self._compute_network_log_likelihood(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+                include_log_scale2=False,
+            )
+            noise_logl = self._compute_network_log_likelihood(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                include_log_scale2=False,
+            )
         if not np.isfinite(signal_logl) or not np.isfinite(noise_logl):
             return np.nan_to_num(-np.inf)
         return float(signal_logl - noise_logl)
@@ -864,16 +1072,24 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         for interferometer in self.interferometers:
             detector_signal_logl = self._compute_network_log_likelihood(
                 interferometers=[interferometer],
-                alpha_values=alpha_values,
-                delta_values=delta_values,
+                alpha_values=self._get_interferometer_parameter_values(
+                    interferometer, alpha_values
+                ),
+                delta_values=self._get_interferometer_parameter_values(
+                    interferometer, delta_values
+                ),
                 parameters=parameters,
                 waveform_polarizations=pols,
                 include_log_scale2=False,
             )
             detector_noise_logl = self._compute_network_log_likelihood(
                 interferometers=[interferometer],
-                alpha_values=alpha_values,
-                delta_values=delta_values,
+                alpha_values=self._get_interferometer_parameter_values(
+                    interferometer, alpha_values
+                ),
+                delta_values=self._get_interferometer_parameter_values(
+                    interferometer, delta_values
+                ),
                 include_log_scale2=False,
             )
             parameters[f"{interferometer.name}_log_likelihood"] = float(

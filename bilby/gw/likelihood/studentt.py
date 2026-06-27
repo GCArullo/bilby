@@ -46,6 +46,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         infer_nu=False,
         num_frequency_bands=1,
         detector_dependent_nu=False,
+        detector_dependent_noise=None,
         time_marginalization=False,
         distance_marginalization=False,
         phase_marginalization=False,
@@ -75,12 +76,14 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             If True, treat the Student-t degrees of freedom as sampled parameters. For a single
             frequency band this uses the parameter name 'nu'. For multiple bands this uses
             'nu_1', ..., 'nu_N'; you must add priors for each sampled parameter. If
-            `detector_dependent_nu=True`, sampled parameters become detector-specific:
+            `detector_dependent_noise=True`, sampled parameters become detector-specific:
             'nu_H1', ..., or 'nu_H1_1', ..., 'nu_L1_1', ... .
         num_frequency_bands : int
             Number of equispaced contiguous frequency bands spanning the total likelihood frequency range. Each band has
             its own Student-t degrees of freedom parameter.
         detector_dependent_nu : bool
+            Deprecated alias for `detector_dependent_noise`.
+        detector_dependent_noise : bool, optional
             If True, allow a distinct `nu` value for each interferometer (and for each
             frequency band if `num_frequency_bands > 1`). If False, the same `nu`
             values are shared by all detectors.
@@ -121,8 +124,12 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             **kwargs,
         )
 
-        self.num_frequency_bands   = self._validate_num_frequency_bands(num_frequency_bands)
-        self.detector_dependent_nu = bool(detector_dependent_nu)
+        self.num_frequency_bands = self._validate_num_frequency_bands(num_frequency_bands)
+        self.detector_dependent_noise = self._resolve_detector_dependent_noise(
+            detector_dependent_noise=detector_dependent_noise,
+            detector_dependent_nu=detector_dependent_nu,
+        )
+        self.detector_dependent_nu = self.detector_dependent_noise
         self._detector_names       = [ifo.name for ifo in self.interferometers]
         self._fixed_nu             = self._coerce_nu_array(nu)
         self.infer_nu              = bool(infer_nu)
@@ -141,7 +148,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if not self._valid_nu_values(self._fixed_nu): raise ValueError("All nu values must be positive and finite")
 
         if self.infer_nu:
-            if not self.detector_dependent_nu:
+            if not self.detector_dependent_noise:
                 for key, value in zip(self.nu_parameter_keys, self._fixed_nu):
                     self._parameters.setdefault(key, float(value))
             else:
@@ -167,7 +174,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     def nu(self):
 
         values = self._get_nu_values(self._parameters)
-        if not self.detector_dependent_nu:
+        if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
                 return float(values[0])
             return values.copy()
@@ -178,7 +185,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     @property
     def nu_parameter_keys(self):
 
-        if not self.detector_dependent_nu:
+        if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
                 return ["nu"]
             return [f"nu_{index}" for index in range(1, self.num_frequency_bands + 1)]
@@ -205,6 +212,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             likelihood_class=self.__class__,
             nu=self._fixed_nu.tolist(),
             infer_nu=self.infer_nu,
+            detector_dependent_noise=self.detector_dependent_noise,
             detector_dependent_nu=self.detector_dependent_nu,
             num_frequency_bands=self.num_frequency_bands,
             noise_evidence_method=self.noise_evidence_method,
@@ -219,6 +227,21 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if num_frequency_bands < 1:  raise ValueError("num_frequency_bands must be a positive integer")
 
         return num_frequency_bands
+
+    @staticmethod
+    def _resolve_detector_dependent_noise(
+        detector_dependent_noise,
+        detector_dependent_nu,
+    ):
+        if detector_dependent_noise is None:
+            return bool(detector_dependent_nu)
+        detector_dependent_noise = bool(detector_dependent_noise)
+        if detector_dependent_nu not in (False, detector_dependent_noise):
+            raise ValueError(
+                "Received both detector_dependent_noise and detector_dependent_nu "
+                "with different values"
+            )
+        return detector_dependent_noise
 
     @staticmethod
     def _validate_noise_evidence_nlive(noise_evidence_nlive):
@@ -278,7 +301,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         values = np.asarray(nu, dtype=float)
 
-        if not self.detector_dependent_nu:
+        if not self.detector_dependent_noise:
             if   values.ndim == 0                                             : values = np.repeat(values[None], self.num_frequency_bands)
             elif values.ndim == 1 and len(values) == 1                        : values = np.repeat(values,       self.num_frequency_bands)
             elif values.ndim != 1 or  len(values) != self.num_frequency_bands : raise ValueError("nu must be a scalar or an array with one entry per frequency band")
@@ -304,11 +327,11 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             if values.shape != (num_detectors, self.num_frequency_bands):
                 raise ValueError(
                     "nu must have shape (num_detectors, num_frequency_bands) when "
-                    "detector_dependent_nu=True"
+                    "detector_dependent_noise=True"
                 )
         else:
             raise ValueError(
-                "nu must be scalar, 1D, or 2D when detector_dependent_nu=True"
+                "nu must be scalar, 1D, or 2D when detector_dependent_noise=True"
             )
 
         return values.astype(float, copy=False)
@@ -332,7 +355,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if "nu" in parameters:
             return self._coerce_nu_array(parameters["nu"])
 
-        if not self.detector_dependent_nu:
+        if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
                 return self._coerce_nu_array(parameters.get("nu", self._fixed_nu[0]))
 
@@ -358,7 +381,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _store_nu_values(self, nu_values):
 
-        if not self.detector_dependent_nu:
+        if not self.detector_dependent_noise:
             for key, value in zip(self.nu_parameter_keys, nu_values):
                 self._parameters[key] = float(value)
             return
@@ -411,7 +434,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _get_interferometer_nu_values(self, interferometer, nu_values):
 
-        if not self.detector_dependent_nu:
+        if not self.detector_dependent_noise:
             return nu_values
         return nu_values[self._detector_names.index(interferometer.name)]
 

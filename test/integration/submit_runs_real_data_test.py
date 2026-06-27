@@ -42,7 +42,6 @@ def test_num_frequency_bands_defaults_to_one():
     args = parser.parse_args([])
 
     assert args.num_frequency_bands is None
-    assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -56,39 +55,6 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
 
     assert module.DEFAULT_ACCOUNTING_USER == "name.surname"
     assert args.accounting_user == "name.surname"
-
-
-def test_default_output_bases_are_under_public_event_directory(tmp_path):
-    module = load_submit_runs_real_data_module()
-
-    outdir_base, webdir_base = module.default_output_bases(
-        tmp_path,
-        "GW231123/t_Student/Runs",
-    )
-
-    event_dir = tmp_path / "public_html" / "GW231123" / "t_Student"
-    assert Path(outdir_base) == event_dir / "Runs"
-    assert Path(webdir_base) == event_dir / "Runs"
-    assert Path(webdir_base) / "run-name" / "web" == (
-        Path(outdir_base) / "run-name" / "web"
-    )
-
-
-def test_submit_run_preflights_local_inputs(monkeypatch, tmp_path):
-    module = load_submit_runs_real_data_module()
-    ini_path = tmp_path / "run.ini"
-    ini_path.write_text(
-        f"psd-dict={{ H1:{tmp_path / 'missing_psd.dat'} }}\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *args, **kwargs: pytest.fail("bilby_pipe should not be called"),
-    )
-
-    with pytest.raises(FileNotFoundError, match="missing_psd.dat"):
-        module.submit_run(ini_path, submit_directory=tmp_path)
 
 
 def test_student_likelihood_runs_student_and_gaussian_by_default():
@@ -108,6 +74,19 @@ def test_student_likelihood_can_disable_default_gaussian():
     args = parser.parse_args(["--likelihood", "student", "--no-add-gaussian"])
 
     assert module.hypothesis_list(args) == ["student"]
+
+
+def test_noise_only_inference_requires_student_likelihood():
+    module = load_submit_runs_real_data_module()
+    parser = module.build_argument_parser(SCRIPT_PATH.parent)
+
+    args = parser.parse_args(["--noise-only-inference"])
+
+    with pytest.raises(
+        ValueError,
+        match="--noise-only-inference requires --likelihood student",
+    ):
+        module.hypothesis_list(args)
 
 
 def test_gaussian_likelihood_rejects_explicit_num_frequency_bands():
@@ -149,6 +128,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
     prior_dir = tmp_path / "prior"
+    outdir_base = tmp_path / "out"
+    webdir_base = tmp_path / "web"
 
     monkeypatch.setattr(
         sys,
@@ -168,8 +149,11 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(ini_dir),
             "--prior-dir",
             str(prior_dir),
-            "--home-dir",
-            str(tmp_path),
+            "--outdir-base",
+            str(outdir_base),
+            "--webdir-base",
+            str(webdir_base),
+            "--require-epnfs",
         ],
     )
 
@@ -188,19 +172,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in ini_text
-    assert "queue=None\n" in ini_text
-    assert "transfer-files=True\n" in ini_text
-    assert "osg=True\n" in ini_text
-    assert "desired-sites=None\n" in ini_text
-
-    ini_settings = dict(
-        line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
-    )
-    outdir = Path(ini_settings["outdir"])
-    assert outdir.parent == (
-        tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
-    )
-    assert Path(ini_settings["webdir"]) == outdir / "web"
+    assert "queue=EPNFS\n" in ini_text
 
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
     assert (
@@ -212,63 +184,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "sine_gaussian_0_time_offset = Uniform("
         "name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)"
     ) in prior_text
-
-
-def test_render_ini_writes_maxmcmc_override():
-    module = load_submit_runs_real_data_module()
-    ini_template = "\n".join(
-        [
-            "accounting-user=old",
-            "queue=None",
-            "create-summary=False",
-            "environment-variables={}",
-            "summarypages-arguments=None",
-            "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
-            "likelihood-type=old",
-            "extra-likelihood-kwargs=old",
-            "waveform-approximant=old",
-            "minimum-frequency=20",
-            "",
-        ]
-    )
-    template_settings = dict(
-        minimum_frequency={"H1": 20.0, "waveform": 10.0},
-        maximum_frequency=448.0,
-        reference_frequency=10.0,
-        waveform_approximant="NRSur7dq4",
-        spline_calibration_envelope_dict=None,
-        psd_dict=None,
-        sampler_kwargs={"nlive": 2000, "maxmcmc": 5000},
-    )
-
-    rendered = module.render_ini(
-        ini_template,
-        hypothesis="gaussian",
-        label="label",
-        outdir="out",
-        webdir="web",
-        prior_file=Path("prior.prior"),
-        band_count=1,
-        detector_dependent_nu=False,
-        working_directory=Path("working"),
-        accounting_user="acct",
-        container_image=None,
-        require_epnfs=False,
-        maxmcmc=10000,
-        template_settings=template_settings,
-        sine_gaussian_config=type(
-            "Config",
-            (),
-            dict(enabled=False, total_components=0),
-        )(),
-    )
-
-    sampler_line = next(
-        line for line in rendered.splitlines()
-        if line.startswith("sampler-kwargs=")
-    )
-    sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
-    assert sampler_kwargs["maxmcmc"] == 10000
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
@@ -372,3 +287,62 @@ def test_main_student_range_writes_single_gaussian_run_without_n_suffix(
 
     gaussian_ini = gaussian_ini_paths[0].read_text(encoding="utf-8")
     assert "gaussian_N" not in gaussian_ini
+
+
+def test_main_noise_only_inference_writes_zero_waveform_student_run(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+    outdir_base = tmp_path / "out"
+    webdir_base = tmp_path / "web"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "student",
+            "--noise-only-inference",
+            "--num-frequency-bands",
+            "2",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--outdir-base",
+            str(outdir_base),
+            "--webdir-base",
+            str(webdir_base),
+        ],
+    )
+
+    assert module.main() == 0
+
+    student_ini_paths = sorted(ini_dir.glob("*_t_student*.ini"))
+    gaussian_ini_paths = sorted(ini_dir.glob("*_gaussian*.ini"))
+    prior_paths = sorted(prior_dir.glob("*.prior"))
+
+    assert len(student_ini_paths) == 1
+    assert gaussian_ini_paths == []
+    assert len(prior_paths) == 1
+
+    student_ini = student_ini_paths[0].read_text(encoding="utf-8")
+    prior_text = prior_paths[0].read_text(encoding="utf-8")
+
+    assert "default-prior=bilby.core.prior.PriorDict\n" in student_ini
+    assert "frequency-domain-source-model=bilby.gw.source.zero_waveform\n" in student_ini
+    assert "create-summary=False\n" in student_ini
+    assert "calibration-model=None\n" in student_ini
+    assert "spline-calibration-envelope-dict=None\n" in student_ini
+    assert "jitter-time=False\n" in student_ini
+    assert "chirp_mass =" not in prior_text
+    assert "luminosity_distance =" not in prior_text
+    assert "nu_1 = Uniform(name='nu_1', minimum=2.1, maximum=1000)" in prior_text
+    assert "nu_2 = Uniform(name='nu_2', minimum=2.1, maximum=1000)" in prior_text
+    assert "L1_time = DeltaFunction(name='L1_time'" in prior_text

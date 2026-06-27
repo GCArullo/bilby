@@ -16,10 +16,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from container_creation.submission_container_utils import (
-    add_container_arguments,
-    resolve_container_image,
-)
 from submission_sine_gaussian_utils import (
     add_sine_gaussian_arguments,
     apply_sine_gaussian_waveform_settings,
@@ -30,15 +26,11 @@ from submission_sine_gaussian_utils import (
     read_template_settings,
     require_supported_sine_gaussian_source_model,
     resolve_sine_gaussian_configurations,
-    validate_submission_local_paths,
 )
 
 
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
-DEFAULT_CONTAINER_IMAGES_FILE = (
-    Path(__file__).resolve().parent / "container_creation" / "container_images.json"
-)
 
 
 def default_accounting_user() -> str:
@@ -54,13 +46,8 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
-DEFAULT_ENVIRONMENT_VARIABLES = {
-    "HDF5_USE_FILE_LOCKING": False,
-    "NUMBA_CACHE_DIR": "/tmp",
-    "OMP_NUM_THREADS": 1,
-    "OMP_PROC_BIND": False,
-    "LAL_DATA_PATH": "/scratch/lalsimulation",
-}
+NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
+NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
     "disable_expert": True,
@@ -88,35 +75,6 @@ class EventDefaults:
 
 
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
-    "GW150914": EventDefaults(
-        label_prefix="GW150914_IMRPhenomXPHM",
-        run_subdir="GW150914/Runs",
-        file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
-        ini_template=(
-            "Special_events_configs/templates/"
-            "GW150914_t_student_igwn_template.ini"
-        ),
-        prior_template=(
-            "Special_events_configs/priors/GW150914_igwn_template.prior"
-        ),
-        working_directory="LVK_posteriors/GW150914",
-        detectors=("H1", "L1"),
-    ),
-    "GW190521_030229_LVK_NRSur7dq4": EventDefaults(
-        label_prefix="GW190521_030229_LVK_NRSur7dq4",
-        run_subdir="GWTC_parametric_noise/Runs/GW190521_030229",
-        file_prefix="GW190521_030229_LVK_NRSur7dq4",
-        ini_template=(
-            "Special_events_configs/templates/"
-            "GW190521_030229_LVK_NRSur7dq4.ini"
-        ),
-        prior_template=(
-            "Special_events_configs/priors/"
-            "GW190521_030229_LVK_NRSur7dq4.prior"
-        ),
-        working_directory="Special_events_configs",
-        detectors=("H1", "L1", "V1"),
-    ),
     "GW231123": EventDefaults(
         label_prefix="GW231123_t_Student",
         run_subdir="GW231123/t_Student/Runs",
@@ -173,15 +131,6 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
         ),
     )
-    parser.add_argument(
-        "--maxmcmc",
-        type=positive_int,
-        default=None,
-        help=(
-            "Optional Dynesty maxmcmc value written into sampler-kwargs. "
-            "Defaults to the value in the selected ini template."
-        ),
-    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--single",
@@ -224,6 +173,16 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "When --likelihood student is selected, also generate a single-band "
             "Gaussian companion run. Enabled by default for Student runs; pass "
             "--no-add-gaussian to disable it."
+        ),
+    )
+    parser.add_argument(
+        "--noise-only-inference",
+        action="store_true",
+        help=(
+            "Generate Student-t runs that infer only the noise parameter(s). "
+            "The recovery waveform source model is replaced with an identically "
+            "zero waveform and the generated prior keeps only the Student-t "
+            "nu parameter(s)."
         ),
     )
     parser.add_argument(
@@ -272,8 +231,8 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_HOME_DIR,
         help=(
-            "Base home directory containing public_html, used to build default "
-            "output paths when --outdir-base/--webdir-base are not provided."
+            "Base home directory used to build default output paths when "
+            "--outdir-base/--webdir-base are not provided."
         ),
     )
     parser.add_argument(
@@ -325,25 +284,12 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         default=script_dir / "Priors",
         help="Directory where generated prior files are written.",
     )
-    parser.add_argument(
-        "--waveform-approximant",
-        default=None,
-        help=(
-            "Override the waveform approximant set in the ini template. "
-            "When the override differs from the template default a suffix "
-            "(e.g. _SEOBNRv5PHM) is appended to all labels and filenames. "
-            "If omitted the template value is used unchanged."
-        ),
-    )
-    add_container_arguments(
-        parser,
-        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
-    )
     add_sine_gaussian_arguments(parser)
     return parser
 
 
 def hypothesis_list(args: argparse.Namespace) -> list[str]:
+    validate_noise_only_arguments(args)
     explicit_num_frequency_bands = getattr(
         args,
         "num_frequency_bands_was_explicit",
@@ -366,9 +312,26 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
                 f"Gaussian runs always use the default value {DEFAULT_NUM_FREQUENCY_BANDS}."
             )
         return ["gaussian"]
+    if args.noise_only_inference:
+        return ["student"]
     if args.add_gaussian is not False:
         return ["student", "gaussian"]
     return ["student"]
+
+
+def validate_noise_only_arguments(args: argparse.Namespace) -> None:
+    if not getattr(args, "noise_only_inference", False):
+        return
+    if args.likelihood != "student":
+        raise ValueError(
+            "--noise-only-inference requires --likelihood student because "
+            "Gaussian recovery has no sampled noise parameters."
+        )
+    if args.add_gaussian is True:
+        raise ValueError(
+            "--noise-only-inference cannot be combined with --add-gaussian "
+            "because the Gaussian companion run has no sampled noise parameters."
+        )
 
 
 def build_run_requests(
@@ -376,10 +339,13 @@ def build_run_requests(
     *,
     band_counts,
 ) -> list[tuple[str, int]]:
+    validate_noise_only_arguments(args)
     if args.likelihood == "gaussian":
         return [("gaussian", DEFAULT_NUM_FREQUENCY_BANDS)]
 
     requests = [("student", band_count) for band_count in band_counts]
+    if args.noise_only_inference:
+        return requests
     if args.add_gaussian is not False:
         requests.append(("gaussian", DEFAULT_NUM_FREQUENCY_BANDS))
     return requests
@@ -401,8 +367,8 @@ def determine_submit_directory(outdir_base: str, webdir_base: str) -> Path:
 
 def default_output_bases(home_dir: Path, run_subdir: str) -> tuple[str, str]:
     resolved_home = home_dir.expanduser()
-    outdir_base = resolved_home / "public_html" / run_subdir
-    webdir_base = outdir_base
+    outdir_base = resolved_home / run_subdir
+    webdir_base = resolved_home / "public_html" / run_subdir
     return str(outdir_base), str(webdir_base)
 
 
@@ -451,7 +417,16 @@ def render_prior(
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
     template_settings: dict[str, object],
     sine_gaussian_config,
+    noise_only_inference: bool = False,
 ) -> str:
+    if noise_only_inference:
+        return render_noise_only_prior(
+            band_count=band_count,
+            detector_dependent_nu=detector_dependent_nu,
+            detectors=detectors,
+            template_settings=template_settings,
+        )
+
     nu_prior_block = ""
     if include_nu_priors:
         nu_prior_block = build_nu_priors(
@@ -518,19 +493,62 @@ def replace_line(text: str, key: str, value: str) -> str:
     raise ValueError(f"Unable to find config key '{key}' in template")
 
 
-def replace_or_append_line(
-    text: str,
-    key: str,
-    value: str,
+def disable_calibration_settings(text: str) -> str:
+    rendered = replace_line(text, "calibration-model", "None")
+    rendered = replace_line(rendered, "spline-calibration-envelope-dict", "None")
+    return rendered
+
+
+def apply_noise_only_inference_settings(text: str) -> str:
+    rendered = replace_line(text, "default-prior", NOISE_ONLY_DEFAULT_PRIOR)
+    rendered = replace_line(rendered, "distance-marginalization", "False")
+    rendered = replace_line(rendered, "phase-marginalization", "False")
+    rendered = replace_line(rendered, "time-marginalization", "False")
+    rendered = replace_line(rendered, "jitter-time", "False")
+    rendered = replace_line(
+        rendered,
+        "frequency-domain-source-model",
+        NOISE_ONLY_SOURCE_MODEL,
+    )
+    return disable_calibration_settings(rendered)
+
+
+def format_prior_value(value: float) -> str:
+    return repr(float(value))
+
+
+def time_parameter_name(time_reference: str) -> str:
+    normalized = str(time_reference).strip().lower()
+    if normalized in {"geocent", "geocenter"}:
+        return "geocent_time"
+    return f"{time_reference}_time"
+
+
+def render_noise_only_prior(
+    *,
+    band_count: int,
+    detector_dependent_nu: bool,
+    detectors: list[str] | tuple[str, ...],
+    template_settings: dict[str, object],
 ) -> str:
-    lines = text.splitlines()
-    prefix = f"{key}="
-    for index, line in enumerate(lines):
-        if line.startswith(prefix):
-            lines[index] = f"{key}={value}"
-            return "\n".join(lines) + "\n"
-    lines.append(f"{key}={value}")
-    return "\n".join(lines) + "\n"
+    prior_blocks = [
+        build_nu_priors(
+            band_count,
+            detector_dependent_nu=detector_dependent_nu,
+            detectors=detectors,
+        )
+    ]
+    time_parameter = time_parameter_name(
+        str(template_settings.get("time_reference", "geocent"))
+    )
+    prior_blocks.append(
+        "{} = DeltaFunction(name='{}', peak={})".format(
+            time_parameter,
+            time_parameter,
+            format_prior_value(template_settings["trigger_time"]),
+        )
+    )
+    return "\n\n".join(block for block in prior_blocks if block) + "\n"
 
 
 def render_ini(
@@ -545,11 +563,10 @@ def render_ini(
     detector_dependent_nu: bool,
     working_directory: Path,
     accounting_user: str,
-    container_image: str | None,
     require_epnfs: bool,
-    maxmcmc: int | None,
     template_settings: dict[str, object],
     sine_gaussian_config,
+    noise_only_inference: bool = False,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -564,34 +581,25 @@ def render_ini(
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
-    rendered = replace_or_append_line(
-        rendered,
-        "container",
-        container_image or "None",
-    )
-    rendered = replace_or_append_line(rendered, "transfer-files", "True")
-    rendered = replace_or_append_line(rendered, "osg", "True")
-    rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
-    rendered = replace_line(rendered, "create-summary", "True")
-    rendered = replace_line(
-        rendered,
-        "environment-variables",
-        repr(DEFAULT_ENVIRONMENT_VARIABLES),
-    )
-    rendered = replace_line(
-        rendered,
-        "summarypages-arguments",
-        repr(build_pesummary_arguments(template_settings)),
-    )
+    if hypothesis == "student" and noise_only_inference:
+        rendered = replace_line(rendered, "create-summary", "False")
+        rendered = replace_line(rendered, "summarypages-arguments", "None")
+    else:
+        rendered = replace_line(rendered, "create-summary", "True")
+        rendered = replace_line(
+            rendered,
+            "summarypages-arguments",
+            repr(build_pesummary_arguments(template_settings)),
+        )
+    if hypothesis == "student" and noise_only_inference:
+        rendered = apply_noise_only_inference_settings(rendered)
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(
         int(sampler_kwargs["nlive"]),
         sine_gaussian_config,
     )
-    if maxmcmc is not None:
-        sampler_kwargs["maxmcmc"] = maxmcmc
     rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))
 
     if hypothesis == "student":
@@ -609,33 +617,6 @@ def render_ini(
         rendered = replace_line(rendered, "extra-likelihood-kwargs", "None")
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
-    
-    rendered = replace_line(
-        rendered,
-        "waveform-approximant",
-        template_settings["waveform_approximant"],
-    )
-    rendered = replace_line(
-        rendered,
-        "minimum-frequency",
-        repr(template_settings["minimum_frequency"]),
-    )
-    GW_SIGNAL_MODELS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
-    if template_settings["waveform_approximant"] in GW_SIGNAL_MODELS:
-        # waveform generator now calls the correct waveform generation function depending on the flag.
-        rendered = replace_line(
-            rendered,
-            "waveform-generator",
-            "bilby.gw.waveform_generator.WaveformGenerator",
-        )
-        # Sine-Gaussian runs override this below via cbc_plus_sine_gaussians,
-        # which auto-detects these approximants; without sine-Gaussians, route
-        # the CBC baseline through gwsignal directly.
-        rendered = replace_line(
-            rendered,
-            "frequency-domain-source-model",
-            "bilby.gw.source.gwsignal_binary_black_hole",
-        )
     rendered = apply_sine_gaussian_waveform_settings(
         rendered,
         sine_gaussian_config,
@@ -662,13 +643,11 @@ def prepare_run(
     file_prefix: str,
     working_directory: Path,
     accounting_user: str,
-    container_image: str | None,
     require_epnfs: bool,
-    maxmcmc: int | None,
     sine_gaussian_config,
-    approximant_suffix: str = "",
+    noise_only_inference: bool,
 ) -> Path:
-    waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
+    waveform_suffix = sine_gaussian_config.label_suffix
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -678,6 +657,7 @@ def prepare_run(
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
+        run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
             prior_dir
             / f"{file_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}.prior"
@@ -696,14 +676,13 @@ def prepare_run(
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
+        run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior").resolve()
         ini_path = (ini_dir / f"{file_prefix}_gaussian{waveform_suffix}.ini").resolve()
         include_nu_priors = False
         run_detector_dependent_nu = False
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
-
-    run_webdir = f"{webdir_base}/{run_directory_name}/web"
 
     prior_path.write_text(
         render_prior(
@@ -714,6 +693,7 @@ def prepare_run(
             detectors=detectors,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
+            noise_only_inference=noise_only_inference,
         ),
         encoding="utf-8",
     )
@@ -729,11 +709,10 @@ def prepare_run(
             detector_dependent_nu=run_detector_dependent_nu,
             working_directory=working_directory,
             accounting_user=accounting_user,
-            container_image=container_image,
             require_epnfs=require_epnfs,
-            maxmcmc=maxmcmc,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
+            noise_only_inference=noise_only_inference,
         ),
         encoding="utf-8",
     )
@@ -749,10 +728,6 @@ def prepare_run(
 
 
 def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
-    validate_submission_local_paths(
-        ini_path.read_text(encoding="utf-8"),
-        base_directory=submit_directory,
-    )
     subprocess.run(
         ["bilby_pipe", str(ini_path), "--submit"],
         check=True,
@@ -766,11 +741,6 @@ def main() -> int:
     args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
     if args.num_frequency_bands is None:
         args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS
-    container_image = resolve_container_image(
-        use_container=args.container,
-        container_image=args.container_image,
-        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
-    )
 
     defaults = EVENT_DEFAULTS[args.event]
     ini_template_path = resolve_path(
@@ -782,12 +752,12 @@ def main() -> int:
         script_dir / defaults.prior_template,
     )
     label_prefix = args.label_prefix or defaults.label_prefix
-    default_outdir_base, _ = default_output_bases(
+    default_outdir_base, default_webdir_base = default_output_bases(
         args.home_dir,
         defaults.run_subdir,
     )
     outdir_base = args.outdir_base or default_outdir_base
-    webdir_base = args.webdir_base or outdir_base
+    webdir_base = args.webdir_base or default_webdir_base
     file_prefix = args.file_prefix or defaults.file_prefix
     detectors = tuple(args.detectors) if args.detectors else defaults.detectors
     working_directory = resolve_path(
@@ -799,26 +769,6 @@ def main() -> int:
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
     template_settings = read_template_settings(ini_template)
-
-    if args.waveform_approximant is not None:
-        template_approximant = template_settings["waveform_approximant"]
-        min_freq = template_settings["minimum_frequency"]
-        if isinstance(min_freq, dict):
-            detector_freqs = [v for k, v in min_freq.items() if k != "waveform"]
-            min_freq = dict(min_freq, waveform=min(detector_freqs) if detector_freqs else 20.0)
-        template_settings = dict(
-            template_settings,
-            waveform_approximant=args.waveform_approximant,
-            minimum_frequency=min_freq,
-        )
-        approximant_suffix = (
-            f"_{args.waveform_approximant}"
-            if args.waveform_approximant != template_approximant
-            else ""
-        )
-    else:
-        approximant_suffix = ""
-
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
         range_mode=args.sine_gaussian_range,
@@ -828,6 +778,11 @@ def main() -> int:
         detectors=detectors,
     )
     for sine_gaussian_config in sine_gaussian_configs:
+        if args.noise_only_inference and sine_gaussian_config.enabled:
+            raise ValueError(
+                "--noise-only-inference cannot be combined with recovery "
+                "sine-Gaussian parameters."
+            )
         require_supported_sine_gaussian_source_model(
             template_settings,
             sine_gaussian_config,
@@ -863,11 +818,9 @@ def main() -> int:
                 file_prefix=file_prefix,
                 working_directory=working_directory,
                 accounting_user=args.accounting_user,
-                container_image=container_image,
                 require_epnfs=args.require_epnfs,
-                maxmcmc=args.maxmcmc,
                 sine_gaussian_config=sine_gaussian_config,
-                approximant_suffix=approximant_suffix,
+                noise_only_inference=args.noise_only_inference,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

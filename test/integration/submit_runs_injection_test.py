@@ -45,7 +45,6 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.injection_noise == "student"
     assert args.num_frequency_bands is None
     assert args.noise_generation_seed is None
-    assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -59,34 +58,6 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
 
     assert module.DEFAULT_ACCOUNTING_USER == "name.surname"
     assert args.accounting_user == "name.surname"
-
-
-def test_default_base_subdir_is_under_public_event_directory():
-    module = load_submit_runs_injection_module()
-
-    assert module.DEFAULT_BASE_SUBDIR == (
-        Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
-    )
-
-
-def test_submit_runs_preflights_local_inputs(monkeypatch, tmp_path):
-    module = load_submit_runs_injection_module()
-    ini_dir = tmp_path / "ini_files"
-    ini_dir.mkdir()
-    ini_path = ini_dir / "run.ini"
-    ini_path.write_text(
-        f"additional-transfer-paths=[{tmp_path / 'missing_staged_data'}]\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(module.shutil, "which", lambda executable: executable)
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *args, **kwargs: pytest.fail("bilby_pipe should not be called"),
-    )
-
-    with pytest.raises(FileNotFoundError, match="missing_staged_data"):
-        module.submit_runs([ini_path], "bilby_pipe")
 
 
 def test_zero_gaussian_injection_noise_is_available():
@@ -124,7 +95,6 @@ def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
             "accounting-user=old",
             "queue=None",
             "create-summary=False",
-            "environment-variables={}",
             "summarypages-arguments=None",
             "duration=8.0",
             "data-dict=None",
@@ -188,11 +158,6 @@ def test_injected_sine_gaussian_values_are_loaded_from_json_and_within_bounds():
         time_offset=pytest.approx(0.0),
         phase_offset=pytest.approx(0.0),
     )
-    assert values["coherent_independent"] == dict(
-        ra=pytest.approx(2.0),
-        dec=pytest.approx(-0.4),
-        psi=pytest.approx(0.7),
-    )
 
     coherent_components = module.load_injected_sine_gaussian_component_series(
         mode="coherent",
@@ -237,23 +202,6 @@ def test_injected_sine_gaussian_values_are_loaded_from_json_and_within_bounds():
             frequency_maximum=448.0,
         )
 
-    independent_parameters = module.add_injected_sine_gaussians(
-        {},
-        template_settings=dict(
-            minimum_frequency=20.0,
-            maximum_frequency=448.0,
-        ),
-        sine_gaussian_config=type(
-            "Config",
-            (),
-            dict(enabled=True, total_components=1, mode="coherent-independent"),
-        )(),
-    )
-    assert independent_parameters["independent_sine_gaussian_ra"] == 2.0
-    assert independent_parameters["independent_sine_gaussian_dec"] == -0.4
-    assert independent_parameters["independent_sine_gaussian_psi"] == 0.7
-    assert independent_parameters["independent_sine_gaussian_0_frequency"] == 130.0
-
 
 def test_injected_sine_gaussian_validation_rejects_out_of_bounds_component():
     module = load_submit_runs_injection_module()
@@ -289,6 +237,19 @@ def test_student_likelihood_can_disable_default_gaussian():
     args = parser.parse_args(["--likelihood", "student", "--no-add-gaussian"])
 
     assert module.hypothesis_list(args) == ["student"]
+
+
+def test_noise_only_inference_requires_student_likelihood():
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--noise-only-inference"])
+
+    with pytest.raises(
+        ValueError,
+        match="--noise-only-inference requires --likelihood student",
+    ):
+        module.hypothesis_list(args)
 
 
 def test_gaussian_likelihood_rejects_explicit_num_frequency_bands():
@@ -344,6 +305,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             "--dry-run",
             "--base-dir",
             str(base_dir),
+            "--require-epnfs",
         ],
     )
 
@@ -365,89 +327,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in gaussian_ini
-    assert "queue=None\n" in gaussian_ini
-    assert "transfer-files=True\n" in gaussian_ini
-    assert "osg=True\n" in gaussian_ini
-    assert "desired-sites=None\n" in gaussian_ini
-
-    ini_settings = dict(
-        line.split("=", maxsplit=1)
-        for line in gaussian_ini.splitlines()
-        if "=" in line
-    )
-    assert Path(ini_settings["webdir"]) == Path(ini_settings["outdir"]) / "web"
-
-
-def test_render_ini_writes_maxmcmc_override(tmp_path):
-    module = load_submit_runs_injection_module()
-    parser = module.build_parser()
-
-    args = parser.parse_args(["--maxmcmc", "10000"])
-    args.accounting_user = "acct"
-    args.require_epnfs = False
-    args.test_injection = False
-    args.nlive = 10
-    args.naccept = 3
-    args.frequency_domain_injection = False
-
-    ini_template = "\n".join(
-        [
-            "accounting-user=old",
-            "queue=None",
-            "create-summary=False",
-            "environment-variables={}",
-            "summarypages-arguments=None",
-            "data-dict=None",
-            "data-format=gwf",
-            "calibration-model=CubicSpline",
-            "calibration-correction-type=data",
-            "spline-calibration-envelope-dict={H1: old.dat}",
-            "channel-dict=None",
-            "psd-dict=None",
-            "additional-transfer-paths=None",
-            "sampler-kwargs={'nlive': 1, 'maxmcmc': 5000}",
-            "likelihood-type=old",
-            "extra-likelihood-kwargs=old",
-            "",
-        ]
-    )
-    template_settings = dict(
-        detectors=("H1",),
-        minimum_frequency={"H1": 20.0, "waveform": 10.0},
-        maximum_frequency=448.0,
-        reference_frequency=10.0,
-        waveform_approximant="NRSur7dq4",
-        sampler_kwargs={"nlive": 1, "maxmcmc": 5000},
-    )
-
-    rendered = module.render_ini(
-        ini_template,
-        args=args,
-        template_settings=template_settings,
-        num_frequency_bands=1,
-        detector_dependent_nu=False,
-        likelihood_nu=None,
-        label="label",
-        outdir=tmp_path / "out",
-        webdir=tmp_path / "web",
-        prior_path=tmp_path / "prior.prior",
-        data_paths={"H1": str(tmp_path / "H1.hdf5")},
-        psd_paths={"H1": str(tmp_path / "H1_psd.dat")},
-        stage_dir=tmp_path / "staged_data",
-        hypothesis="gaussian",
-        sine_gaussian_config=type(
-            "Config",
-            (),
-            dict(enabled=False, total_components=0),
-        )(),
-    )
-
-    sampler_line = next(
-        line for line in rendered.splitlines()
-        if line.startswith("sampler-kwargs=")
-    )
-    sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
-    assert sampler_kwargs["maxmcmc"] == 10000
+    assert "queue=EPNFS\n" in gaussian_ini
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
@@ -633,6 +513,58 @@ def test_main_student_multi_band_writes_single_gaussian_companion(
         assert "calibration-model=None" in ini_text
         assert "calibration-correction-type=None" in ini_text
         assert "spline-calibration-envelope-dict=None" in ini_text
+
+
+def test_main_noise_only_inference_writes_zero_waveform_student_run(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_injection_module()
+    base_dir = tmp_path / "runs"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--likelihood",
+            "student",
+            "--noise-only-inference",
+            "--num-frequency-bands",
+            "2",
+            "--dry-run",
+            "--base-dir",
+            str(base_dir),
+            "--injection-noise",
+            "gaussian",
+        ],
+    )
+
+    assert module.main() == 0
+
+    student_ini_paths = sorted(base_dir.rglob("*_student.ini"))
+    gaussian_ini_paths = sorted(base_dir.rglob("*_gaussian.ini"))
+    prior_paths = sorted(base_dir.rglob("*.prior"))
+
+    assert len(student_ini_paths) == 1
+    assert gaussian_ini_paths == []
+    assert len(prior_paths) == 1
+
+    student_ini = student_ini_paths[0].read_text(encoding="utf-8")
+    prior_text = prior_paths[0].read_text(encoding="utf-8")
+
+    assert "default-prior=bilby.core.prior.PriorDict\n" in student_ini
+    assert "frequency-domain-source-model=bilby.gw.source.zero_waveform\n" in student_ini
+    assert "create-summary=False\n" in student_ini
+    assert "jitter-time=False\n" in student_ini
+    assert (
+        "likelihood-type=bilby.gw.likelihood.StudentTGravitationalWaveTransient\n"
+        in student_ini
+    )
+    assert "chirp_mass =" not in prior_text
+    assert "luminosity_distance =" not in prior_text
+    assert "nu_1 = Uniform(name='nu_1', minimum=2.1, maximum=1000.0)" in prior_text
+    assert "nu_2 = Uniform(name='nu_2', minimum=2.1, maximum=1000.0)" in prior_text
+    assert "L1_time = DeltaFunction(name='L1_time'" in prior_text
 
 
 def test_main_submits_by_default(monkeypatch, tmp_path):

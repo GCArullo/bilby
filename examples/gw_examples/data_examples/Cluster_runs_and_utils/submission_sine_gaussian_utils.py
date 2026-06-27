@@ -324,6 +324,8 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
 
     return dict(
         detectors=tuple(parsed["detectors"]),
+        reference_frame=parsed.get("reference-frame", "sky"),
+        time_reference=parsed.get("time-reference", "geocent"),
         trigger_time=float(parsed["trigger-time"]),
         duration=float(parsed["duration"]),
         post_trigger_duration=float(parsed["post-trigger-duration"]),

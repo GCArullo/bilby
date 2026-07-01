@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -181,6 +182,120 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                 )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
+
+    def test_student_t_noise_log_evidence_factorizes_over_detector_time_bands(self):
+        likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_nu=True,
+            detector_dependent_noise=True,
+            time_bands=[0.5],
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                nu_H1_1=bilby.core.prior.Uniform(2.0, 20.0, name="nu_H1_1"),
+                nu_H1_2=bilby.core.prior.Uniform(3.0, 21.0, name="nu_H1_2"),
+                nu_L1_1=bilby.core.prior.Uniform(4.0, 22.0, name="nu_L1_1"),
+                nu_L1_2=bilby.core.prior.Uniform(5.0, 23.0, name="nu_L1_2"),
+            )
+        )
+        centers = dict(nu_H1_1=6.0, nu_H1_2=8.0, nu_L1_1=10.0, nu_L1_2=12.0)
+        unit_grid = np.linspace(0.0, 1.0, 5001)
+        expected = 0.0
+        for key, center in centers.items():
+            expected += np.log(
+                np.trapezoid(
+                    np.exp(-0.5 * (priors[key].rescale(unit_grid) - center) ** 2),
+                    unit_grid,
+                )
+            )
+
+        likelihood._noise_block_log_likelihood = lambda block, parameters: (
+            -0.5 * (parameters.get(block["keys"][0], block["default_nu"]) - centers[block["keys"][0]]) ** 2
+        )
+
+        with patch("bilby.core.sampler.run_sampler") as mock_run_sampler:
+            noise_log_evidence = likelihood.noise_log_evidence(priors=priors)
+
+        self.assertAlmostEqual(noise_log_evidence, expected, 6)
+        mock_run_sampler.assert_not_called()
+
+    def test_hyperbolic_noise_log_evidence_factorizes_over_detector_time_bands(self):
+        likelihood = bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_alpha=True,
+            infer_delta=True,
+            detector_dependent_noise=True,
+            time_bands=[0.5],
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                alpha_H1_1=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_H1_1"),
+                delta_H1_1=bilby.core.prior.Uniform(0.5, 5.0, name="delta_H1_1"),
+                alpha_H1_2=bilby.core.prior.Uniform(3.0, 21.0, name="alpha_H1_2"),
+                delta_H1_2=bilby.core.prior.Uniform(0.6, 5.1, name="delta_H1_2"),
+                alpha_L1_1=bilby.core.prior.Uniform(4.0, 22.0, name="alpha_L1_1"),
+                delta_L1_1=bilby.core.prior.Uniform(0.7, 5.2, name="delta_L1_1"),
+                alpha_L1_2=bilby.core.prior.Uniform(5.0, 23.0, name="alpha_L1_2"),
+                delta_L1_2=bilby.core.prior.Uniform(0.8, 5.3, name="delta_L1_2"),
+            )
+        )
+        centers = dict(
+            alpha_H1_1=6.0,
+            delta_H1_1=0.9,
+            alpha_H1_2=8.0,
+            delta_H1_2=1.1,
+            alpha_L1_1=10.0,
+            delta_L1_1=1.3,
+            alpha_L1_2=12.0,
+            delta_L1_2=1.5,
+        )
+        unit_grid = np.linspace(0.0, 1.0, 5001)
+        expected = 0.0
+        for alpha_key, delta_key in (
+            ("alpha_H1_1", "delta_H1_1"),
+            ("alpha_H1_2", "delta_H1_2"),
+            ("alpha_L1_1", "delta_L1_1"),
+            ("alpha_L1_2", "delta_L1_2"),
+        ):
+            expected += np.log(
+                np.trapezoid(
+                    np.exp(
+                        -0.5 * (priors[alpha_key].rescale(unit_grid) - centers[alpha_key]) ** 2
+                    ),
+                    unit_grid,
+                )
+            )
+            expected += np.log(
+                np.trapezoid(
+                    np.exp(
+                        -0.5 * (priors[delta_key].rescale(unit_grid) - centers[delta_key]) ** 2
+                    ),
+                    unit_grid,
+                )
+            )
+
+        likelihood._noise_block_log_likelihood = lambda block, parameters: (
+            -0.5
+            * (
+                parameters.get(block["alpha_key"], block["default_alpha"])
+                - centers[block["alpha_key"]]
+            )
+            ** 2
+            - 0.5
+            * (
+                parameters.get(block["delta_key"], block["default_delta"])
+                - centers[block["delta_key"]]
+            )
+            ** 2
+        )
+
+        with patch("bilby.core.sampler.run_sampler") as mock_run_sampler:
+            noise_log_evidence = likelihood.noise_log_evidence(priors=priors)
+
+        self.assertAlmostEqual(noise_log_evidence, expected, 6)
+        mock_run_sampler.assert_not_called()
 
     def test_prefer_time_domain_waveform_path_runs(self):
         waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(

@@ -562,6 +562,101 @@ def _noise_evidence_quadrature_points():
     )
 
 
+def _factorized_noise_log_evidence_by_quadrature(
+    *,
+    blocks,
+    noise_priors,
+    base_parameters,
+    block_log_likelihood,
+    epsabs,
+    epsrel,
+    limit,
+    error_label,
+):
+    reference_points = _noise_evidence_quadrature_points()
+    non_fixed_keys = set(noise_priors.non_fixed_keys)
+    total_log_evidence = 0.0
+
+    for block in blocks:
+        block_keys = [key for key in block["keys"] if key in non_fixed_keys]
+        if len(block_keys) == 0:
+            total_log_evidence += block_log_likelihood(block, base_parameters)
+            continue
+        if len(block_keys) not in (1, 2):
+            raise ValueError(
+                f"{error_label} quadrature supports one or two sampled noise "
+                "parameters per independent block"
+            )
+
+        priors = [noise_priors[key] for key in block_keys]
+
+        def log_likelihood_from_unit_values(unit_values):
+            parameters = base_parameters.copy()
+            for key, prior, unit_value in zip(block_keys, priors, unit_values):
+                parameters[key] = float(
+                    np.asarray(prior.rescale(unit_value), dtype=float)
+                )
+            return block_log_likelihood(block, parameters)
+
+        candidate_logls = [block_log_likelihood(block, base_parameters)]
+        candidate_logls.extend(
+            log_likelihood_from_unit_values(unit_values)
+            for unit_values in product(reference_points, repeat=len(block_keys))
+        )
+        finite_logls = [value for value in candidate_logls if np.isfinite(value)]
+        if not finite_logls:
+            total_log_evidence += np.nan_to_num(-np.inf)
+            continue
+        logl_reference = max(finite_logls)
+
+        def scaled_integrand(unit_values):
+            logl = log_likelihood_from_unit_values(unit_values)
+            if not np.isfinite(logl):
+                return 0.0
+            return float(np.exp(logl - logl_reference))
+
+        quadrature_kwargs = dict(
+            epsabs=epsabs,
+            epsrel=epsrel,
+            limit=limit,
+            points=reference_points[1:-1],
+        )
+        if len(block_keys) == 1:
+            integral, _ = quad(
+                lambda unit_value: scaled_integrand((unit_value,)),
+                0.0,
+                1.0,
+                **quadrature_kwargs,
+            )
+        else:
+
+            def outer_integrand(unit_value_2):
+                inner_integral, _ = quad(
+                    lambda unit_value_1: scaled_integrand(
+                        (unit_value_1, unit_value_2)
+                    ),
+                    0.0,
+                    1.0,
+                    **quadrature_kwargs,
+                )
+                return float(inner_integral)
+
+            integral, _ = quad(
+                outer_integrand,
+                0.0,
+                1.0,
+                **quadrature_kwargs,
+            )
+        if not np.isfinite(integral) or integral <= 0:
+            raise RuntimeError(
+                f"{error_label} noise-evidence quadrature failed to return a "
+                "positive finite integral"
+            )
+        total_log_evidence += float(logl_reference + np.log(integral))
+
+    return float(total_log_evidence)
+
+
 def _patch_psd_outside_active_band(psd, frequencies, active_frequencies):
     psd = np.asarray(psd, dtype=float).copy()
     frequencies = np.asarray(frequencies, dtype=float)
@@ -1208,80 +1303,80 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
                 noise_priors[key] = DeltaFunction(peak=value, name=key)
         return noise_priors
 
-    def _noise_log_likelihood_from_rescaled_priors(
-        self, keys, priors, unit_values, base_parameters
-    ):
-        parameters = base_parameters.copy()
-        for key, prior, unit_value in zip(keys, priors, unit_values):
-            parameters[key] = float(np.asarray(prior.rescale(unit_value), dtype=float))
-        return self._noise_log_likelihood_from_parameters(parameters)
+    def _build_noise_parameter_blocks(self):
+        blocks = dict()
+        for detector_index, interferometer in enumerate(self.interferometers):
+            detector_cache = self._detector_likelihood_caches[interferometer.name]
+            caches = (
+                detector_cache["time_bands"]
+                if self._use_time_band_cache() and detector_cache["time_bands"] is not None
+                else [detector_cache["full"]]
+            )
+            data = self._data_time_domain(interferometer)
+            for band_index, cache in enumerate(caches):
+                if self.detector_dependent_noise:
+                    block_id = (interferometer.name, band_index)
+                    keys = (
+                        (self._detector_nu_parameter_key(interferometer.name, band_index),)
+                        if self.infer_nu
+                        else ()
+                    )
+                    default_nu = float(self._fixed_nu[detector_index, band_index])
+                else:
+                    block_id = band_index
+                    keys = (
+                        (self.nu_parameter_keys[band_index],)
+                        if self.infer_nu
+                        else ()
+                    )
+                    default_nu = float(self._fixed_nu[band_index])
+
+                block = blocks.setdefault(
+                    block_id,
+                    dict(keys=keys, default_nu=default_nu, terms=[]),
+                )
+                band_data = data[cache.start : cache.end]
+                block["terms"].append(
+                    dict(
+                        residuals_inner_product=_residuals_inner_product_from_cache(
+                            band_data,
+                            cache,
+                            self.likelihood_method,
+                        ),
+                        logdet=cache.logdet,
+                        dimension=cache.end - cache.start,
+                    )
+                )
+        return list(blocks.values())
+
+    @staticmethod
+    def _noise_block_log_likelihood(block, parameters):
+        nu = float(parameters.get(block["keys"][0], block["default_nu"]))
+        if nu <= 0.0 or not np.isfinite(nu):
+            return np.nan_to_num(-np.inf)
+
+        log_likelihood = 0.0
+        for term in block["terms"]:
+            log_likelihood += _student_t_log_likelihood_from_inner_product(
+                residuals_inner_product=term["residuals_inner_product"],
+                logdet=term["logdet"],
+                dimension=term["dimension"],
+                nu=nu,
+            )
+        return float(log_likelihood)
 
     def _noise_log_evidence_by_quadrature(self, noise_priors):
-        keys = list(noise_priors.non_fixed_keys)
-        priors = [noise_priors[key] for key in keys]
-        dimension = len(keys)
-        if dimension not in (1, 2):
-            raise ValueError(
-                "Student-t noise-evidence quadrature supports one or two sampled noise parameters"
-            )
-
         base_parameters = self._get_default_nu_parameter_dict()
-        reference_points = _noise_evidence_quadrature_points()
-        candidate_logls = [self._noise_log_likelihood_from_parameters(base_parameters)]
-        candidate_logls.extend(
-            self._noise_log_likelihood_from_rescaled_priors(
-                keys=keys,
-                priors=priors,
-                unit_values=unit_values,
-                base_parameters=base_parameters,
-            )
-            for unit_values in product(reference_points, repeat=dimension)
-        )
-        finite_logls = [value for value in candidate_logls if np.isfinite(value)]
-        if not finite_logls:
-            return np.nan_to_num(-np.inf)
-        logl_reference = max(finite_logls)
-
-        def scaled_integrand(unit_values):
-            logl = self._noise_log_likelihood_from_rescaled_priors(
-                keys=keys,
-                priors=priors,
-                unit_values=unit_values,
-                base_parameters=base_parameters,
-            )
-            if not np.isfinite(logl):
-                return 0.0
-            return float(np.exp(logl - logl_reference))
-
-        quadrature_kwargs = dict(
+        return _factorized_noise_log_evidence_by_quadrature(
+            blocks=self._build_noise_parameter_blocks(),
+            noise_priors=noise_priors,
+            base_parameters=base_parameters,
+            block_log_likelihood=self._noise_block_log_likelihood,
             epsabs=self._NOISE_EVIDENCE_QUADRATURE_EPSABS,
             epsrel=self._NOISE_EVIDENCE_QUADRATURE_EPSREL,
             limit=self._NOISE_EVIDENCE_QUADRATURE_LIMIT,
-            points=reference_points[1:-1],
+            error_label="Student-t",
         )
-        if dimension == 1:
-            integral, _ = quad(
-                lambda unit_value: scaled_integrand((unit_value,)),
-                0.0,
-                1.0,
-                **quadrature_kwargs,
-            )
-        else:
-            def outer_integrand(unit_value_2):
-                inner_integral, _ = quad(
-                    lambda unit_value_1: scaled_integrand((unit_value_1, unit_value_2)),
-                    0.0,
-                    1.0,
-                    **quadrature_kwargs,
-                )
-                return float(inner_integral)
-
-            integral, _ = quad(outer_integrand, 0.0, 1.0, **quadrature_kwargs)
-        if not np.isfinite(integral) or integral <= 0:
-            raise RuntimeError(
-                "Student-t noise-evidence quadrature failed to return a positive finite integral"
-            )
-        return float(logl_reference + np.log(integral))
 
     def _noise_log_evidence_by_nested_sampling(self, noise_priors):
         from ...core.sampler import run_sampler
@@ -1325,12 +1420,7 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
             )
 
         if self.noise_evidence_method == "quadrature":
-            if len(noise_priors.non_fixed_keys) <= 2:
-                return self._noise_log_evidence_by_quadrature(noise_priors)
-            logger.info(
-                "Student-t noise-evidence quadrature supports at most two "
-                "sampled noise parameters; falling back to nested sampling."
-            )
+            return self._noise_log_evidence_by_quadrature(noise_priors)
 
         noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
         return float(noise_result.log_evidence)
@@ -1696,80 +1786,98 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
                 noise_priors[key] = DeltaFunction(peak=value, name=key)
         return noise_priors
 
-    def _noise_log_likelihood_from_rescaled_priors(
-        self, keys, priors, unit_values, base_parameters
-    ):
-        parameters = base_parameters.copy()
-        for key, prior, unit_value in zip(keys, priors, unit_values):
-            parameters[key] = float(np.asarray(prior.rescale(unit_value), dtype=float))
-        return self._noise_log_likelihood_from_parameters(parameters)
+    def _build_noise_parameter_blocks(self):
+        blocks = dict()
+        for detector_index, interferometer in enumerate(self.interferometers):
+            detector_cache = self._detector_likelihood_caches[interferometer.name]
+            caches = (
+                detector_cache["time_bands"]
+                if self._use_time_band_cache() and detector_cache["time_bands"] is not None
+                else [detector_cache["full"]]
+            )
+            data = self._data_time_domain(interferometer)
+            for band_index, cache in enumerate(caches):
+                if self.detector_dependent_noise:
+                    block_id = (interferometer.name, band_index)
+                    alpha_key = (
+                        self._detector_parameter_key("alpha", interferometer.name, band_index)
+                        if self.infer_alpha
+                        else None
+                    )
+                    delta_key = (
+                        self._detector_parameter_key("delta", interferometer.name, band_index)
+                        if self.infer_delta
+                        else None
+                    )
+                    default_alpha = float(self._fixed_alpha[detector_index, band_index])
+                    default_delta = float(self._fixed_delta[detector_index, band_index])
+                else:
+                    block_id = band_index
+                    alpha_key = self.alpha_parameter_keys[band_index] if self.infer_alpha else None
+                    delta_key = self.delta_parameter_keys[band_index] if self.infer_delta else None
+                    default_alpha = float(self._fixed_alpha[band_index])
+                    default_delta = float(self._fixed_delta[band_index])
+
+                keys = tuple(
+                    key for key in (alpha_key, delta_key) if key is not None
+                )
+                block = blocks.setdefault(
+                    block_id,
+                    dict(
+                        keys=keys,
+                        alpha_key=alpha_key,
+                        delta_key=delta_key,
+                        default_alpha=default_alpha,
+                        default_delta=default_delta,
+                        terms=[],
+                    ),
+                )
+                band_data = data[cache.start : cache.end]
+                block["terms"].append(
+                    dict(
+                        residuals_inner_product=_residuals_inner_product_from_cache(
+                            band_data,
+                            cache,
+                            self.likelihood_method,
+                        ),
+                        logdet=cache.logdet,
+                        dimension=cache.end - cache.start,
+                    )
+                )
+        return list(blocks.values())
+
+    @staticmethod
+    def _noise_block_log_likelihood(block, parameters):
+        alpha = float(parameters.get(block["alpha_key"], block["default_alpha"]))
+        delta = float(parameters.get(block["delta_key"], block["default_delta"]))
+        if alpha <= 0.0 or delta <= 0.0:
+            return np.nan_to_num(-np.inf)
+        if not np.isfinite(alpha) or not np.isfinite(delta):
+            return np.nan_to_num(-np.inf)
+
+        log_likelihood = 0.0
+        for term in block["terms"]:
+            log_likelihood += _hyperbolic_log_likelihood_from_inner_product(
+                residuals_inner_product=term["residuals_inner_product"],
+                logdet=term["logdet"],
+                dimension=term["dimension"],
+                alpha=alpha,
+                delta=delta,
+            )
+        return float(log_likelihood)
 
     def _noise_log_evidence_by_quadrature(self, noise_priors):
-        keys = list(noise_priors.non_fixed_keys)
-        priors = [noise_priors[key] for key in keys]
-        dimension = len(keys)
-        if dimension not in (1, 2):
-            raise ValueError(
-                "Hyperbolic noise-evidence quadrature supports one or two sampled noise parameters"
-            )
-
         base_parameters = self._get_default_shape_parameter_dict()
-        reference_points = _noise_evidence_quadrature_points()
-        candidate_logls = [self._noise_log_likelihood_from_parameters(base_parameters)]
-        candidate_logls.extend(
-            self._noise_log_likelihood_from_rescaled_priors(
-                keys=keys,
-                priors=priors,
-                unit_values=unit_values,
-                base_parameters=base_parameters,
-            )
-            for unit_values in product(reference_points, repeat=dimension)
-        )
-        finite_logls = [value for value in candidate_logls if np.isfinite(value)]
-        if not finite_logls:
-            return np.nan_to_num(-np.inf)
-        logl_reference = max(finite_logls)
-
-        def scaled_integrand(unit_values):
-            logl = self._noise_log_likelihood_from_rescaled_priors(
-                keys=keys,
-                priors=priors,
-                unit_values=unit_values,
-                base_parameters=base_parameters,
-            )
-            if not np.isfinite(logl):
-                return 0.0
-            return float(np.exp(logl - logl_reference))
-
-        quadrature_kwargs = dict(
+        return _factorized_noise_log_evidence_by_quadrature(
+            blocks=self._build_noise_parameter_blocks(),
+            noise_priors=noise_priors,
+            base_parameters=base_parameters,
+            block_log_likelihood=self._noise_block_log_likelihood,
             epsabs=self._NOISE_EVIDENCE_QUADRATURE_EPSABS,
             epsrel=self._NOISE_EVIDENCE_QUADRATURE_EPSREL,
             limit=self._NOISE_EVIDENCE_QUADRATURE_LIMIT,
-            points=reference_points[1:-1],
+            error_label="Hyperbolic",
         )
-        if dimension == 1:
-            integral, _ = quad(
-                lambda unit_value: scaled_integrand((unit_value,)),
-                0.0,
-                1.0,
-                **quadrature_kwargs,
-            )
-        else:
-            def outer_integrand(unit_value_2):
-                inner_integral, _ = quad(
-                    lambda unit_value_1: scaled_integrand((unit_value_1, unit_value_2)),
-                    0.0,
-                    1.0,
-                    **quadrature_kwargs,
-                )
-                return float(inner_integral)
-
-            integral, _ = quad(outer_integrand, 0.0, 1.0, **quadrature_kwargs)
-        if not np.isfinite(integral) or integral <= 0:
-            raise RuntimeError(
-                "Hyperbolic noise-evidence quadrature failed to return a positive finite integral"
-            )
-        return float(logl_reference + np.log(integral))
 
     def _noise_log_evidence_by_nested_sampling(self, noise_priors):
         from ...core.sampler import run_sampler
@@ -1813,12 +1921,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             )
 
         if self.noise_evidence_method == "quadrature":
-            if len(noise_priors.non_fixed_keys) <= 2:
-                return self._noise_log_evidence_by_quadrature(noise_priors)
-            logger.info(
-                "Hyperbolic noise-evidence quadrature supports at most two "
-                "sampled noise parameters; falling back to nested sampling."
-            )
+            return self._noise_log_evidence_by_quadrature(noise_priors)
 
         noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
         return float(noise_result.log_evidence)

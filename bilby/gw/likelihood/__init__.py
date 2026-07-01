@@ -6,6 +6,12 @@ from .roq import BilbyROQParamsRangeError, ROQGravitationalWaveTransient
 from .multiband import MBGravitationalWaveTransient
 from .relative import RelativeBinningGravitationalWaveTransient
 from .studentt import StudentTGravitationalWaveTransient
+from .time_domain import (
+    HyperbolicTimeDomainGravitationalWaveTransient,
+    MixedTimeDomainGravitationalWaveTransient,
+    StudentTTimeDomainGravitationalWaveTransient,
+    TimeDomainGravitationalWaveTransient,
+)
 from .whittle import (
     GaussianParametricGravitationalWaveTransient,
     WhittleGravitationalWaveTransient,

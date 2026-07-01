@@ -85,8 +85,8 @@ class EventDefaults:
 
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
     "GW150914": EventDefaults(
-        label_prefix="GW150914_t_Student_IMRPhenomXPHM",
-        run_subdir="GW150914/t_Student_IMRPhenomXPHM/Runs",
+        label_prefix="GW150914_IMRPhenomXPHM",
+        run_subdir="GW150914/GWTC_parametric_noise/Runs",
         file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
         ini_template="Initialisation_file_templates/GW150914_t_student_igwn_template.ini",
         prior_template="Prior_templates/GW150914_igwn_template.prior",
@@ -94,7 +94,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         detectors=("H1", "L1"),
     ),
     "GW231123": EventDefaults(
-        label_prefix="GW231123_t_Student",
+        label_prefix="GW231123",
         run_subdir="GW231123/t_Student/Runs",
         file_prefix="GW231123",
         ini_template="Initialisation_file_templates/GW231123_t_student_template.ini",
@@ -103,7 +103,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         detectors=("H1", "L1"),
     ),
     "GW230814": EventDefaults(
-        label_prefix="GW230814_t_Student_pSEOB",
+        label_prefix="GW230814_pSEOB",
         run_subdir="GW230814/t_Student_pSEOB/Runs",
         file_prefix="GW230814",
         ini_template="Initialisation_file_templates/GW230814_t_student_pSEOB_template.ini",
@@ -429,6 +429,23 @@ def explicit_run_directory_stem(
         f"{noise_dependency_directory_token(detector_dependent_noise)}_"
         f"N{band_count}{waveform_suffix}"
     )
+
+
+def explicit_run_label(
+    *,
+    label_prefix: str,
+    hypothesis: str,
+    band_count: int,
+    detector_dependent_noise: bool,
+    waveform_suffix: str,
+) -> str:
+    run_directory_stem = explicit_run_directory_stem(
+        hypothesis=hypothesis,
+        band_count=band_count,
+        detector_dependent_noise=detector_dependent_noise,
+        waveform_suffix=waveform_suffix,
+    )
+    return f"{label_prefix}_{run_directory_stem}"
 
 
 def load_template(path: Path) -> str:
@@ -860,16 +877,20 @@ def prepare_run(
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
-        label = f"{label_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}"
-        run_directory_name = build_run_directory_name(
-            explicit_run_directory_stem(
-                hypothesis=hypothesis,
-                band_count=run_band_count,
-                detector_dependent_noise=detector_dependent_noise,
-                waveform_suffix=waveform_suffix,
-            ),
-            outdir_label,
+        run_directory_stem = explicit_run_directory_stem(
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            waveform_suffix=waveform_suffix,
         )
+        label = explicit_run_label(
+            label_prefix=label_prefix,
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            waveform_suffix=waveform_suffix,
+        )
+        run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
@@ -884,18 +905,20 @@ def prepare_run(
     elif hypothesis == "hyperbolic":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
-        label = (
-            f"{label_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}"
+        run_directory_stem = explicit_run_directory_stem(
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            waveform_suffix=waveform_suffix,
         )
-        run_directory_name = build_run_directory_name(
-            explicit_run_directory_stem(
-                hypothesis=hypothesis,
-                band_count=run_band_count,
-                detector_dependent_noise=detector_dependent_noise,
-                waveform_suffix=waveform_suffix,
-            ),
-            outdir_label,
+        label = explicit_run_label(
+            label_prefix=label_prefix,
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            waveform_suffix=waveform_suffix,
         )
+        run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
@@ -909,16 +932,20 @@ def prepare_run(
         run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "gaussian":
         run_band_count = DEFAULT_NUM_FREQUENCY_BANDS
-        label = f"{label_prefix}_gaussian{waveform_suffix}"
-        run_directory_name = build_run_directory_name(
-            explicit_run_directory_stem(
-                hypothesis=hypothesis,
-                band_count=run_band_count,
-                detector_dependent_noise=False,
-                waveform_suffix=waveform_suffix,
-            ),
-            outdir_label,
+        run_directory_stem = explicit_run_directory_stem(
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=False,
+            waveform_suffix=waveform_suffix,
         )
+        label = explicit_run_label(
+            label_prefix=label_prefix,
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=False,
+            waveform_suffix=waveform_suffix,
+        )
+        run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior").resolve()

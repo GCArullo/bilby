@@ -54,6 +54,7 @@ DEFAULT_HYPERBOLIC_ALPHA_MIN = 0.5
 DEFAULT_HYPERBOLIC_ALPHA_MAX = 200.0
 DEFAULT_HYPERBOLIC_DELTA_MIN = 0.1
 DEFAULT_HYPERBOLIC_DELTA_MAX = 20.0
+WORKING_DIRECTORY_PLACEHOLDER = "__WORKING_DIRECTORY__"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
 DEFAULT_PESUMMARY_ARGUMENTS = {
@@ -83,6 +84,15 @@ class EventDefaults:
 
 
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
+    "GW150914": EventDefaults(
+        label_prefix="GW150914_t_Student_IMRPhenomXPHM",
+        run_subdir="GW150914/t_Student_IMRPhenomXPHM/Runs",
+        file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
+        ini_template="Initialisation_file_templates/GW150914_t_student_igwn_template.ini",
+        prior_template="Prior_templates/GW150914_igwn_template.prior",
+        working_directory="LVK_posteriors/GW150914",
+        detectors=("H1", "L1"),
+    ),
     "GW231123": EventDefaults(
         label_prefix="GW231123_t_Student",
         run_subdir="GW231123/t_Student/Runs",
@@ -564,6 +574,60 @@ def build_pesummary_arguments(template_settings: dict[str, object]) -> dict[str,
     return arguments
 
 
+def replace_template_setting_placeholder(
+    value,
+    *,
+    placeholder: str,
+    replacement: str,
+):
+    if isinstance(value, str):
+        return value.replace(placeholder, replacement)
+    if isinstance(value, dict):
+        return {
+            key: replace_template_setting_placeholder(
+                item,
+                placeholder=placeholder,
+                replacement=replacement,
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            replace_template_setting_placeholder(
+                item,
+                placeholder=placeholder,
+                replacement=replacement,
+            )
+            for item in value
+        ]
+    if isinstance(value, tuple):
+        return tuple(
+            replace_template_setting_placeholder(
+                item,
+                placeholder=placeholder,
+                replacement=replacement,
+            )
+            for item in value
+        )
+    return value
+
+
+def resolve_template_settings(
+    template_settings: dict[str, object],
+    *,
+    working_directory: Path,
+) -> dict[str, object]:
+    resolved_working_directory = str(working_directory)
+    return {
+        key: replace_template_setting_placeholder(
+            value,
+            placeholder=WORKING_DIRECTORY_PLACEHOLDER,
+            replacement=resolved_working_directory,
+        )
+        for key, value in template_settings.items()
+    }
+
+
 def replace_line(text: str, key: str, value: str) -> str:
     lines = text.splitlines()
     prefix = f"{key}="
@@ -661,6 +725,10 @@ def render_ini(
     sine_gaussian_config,
     noise_only_inference: bool = False,
 ) -> str:
+    resolved_template_settings = resolve_template_settings(
+        template_settings,
+        working_directory=working_directory,
+    )
     replacements = {
         "__LABEL__": label,
         "__OUTDIR__": outdir,
@@ -668,7 +736,7 @@ def render_ini(
         "__PRIOR_FILE__": str(prior_file),
         "__NUM_FREQUENCY_BANDS__": str(band_count),
         "__DETECTOR_DEPENDENT_NOISE__": str(detector_dependent_noise),
-        "__WORKING_DIRECTORY__": str(working_directory),
+        WORKING_DIRECTORY_PLACEHOLDER: str(working_directory),
     }
     rendered = ini_template
     for placeholder, value in replacements.items():
@@ -684,7 +752,7 @@ def render_ini(
         rendered = replace_line(
             rendered,
             "summarypages-arguments",
-            repr(build_pesummary_arguments(template_settings)),
+            repr(build_pesummary_arguments(resolved_template_settings)),
         )
     if noise_only_inference:
         rendered = apply_noise_only_inference_settings(rendered)

@@ -411,6 +411,26 @@ def build_run_directory_name(name: str, outdir_label: str | None) -> str:
     return f"{name}_{outdir_label}"
 
 
+def noise_dependency_directory_token(detector_dependent_noise: bool) -> str:
+    if detector_dependent_noise:
+        return "detector_dependent_noise"
+    return "detector_independent_noise"
+
+
+def explicit_run_directory_stem(
+    *,
+    hypothesis: str,
+    band_count: int,
+    detector_dependent_noise: bool,
+    waveform_suffix: str,
+) -> str:
+    return (
+        f"{hypothesis}_"
+        f"{noise_dependency_directory_token(detector_dependent_noise)}_"
+        f"N{band_count}{waveform_suffix}"
+    )
+
+
 def load_template(path: Path) -> str:
     if not path.is_file():
         raise FileNotFoundError(f"Missing template: {path}")
@@ -842,7 +862,12 @@ def prepare_run(
         mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
         label = f"{label_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}"
         run_directory_name = build_run_directory_name(
-            f"student{mode_suffix}_N{run_band_count}{waveform_suffix}",
+            explicit_run_directory_stem(
+                hypothesis=hypothesis,
+                band_count=run_band_count,
+                detector_dependent_noise=detector_dependent_noise,
+                waveform_suffix=waveform_suffix,
+            ),
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
@@ -863,7 +888,12 @@ def prepare_run(
             f"{label_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}"
         )
         run_directory_name = build_run_directory_name(
-            f"hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}",
+            explicit_run_directory_stem(
+                hypothesis=hypothesis,
+                band_count=run_band_count,
+                detector_dependent_noise=detector_dependent_noise,
+                waveform_suffix=waveform_suffix,
+            ),
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
@@ -881,7 +911,12 @@ def prepare_run(
         run_band_count = DEFAULT_NUM_FREQUENCY_BANDS
         label = f"{label_prefix}_gaussian{waveform_suffix}"
         run_directory_name = build_run_directory_name(
-            f"gaussian{waveform_suffix}",
+            explicit_run_directory_stem(
+                hypothesis=hypothesis,
+                band_count=run_band_count,
+                detector_dependent_noise=False,
+                waveform_suffix=waveform_suffix,
+            ),
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"

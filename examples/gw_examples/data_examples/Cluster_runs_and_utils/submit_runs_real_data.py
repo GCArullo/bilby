@@ -526,6 +526,11 @@ def render_ini(
         "waveform-approximant",
         template_settings["waveform_approximant"],
     )
+    rendered = replace_line(
+        rendered,
+        "minimum-frequency",
+        repr(template_settings["minimum_frequency"]),
+    )
     if template_settings["waveform_approximant"] == "SEOBNRv5PHM":
         # waveform generator now calls the correct waveform generation function depending on the flag. 
         rendered = replace_line(

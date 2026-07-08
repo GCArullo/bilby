@@ -64,6 +64,12 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
 - No prior changes are needed; the CBC mass/spin priors are approximant-agnostic.
 - SEOBNRv5PHM and IMRPhenomXPHM are both in LALSuite; no additional data files
   need to be transferred (`additional-transfer-paths` is only required for NRSur7dq4).
+- SEOBNRv5PHM (and SEOBNRv5HM) sine-Gaussian runs: `bilby.gw.source.cbc_plus_sine_gaussians`
+  auto-detects these approximants and evaluates the CBC baseline through gwsignal's
+  `GenerateFDWaveform` instead of the standard lalsimulation path. No extra flags are
+  required; `waveform-generator` must remain `bilby.gw.waveform_generator.WaveformGenerator`
+  (already handled by this script) since `GWSignalWaveformGenerator` would bypass
+  `frequency-domain-source-model` entirely.
 - If distance marginalisation is ever enabled, the lookup table
   (`distance-marginalization-lookup-table`) must be regenerated for the new
   approximant — the NRSur7dq4 table in the template cannot be reused.

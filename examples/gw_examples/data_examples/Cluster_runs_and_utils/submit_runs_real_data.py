@@ -527,6 +527,7 @@ def render_ini(
         template_settings["waveform_approximant"],
     )
     if template_settings["waveform_approximant"] == "SEOBNRv5PHM":
+        # waveform generator now calls the correct waveform generation function depending on the flag. 
         rendered = replace_line(
             rendered,
             "waveform-generator",

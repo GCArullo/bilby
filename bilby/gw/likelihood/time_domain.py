@@ -314,6 +314,42 @@ def _is_time_band_cut_list(time_bands):
     return isinstance(time_bands, (list, tuple, np.ndarray))
 
 
+def _coerce_time_band_boundaries(time_band_boundaries):
+    if not _is_time_band_cut_list(time_band_boundaries):
+        raise ValueError(
+            "time_band_boundaries must be a 1D list, tuple, or array of cut times in seconds"
+        )
+
+    boundaries = np.asarray(time_band_boundaries, dtype=float)
+    if boundaries.ndim != 1:
+        raise ValueError(
+            "time_band_boundaries must be a 1D list, tuple, or array of cut times in seconds"
+        )
+    return boundaries.tolist()
+
+
+def _resolve_time_bands(time_bands, time_band_boundaries=None):
+    if time_band_boundaries is None:
+        if _is_time_band_cut_list(time_bands):
+            return _coerce_time_band_boundaries(time_bands)
+        return int(time_bands)
+
+    boundaries = _coerce_time_band_boundaries(time_band_boundaries)
+    if _is_time_band_cut_list(time_bands):
+        if _coerce_time_band_boundaries(time_bands) != boundaries:
+            raise ValueError(
+                "time_bands and time_band_boundaries must match when both are provided"
+            )
+        return boundaries
+
+    number_of_time_bands = int(time_bands)
+    if number_of_time_bands not in (1, len(boundaries) + 1):
+        raise ValueError(
+            "time_bands and time_band_boundaries must describe the same number of bands"
+        )
+    return boundaries
+
+
 def _time_band_count(time_bands):
     if _is_time_band_cut_list(time_bands):
         return len(time_bands) + 1
@@ -694,6 +730,10 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
     The waveform handling remains in bilby: detector responses are built using
     the usual antenna patterns and time delays, then transformed back to the
     time domain for the residual evaluation.
+
+    Set `time_bands` to a positive integer for equi-spaced bands, or pass
+    `time_band_boundaries` as a list of cut times in seconds to match pyRing's
+    explicit time-band boundaries.
     """
 
     def __init__(
@@ -702,6 +742,7 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
         waveform_generator,
         likelihood_method="cholesky-solve-triangular",
         time_bands=1,
+        time_band_boundaries=None,
         prefer_time_domain_waveform=False,
         time_marginalization=False,
         distance_marginalization=False,
@@ -747,9 +788,14 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
         )
 
         self.likelihood_method = _resolve_likelihood_method(likelihood_method)
-        self.time_bands = time_bands
+        self.time_bands = _resolve_time_bands(
+            time_bands=time_bands, time_band_boundaries=time_band_boundaries
+        )
+        self.time_band_boundaries = (
+            self.time_bands if _is_time_band_cut_list(self.time_bands) else None
+        )
         self.prefer_time_domain_waveform = bool(prefer_time_domain_waveform)
-        self._number_of_time_bands = _time_band_count(time_bands)
+        self._number_of_time_bands = _time_band_count(self.time_bands)
         self._detector_names = [interferometer.name for interferometer in self.interferometers]
         self._detector_likelihood_caches = self._build_detector_likelihood_caches()
 
@@ -760,6 +806,7 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
             likelihood_class=self.__class__,
             likelihood_method=self.likelihood_method,
             time_bands=self.time_bands,
+            time_band_boundaries=self.time_band_boundaries,
             prefer_time_domain_waveform=self.prefer_time_domain_waveform,
         )
         return meta_data
@@ -1054,6 +1101,7 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         detector_dependent_noise=False,
         likelihood_method="cholesky-solve-triangular",
         time_bands=1,
+        time_band_boundaries=None,
         prefer_time_domain_waveform=False,
         time_marginalization=False,
         distance_marginalization=False,
@@ -1078,6 +1126,7 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
             waveform_generator=waveform_generator,
             likelihood_method=likelihood_method,
             time_bands=time_bands,
+            time_band_boundaries=time_band_boundaries,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -1456,6 +1505,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         detector_dependent_noise=False,
         likelihood_method="cholesky-solve-triangular",
         time_bands=1,
+        time_band_boundaries=None,
         prefer_time_domain_waveform=False,
         time_marginalization=False,
         distance_marginalization=False,
@@ -1480,6 +1530,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             waveform_generator=waveform_generator,
             likelihood_method=likelihood_method,
             time_bands=time_bands,
+            time_band_boundaries=time_band_boundaries,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -1942,6 +1993,7 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
         detector_dependent_noise=False,
         likelihood_method="cholesky-solve-triangular",
         time_bands=1,
+        time_band_boundaries=None,
         prefer_time_domain_waveform=False,
         time_marginalization=False,
         distance_marginalization=False,
@@ -1966,6 +2018,7 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             waveform_generator=waveform_generator,
             likelihood_method=likelihood_method,
             time_bands=time_bands,
+            time_band_boundaries=time_band_boundaries,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -2031,6 +2084,7 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             detector_dependent_noise=detector_dependent_noise,
             likelihood_method=likelihood_method,
             time_bands=time_bands,
+            time_band_boundaries=time_band_boundaries,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -2061,6 +2115,7 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             detector_dependent_noise=detector_dependent_noise,
             likelihood_method=likelihood_method,
             time_bands=time_bands,
+            time_band_boundaries=time_band_boundaries,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,

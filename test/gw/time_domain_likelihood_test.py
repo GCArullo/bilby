@@ -136,6 +136,61 @@ class TestTimeDomainGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(calculated, float(manual), 7)
 
+    def test_time_band_boundaries_match_explicit_cut_times(self):
+        parameters = self.parameters.copy()
+        parameters.update(
+            nu_H1_1=6.0,
+            nu_H1_2=8.0,
+            nu_L1_1=10.0,
+            nu_L1_2=12.0,
+        )
+
+        list_likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_nu=True,
+            detector_dependent_noise=True,
+            time_bands=[0.5],
+        )
+        boundary_likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_nu=True,
+            detector_dependent_noise=True,
+            time_band_boundaries=[0.5],
+        )
+
+        self.assertEqual(boundary_likelihood.time_bands, [0.5])
+        self.assertEqual(boundary_likelihood.time_band_boundaries, [0.5])
+        self.assertAlmostEqual(
+            boundary_likelihood.log_likelihood(parameters.copy()),
+            list_likelihood.log_likelihood(parameters.copy()),
+            10,
+        )
+
+    def test_time_band_boundaries_reject_conflicting_time_bands(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "time_bands and time_band_boundaries must describe the same number of bands",
+        ):
+            bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                time_bands=3,
+                time_band_boundaries=[0.5],
+            )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "time_bands and time_band_boundaries must match when both are provided",
+        ):
+            bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                time_bands=[0.25],
+                time_band_boundaries=[0.5],
+            )
+
     def test_hyperbolic_time_bands_match_direct_calculation(self):
         time_bands = [0.5]
         likelihood = bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient(

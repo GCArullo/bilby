@@ -46,6 +46,13 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
+DEFAULT_ENVIRONMENT_VARIABLES = {
+    "HDF5_USE_FILE_LOCKING": False,
+    "NUMBA_CACHE_DIR": "/tmp",
+    "OMP_NUM_THREADS": 1,
+    "OMP_PROC_BIND": False,
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
+}
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
     "disable_expert": True,
@@ -127,6 +134,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "Positive integer. In single mode this is the exact band count. "
             "In range mode this is the maximum band count. "
             f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
+        ),
+    )
+    parser.add_argument(
+        "--maxmcmc",
+        type=positive_int,
+        default=None,
+        help=(
+            "Optional Dynesty maxmcmc value written into sampler-kwargs. "
+            "Defaults to the value in the selected ini template."
         ),
     )
     mode = parser.add_mutually_exclusive_group()
@@ -464,6 +480,7 @@ def render_ini(
     working_directory: Path,
     accounting_user: str,
     require_epnfs: bool,
+    maxmcmc: int | None,
     template_settings: dict[str, object],
     sine_gaussian_config,
 ) -> str:
@@ -485,6 +502,11 @@ def render_ini(
     rendered = replace_line(rendered, "create-summary", "True")
     rendered = replace_line(
         rendered,
+        "environment-variables",
+        repr(DEFAULT_ENVIRONMENT_VARIABLES),
+    )
+    rendered = replace_line(
+        rendered,
         "summarypages-arguments",
         repr(build_pesummary_arguments(template_settings)),
     )
@@ -493,6 +515,8 @@ def render_ini(
         int(sampler_kwargs["nlive"]),
         sine_gaussian_config,
     )
+    if maxmcmc is not None:
+        sampler_kwargs["maxmcmc"] = maxmcmc
     rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))
 
     if hypothesis == "student":
@@ -537,6 +561,7 @@ def prepare_run(
     working_directory: Path,
     accounting_user: str,
     require_epnfs: bool,
+    maxmcmc: int | None,
     sine_gaussian_config,
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix
@@ -601,6 +626,7 @@ def prepare_run(
             working_directory=working_directory,
             accounting_user=accounting_user,
             require_epnfs=require_epnfs,
+            maxmcmc=maxmcmc,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
         ),
@@ -704,6 +730,7 @@ def main() -> int:
                 working_directory=working_directory,
                 accounting_user=args.accounting_user,
                 require_epnfs=args.require_epnfs,
+                maxmcmc=args.maxmcmc,
                 sine_gaussian_config=sine_gaussian_config,
             )
             if not args.dry_run:

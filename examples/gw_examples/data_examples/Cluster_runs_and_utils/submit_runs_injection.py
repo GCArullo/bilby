@@ -68,6 +68,13 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
+DEFAULT_ENVIRONMENT_VARIABLES = {
+    "HDF5_USE_FILE_LOCKING": False,
+    "NUMBA_CACHE_DIR": "/tmp",
+    "OMP_NUM_THREADS": 1,
+    "OMP_PROC_BIND": False,
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
+}
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
     "disable_expert": True,
@@ -310,6 +317,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=60,
         help=(
             "Dynesty acceptance-walk target naccept to write into sampler-kwargs."
+        ),
+    )
+    parser.add_argument(
+        "--maxmcmc",
+        type=positive_int,
+        default=None,
+        help=(
+            "Optional Dynesty maxmcmc value written into sampler-kwargs. "
+            "Defaults to the value in the ini template."
         ),
     )
     parser.add_argument(
@@ -1454,6 +1470,11 @@ def render_ini(
     rendered = replace_line(rendered, "create-summary", "True")
     rendered = replace_line(
         rendered,
+        "environment-variables",
+        repr(DEFAULT_ENVIRONMENT_VARIABLES),
+    )
+    rendered = replace_line(
+        rendered,
         "summarypages-arguments",
         repr(build_pesummary_arguments(template_settings, psd_paths=psd_paths)),
     )
@@ -1484,6 +1505,8 @@ def render_ini(
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(args.nlive, sine_gaussian_config)
     sampler_kwargs["naccept"] = args.naccept
+    if getattr(args, "maxmcmc", None) is not None:
+        sampler_kwargs["maxmcmc"] = args.maxmcmc
     rendered = replace_line(
         rendered,
         "sampler-kwargs",

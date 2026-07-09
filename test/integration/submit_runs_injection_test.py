@@ -45,6 +45,7 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.injection_noise == "student"
     assert args.num_frequency_bands is None
     assert args.noise_generation_seed is None
+    assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -358,6 +359,78 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in gaussian_ini
     assert "queue=EPNFS\n" in gaussian_ini
+
+
+def test_render_ini_writes_maxmcmc_override(tmp_path):
+    module = load_submit_runs_injection_module()
+    parser = module.build_parser()
+
+    args = parser.parse_args(["--maxmcmc", "10000"])
+    args.accounting_user = "acct"
+    args.require_epnfs = False
+    args.test_injection = False
+    args.nlive = 10
+    args.naccept = 3
+    args.frequency_domain_injection = False
+
+    ini_template = "\n".join(
+        [
+            "accounting-user=old",
+            "queue=None",
+            "create-summary=False",
+            "environment-variables={}",
+            "summarypages-arguments=None",
+            "data-dict=None",
+            "data-format=gwf",
+            "calibration-model=CubicSpline",
+            "calibration-correction-type=data",
+            "spline-calibration-envelope-dict={H1: old.dat}",
+            "channel-dict=None",
+            "psd-dict=None",
+            "additional-transfer-paths=None",
+            "sampler-kwargs={'nlive': 1, 'maxmcmc': 5000}",
+            "likelihood-type=old",
+            "extra-likelihood-kwargs=old",
+            "",
+        ]
+    )
+    template_settings = dict(
+        detectors=("H1",),
+        minimum_frequency={"H1": 20.0, "waveform": 10.0},
+        maximum_frequency=448.0,
+        reference_frequency=10.0,
+        waveform_approximant="NRSur7dq4",
+        sampler_kwargs={"nlive": 1, "maxmcmc": 5000},
+    )
+
+    rendered = module.render_ini(
+        ini_template,
+        args=args,
+        template_settings=template_settings,
+        num_frequency_bands=1,
+        detector_dependent_noise=False,
+        likelihood_nu=None,
+        label="label",
+        outdir=tmp_path / "out",
+        webdir=tmp_path / "web",
+        prior_path=tmp_path / "prior.prior",
+        data_paths={"H1": str(tmp_path / "H1.hdf5")},
+        psd_paths={"H1": str(tmp_path / "H1_psd.dat")},
+        stage_dir=tmp_path / "staged_data",
+        hypothesis="gaussian",
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+
+    sampler_line = next(
+        line for line in rendered.splitlines()
+        if line.startswith("sampler-kwargs=")
+    )
+    sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
+    assert sampler_kwargs["maxmcmc"] == 10000
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(

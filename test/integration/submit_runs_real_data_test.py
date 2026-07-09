@@ -42,6 +42,7 @@ def test_num_frequency_bands_defaults_to_one():
     args = parser.parse_args([])
 
     assert args.num_frequency_bands is None
+    assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -214,6 +215,60 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "sine_gaussian_0_time_offset = Uniform("
         "name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)"
     ) in prior_text
+
+
+def test_render_ini_writes_maxmcmc_override():
+    module = load_submit_runs_real_data_module()
+    ini_template = "\n".join(
+        [
+            "accounting-user=old",
+            "queue=None",
+            "create-summary=False",
+            "environment-variables={}",
+            "summarypages-arguments=None",
+            "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
+            "likelihood-type=old",
+            "extra-likelihood-kwargs=old",
+            "",
+        ]
+    )
+    template_settings = dict(
+        minimum_frequency={"H1": 20.0, "waveform": 10.0},
+        maximum_frequency=448.0,
+        reference_frequency=10.0,
+        waveform_approximant="NRSur7dq4",
+        spline_calibration_envelope_dict=None,
+        psd_dict=None,
+        sampler_kwargs={"nlive": 2000, "maxmcmc": 5000},
+    )
+
+    rendered = module.render_ini(
+        ini_template,
+        hypothesis="gaussian",
+        label="label",
+        outdir="out",
+        webdir="web",
+        prior_file=Path("prior.prior"),
+        band_count=1,
+        detector_dependent_noise=False,
+        working_directory=Path("working"),
+        accounting_user="acct",
+        require_epnfs=False,
+        maxmcmc=10000,
+        template_settings=template_settings,
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+
+    sampler_line = next(
+        line for line in rendered.splitlines()
+        if line.startswith("sampler-kwargs=")
+    )
+    sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
+    assert sampler_kwargs["maxmcmc"] == 10000
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(

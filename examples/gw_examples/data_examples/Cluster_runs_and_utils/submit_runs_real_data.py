@@ -57,6 +57,13 @@ DEFAULT_HYPERBOLIC_DELTA_MAX = 20.0
 WORKING_DIRECTORY_PLACEHOLDER = "__WORKING_DIRECTORY__"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
+DEFAULT_ENVIRONMENT_VARIABLES = {
+    "HDF5_USE_FILE_LOCKING": False,
+    "NUMBA_CACHE_DIR": "/tmp",
+    "OMP_NUM_THREADS": 1,
+    "OMP_PROC_BIND": False,
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
+}
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
     "disable_expert": True,
@@ -147,6 +154,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "Positive integer. In single mode this is the exact band count. "
             "In range mode this is the maximum band count. "
             f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
+        ),
+    )
+    parser.add_argument(
+        "--maxmcmc",
+        type=positive_int,
+        default=None,
+        help=(
+            "Optional Dynesty maxmcmc value written into sampler-kwargs. "
+            "Defaults to the value in the selected ini template."
         ),
     )
     mode = parser.add_mutually_exclusive_group()
@@ -758,6 +774,7 @@ def render_ini(
     working_directory: Path,
     accounting_user: str,
     require_epnfs: bool,
+    maxmcmc: int | None,
     template_settings: dict[str, object],
     sine_gaussian_config,
     noise_only_inference: bool = False,
@@ -781,6 +798,11 @@ def render_ini(
     rendered = replace_line(rendered, "accounting-user", accounting_user)
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
+    rendered = replace_line(
+        rendered,
+        "environment-variables",
+        repr(DEFAULT_ENVIRONMENT_VARIABLES),
+    )
     if noise_only_inference:
         rendered = replace_line(rendered, "create-summary", "False")
         rendered = replace_line(rendered, "summarypages-arguments", "None")
@@ -798,6 +820,8 @@ def render_ini(
         int(sampler_kwargs["nlive"]),
         sine_gaussian_config,
     )
+    if maxmcmc is not None:
+        sampler_kwargs["maxmcmc"] = maxmcmc
     rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))
 
     if hypothesis == "student":
@@ -870,6 +894,7 @@ def prepare_run(
     working_directory: Path,
     accounting_user: str,
     require_epnfs: bool,
+    maxmcmc: int | None,
     sine_gaussian_config,
     noise_only_inference: bool,
 ) -> Path:
@@ -980,6 +1005,7 @@ def prepare_run(
             working_directory=working_directory,
             accounting_user=accounting_user,
             require_epnfs=require_epnfs,
+            maxmcmc=maxmcmc,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             noise_only_inference=noise_only_inference,
@@ -1093,6 +1119,7 @@ def main() -> int:
                 working_directory=working_directory,
                 accounting_user=args.accounting_user,
                 require_epnfs=args.require_epnfs,
+                maxmcmc=args.maxmcmc,
                 sine_gaussian_config=sine_gaussian_config,
                 noise_only_inference=args.noise_only_inference,
             )

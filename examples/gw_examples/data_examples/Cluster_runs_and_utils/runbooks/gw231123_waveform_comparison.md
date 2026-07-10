@@ -46,7 +46,7 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
 Gaussian baseline: 
 
 ```
-python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPNR \ 
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPNR \
   --num-sine-gaussians 1 --sine-gaussian-mode coherent
 ```
 
@@ -55,7 +55,7 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
 Gaussian baseline: 
 
 ```
-python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXO4a \ 
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXO4a \
   --num-sine-gaussians 1 --sine-gaussian-mode coherent
 ```
 

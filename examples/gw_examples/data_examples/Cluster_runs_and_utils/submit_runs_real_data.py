@@ -531,12 +531,21 @@ def render_ini(
         "minimum-frequency",
         repr(template_settings["minimum_frequency"]),
     )
-    if template_settings["waveform_approximant"] == "SEOBNRv5PHM":
-        # waveform generator now calls the correct waveform generation function depending on the flag. 
+    GW_SIGNAL_MODELS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
+    if template_settings["waveform_approximant"] in GW_SIGNAL_MODELS:
+        # waveform generator now calls the correct waveform generation function depending on the flag.
         rendered = replace_line(
             rendered,
             "waveform-generator",
             "bilby.gw.waveform_generator.WaveformGenerator",
+        )
+        # Sine-Gaussian runs override this below via cbc_plus_sine_gaussians,
+        # which auto-detects these approximants; without sine-Gaussians, route
+        # the CBC baseline through gwsignal directly.
+        rendered = replace_line(
+            rendered,
+            "frequency-domain-source-model",
+            "bilby.gw.source.gwsignal_binary_black_hole",
         )
     rendered = apply_sine_gaussian_waveform_settings(
         rendered,

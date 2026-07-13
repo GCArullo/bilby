@@ -323,6 +323,16 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         default=script_dir / "Priors",
         help="Directory where generated prior files are written.",
     )
+    parser.add_argument(
+        "--waveform-approximant",
+        default=None,
+        help=(
+            "Override the waveform approximant set in the ini template. "
+            "When the override differs from the template default a suffix "
+            "(e.g. _SEOBNRv5PHM) is appended to all labels and filenames. "
+            "If omitted the template value is used unchanged."
+        ),
+    )
     add_sine_gaussian_arguments(parser)
     return parser
 
@@ -867,6 +877,33 @@ def render_ini(
         rendered = replace_line(rendered, "extra-likelihood-kwargs", "None")
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
+
+    rendered = replace_line(
+        rendered,
+        "waveform-approximant",
+        template_settings["waveform_approximant"],
+    )
+    rendered = replace_line(
+        rendered,
+        "minimum-frequency",
+        repr(template_settings["minimum_frequency"]),
+    )
+    GW_SIGNAL_MODELS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
+    if template_settings["waveform_approximant"] in GW_SIGNAL_MODELS:
+        # waveform generator now calls the correct waveform generation function depending on the flag.
+        rendered = replace_line(
+            rendered,
+            "waveform-generator",
+            "bilby.gw.waveform_generator.WaveformGenerator",
+        )
+        # Sine-Gaussian runs override this below via cbc_plus_sine_gaussians,
+        # which auto-detects these approximants; without sine-Gaussians, route
+        # the CBC baseline through gwsignal directly.
+        rendered = replace_line(
+            rendered,
+            "frequency-domain-source-model",
+            "bilby.gw.source.gwsignal_binary_black_hole",
+        )
     rendered = apply_sine_gaussian_waveform_settings(
         rendered,
         sine_gaussian_config,
@@ -897,8 +934,9 @@ def prepare_run(
     maxmcmc: int | None,
     sine_gaussian_config,
     noise_only_inference: bool,
+    approximant_suffix: str = "",
 ) -> Path:
-    waveform_suffix = sine_gaussian_config.label_suffix
+    waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
@@ -1069,6 +1107,26 @@ def main() -> int:
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
     template_settings = read_template_settings(ini_template)
+
+    if args.waveform_approximant is not None:
+        template_approximant = template_settings["waveform_approximant"]
+        min_freq = template_settings["minimum_frequency"]
+        if isinstance(min_freq, dict):
+            detector_freqs = [v for k, v in min_freq.items() if k != "waveform"]
+            min_freq = dict(min_freq, waveform=min(detector_freqs) if detector_freqs else 20.0)
+        template_settings = dict(
+            template_settings,
+            waveform_approximant=args.waveform_approximant,
+            minimum_frequency=min_freq,
+        )
+        approximant_suffix = (
+            f"_{args.waveform_approximant}"
+            if args.waveform_approximant != template_approximant
+            else ""
+        )
+    else:
+        approximant_suffix = ""
+
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
         range_mode=args.sine_gaussian_range,
@@ -1122,6 +1180,7 @@ def main() -> int:
                 maxmcmc=args.maxmcmc,
                 sine_gaussian_config=sine_gaussian_config,
                 noise_only_inference=args.noise_only_inference,
+                approximant_suffix=approximant_suffix,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

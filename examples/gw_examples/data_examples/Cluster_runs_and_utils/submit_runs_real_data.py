@@ -16,6 +16,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from container_creation.submission_container_utils import (
+    add_container_arguments,
+    resolve_container_image,
+)
 from submission_sine_gaussian_utils import (
     add_sine_gaussian_arguments,
     apply_sine_gaussian_waveform_settings,
@@ -31,6 +35,9 @@ from submission_sine_gaussian_utils import (
 
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
+DEFAULT_CONTAINER_IMAGE_FILE = (
+    Path(__file__).resolve().parent / "container_creation" / "container_image.txt"
+)
 
 
 def default_accounting_user() -> str:
@@ -298,6 +305,10 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "If omitted the template value is used unchanged."
         ),
     )
+    add_container_arguments(
+        parser,
+        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+    )
     add_sine_gaussian_arguments(parser)
     return parser
 
@@ -489,6 +500,7 @@ def render_ini(
     detector_dependent_nu: bool,
     working_directory: Path,
     accounting_user: str,
+    container_image: str | None,
     require_epnfs: bool,
     maxmcmc: int | None,
     template_settings: dict[str, object],
@@ -507,6 +519,7 @@ def render_ini(
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
+    rendered = replace_line(rendered, "container", container_image or "None")
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(rendered, "create-summary", "True")
@@ -597,6 +610,7 @@ def prepare_run(
     file_prefix: str,
     working_directory: Path,
     accounting_user: str,
+    container_image: str | None,
     require_epnfs: bool,
     maxmcmc: int | None,
     sine_gaussian_config,
@@ -663,6 +677,7 @@ def prepare_run(
             detector_dependent_nu=run_detector_dependent_nu,
             working_directory=working_directory,
             accounting_user=accounting_user,
+            container_image=container_image,
             require_epnfs=require_epnfs,
             maxmcmc=maxmcmc,
             template_settings=template_settings,
@@ -695,6 +710,11 @@ def main() -> int:
     args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
     if args.num_frequency_bands is None:
         args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS
+    container_image = resolve_container_image(
+        use_container=args.container,
+        container_image=args.container_image,
+        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+    )
 
     defaults = EVENT_DEFAULTS[args.event]
     ini_template_path = resolve_path(
@@ -787,6 +807,7 @@ def main() -> int:
                 file_prefix=file_prefix,
                 working_directory=working_directory,
                 accounting_user=args.accounting_user,
+                container_image=container_image,
                 require_epnfs=args.require_epnfs,
                 maxmcmc=args.maxmcmc,
                 sine_gaussian_config=sine_gaussian_config,

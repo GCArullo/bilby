@@ -1,0 +1,150 @@
+# Bilby container
+-----------------
+
+See the `docs/intro.html` page for an explanation of what this directory
+achieves.
+
+## In brief: build and deploy
+
+This is the one-liner you are searching for:
+
+```
+make publish
+```
+
+It cleans and creates the image, then publishes it to OSDF. By default,
+publication runs on a CIT access point and copies the image directly to the
+local OSDF staging filesystem. If that filesystem is not writable, it falls
+back to Pelican without rebuilding. To use Pelican directly, run:
+
+```
+make publish CIT=false
+```
+
+Both paths write the published URL to `container_image.txt` for the submission
+launchers in the parent directory.
+
+Both Bilby and bilby-pipe default to their `sine_gaussians_addition` branches.
+Select different branches or tags on the same command:
+
+```
+make publish BILBY_BRANCH=my-bilby-ref BILBY_PIPE_BRANCH=my-pipe-ref
+```
+
+Images built from branches include the first 12 characters of both exact
+installed commits in their filename. A release-tag build omits the commit for
+that package.
+
+------------------------------------------------------------------------------------------------------------
+
+## Detailed commands
+
+Here, we dissect the steps implied by the command above.
+
+1. Building the container image
+
+The `image` target force-rebuilds the temporary image from the requested Bilby
+and bilby-pipe refs, reads both installed versions and commits, and copies the
+image to its timestamped final name. The equivalent expanded build command for
+the defaults is:
+
+```
+apptainer build --force \
+  --build-arg BILBY_BRANCH="sine_gaussians_addition" \
+  --build-arg BILBY_PIPE_BRANCH="sine_gaussians_addition" \
+  temp_image.sif image.def
+```
+
+The generated image name has the form:
+
+```
+bilby-<version>-<commit>-bilby_pipe-<version>-<commit>-<timestamp>.sif
+```
+
+Image names must be unique in OSDF, so the timestamp includes seconds.
+
+2. Publishing to OSDF
+
+On a CIT access point, the default `CIT=true` mode first attempts to copy the
+image directly to the local OSDF staging filesystem without a token:
+
+```
+mkdir -p "/osdf/igwn/cit/staging/${USER}"
+cp "${IMAGE}" "/osdf/igwn/cit/staging/${USER}/${IMAGE}"
+```
+
+If that directory is not writable, publication automatically falls back to
+Pelican. From another site, select Pelican directly with
+`make publish CIT=false`. The `scitoken` target requests the write scope needed
+for CIT staging. `--nooidc` prevents unattended publication from waiting for
+browser approval; initialise the cached credentials interactively once if it
+fails:
+
+```
+htgettoken --nooidc -a vault.ligo.org -i igwn --scopes write:/staging
+```
+
+Remote publication obtains the username from that token and uploads with
+Pelican:
+
+```
+USERNAME=$(htdecodetoken | jq .uid -a -r -- | tr -d '"')
+pelican object put "${IMAGE}" "osdf:///igwn/cit/staging/${USERNAME}/${IMAGE}"
+```
+
+Both publication paths record the URL in `container_image.txt`. Do not push an
+image with a generic name such as `bilby.sif`: staged images are cached, and
+reusing a name can cause different sites to run different image contents.
+
+## Using in Condor jobs
+
+The real-data and injection launchers in the parent directory use the URL in
+`container_image.txt` by default. Override it with `--container-image URL`, or
+use the previous node environment with `--no-container`.
+
+Here is a minimal standalone Condor example:
+
+```
+universe = container
+accounting_group = ligo.dev.o4.cbc.pe.bilby
+output = logs/$(Cluster).$(Process).out
+error = logs/$(Cluster).$(Process).err
+log = logs/$(Cluster).$(Process).log
+container_image = osdf:///igwn/cit/staging/<username>/<generated-image-name>.sif
+executable = /opt/conda/bin/python
+arguments = test.py
+use_oauth_services = scitokens
+
+should_transfer_files = true
+when_to_transfer_output = ON_EXIT_OR_EVICT
+transfer_executable = false
+request_disk = 4GB
+request_memory = 4GB
+request_cpus = 1
+transfer_input_files = test.py
+queue 1
+```
+
+Before submitting the job, create a SciToken:
+
+```
+htgettoken -a vault.ligo.org -i igwn
+```
+
+Replace `container_image` in `test_job/analysis.sub` with the URL printed by
+`make publish`, then submit the included test job:
+
+```
+mkdir -p test_job/logs
+cd test_job
+condor_submit analysis.sub
+```
+
+### Running on CIT without the shared filesystem
+
+To force a standalone job to stay on CIT, add:
+
+```
+MY.DESIRED_Sites="none"
+MY.flock_local = True
+```

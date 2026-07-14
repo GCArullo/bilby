@@ -7,6 +7,11 @@ GR_PRIOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Pr
 MAXMCMC=5000
 ```
 
+Condor jobs use the Bilby container by default. Before the first submission,
+run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
+reads the resulting `container_image.txt`. Use `--container-image URL` to
+override it or `--no-container` to use the existing node environment.
+
 ## Real Runs
 
 The real-data launcher submits by default. Add `--dry-run` if you only want to

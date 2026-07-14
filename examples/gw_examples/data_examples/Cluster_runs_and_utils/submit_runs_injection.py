@@ -33,6 +33,10 @@ if str(REPO_ROOT) not in sys.path:
 
 import bilby
 
+from container_creation.submission_container_utils import (
+    add_container_arguments,
+    resolve_container_image,
+)
 from submission_sine_gaussian_utils import (
     SINE_GAUSSIAN_HRSS_BOUNDS,
     SINE_GAUSSIAN_Q_BOUNDS,
@@ -53,6 +57,9 @@ from submission_sine_gaussian_utils import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_CONTAINER_IMAGE_FILE = (
+    SCRIPT_DIR / "container_creation" / "container_image.txt"
+)
 
 
 def default_accounting_user() -> str:
@@ -390,6 +397,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--bilby-pipe-executable",
         default="bilby_pipe",
         help="Executable name or absolute path used to call bilby_pipe.",
+    )
+    add_container_arguments(
+        parser,
+        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
     )
     add_sine_gaussian_arguments(parser)
     add_sine_gaussian_arguments(
@@ -1465,6 +1476,11 @@ def render_ini(
             repr(float(template_settings["duration"])),
         )
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
+    rendered = replace_line(
+        rendered,
+        "container",
+        args.container_image or "None",
+    )
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(rendered, "create-summary", "True")
@@ -1726,6 +1742,15 @@ def submit_runs(ini_paths: list[Path], executable: str) -> None:
 
 def main() -> int:
     args = build_parser().parse_args()
+    try:
+        args.container_image = resolve_container_image(
+            use_container=args.container,
+            container_image=args.container_image,
+            default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
     args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
     if args.num_frequency_bands is None:
         args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS

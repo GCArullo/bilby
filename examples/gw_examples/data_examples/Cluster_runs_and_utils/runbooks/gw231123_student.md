@@ -9,6 +9,11 @@ BASE="$HOME/GW231123/t_Student/Runs_injections_runbook_gw231123_student"
 MAXMCMC=5000
 ```
 
+Condor jobs use the Bilby container by default. Before the first submission,
+run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
+reads the resulting `container_image.txt`. Use `--container-image URL` to
+override it or `--no-container` to use the existing node environment.
+
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
 set this explicitly with `--maxmcmc "$MAXMCMC"`.

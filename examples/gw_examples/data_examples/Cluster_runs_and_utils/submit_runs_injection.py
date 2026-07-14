@@ -57,8 +57,8 @@ from submission_sine_gaussian_utils import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONTAINER_IMAGE_FILE = (
-    SCRIPT_DIR / "container_creation" / "container_image.txt"
+DEFAULT_CONTAINER_IMAGES_FILE = (
+    SCRIPT_DIR / "container_creation" / "container_images.json"
 )
 
 
@@ -400,7 +400,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_container_arguments(
         parser,
-        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
     add_sine_gaussian_arguments(
@@ -1746,7 +1746,7 @@ def main() -> int:
         args.container_image = resolve_container_image(
             use_container=args.container,
             container_image=args.container_image,
-            default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+            default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
         )
     except (FileNotFoundError, ValueError) as exc:
         print(exc, file=sys.stderr)

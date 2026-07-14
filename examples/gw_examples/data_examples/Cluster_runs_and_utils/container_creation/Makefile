@@ -14,8 +14,9 @@ TIMESTAMP?=$(shell date -u +"%Y-%m-%dT%H_%M_%S")
 export TIMESTAMP
 IMAGE=bilby-$(BILBY_VERSION)$(BILBY_COMMIT_SUFFIX)-bilby_pipe-$(BILBY_PIPE_VERSION)$(BILBY_PIPE_COMMIT_SUFFIX)-$(TIMESTAMP).sif
 IMAGE_URL=osdf:///igwn/cit/staging/$(USERNAME)/$(IMAGE)
+IMAGE_REGISTRY=container_images.json
 
-.PHONY: default clean image scitoken publish _publish _publish_cit _publish_remote temp_image.sif
+.PHONY: default clean image scitoken publish _publish _publish_cit _publish_remote _record_image temp_image.sif
 
 default: image
 
@@ -58,7 +59,7 @@ _publish_cit:
 	mkdir -p /osdf/igwn/cit/staging/$(shell id -un)
 	cp $(IMAGE) /osdf/igwn/cit/staging/$(shell id -un)/$(IMAGE)
 	@echo osdf:///igwn/cit/staging/$(shell id -un)/$(IMAGE)
-	@printf '%s\n' osdf:///igwn/cit/staging/$(shell id -un)/$(IMAGE) > container_image.txt
+	@$(MAKE) --no-print-directory _record_image URL=osdf:///igwn/cit/staging/$(shell id -un)/$(IMAGE)
 else
 _publish: image
 	$(MAKE) _publish_remote
@@ -66,4 +67,7 @@ endif
 
 _publish_remote: scitoken
 	pelican object put $(IMAGE) $(IMAGE_URL)
-	@printf '%s\n' $(IMAGE_URL) > container_image.txt
+	@$(MAKE) --no-print-directory _record_image URL=$(IMAGE_URL)
+
+_record_image:
+	@IMAGE_BRANCH='$(BILBY_BRANCH)' IMAGE_URL='$(URL)' python3 -c 'import json, os; from pathlib import Path; path = Path("$(IMAGE_REGISTRY)"); images = json.loads(path.read_text()) if path.exists() else {}; images[os.environ["IMAGE_BRANCH"]] = os.environ["IMAGE_URL"]; path.write_text(json.dumps(images, indent=2, sort_keys=True) + "\n")'

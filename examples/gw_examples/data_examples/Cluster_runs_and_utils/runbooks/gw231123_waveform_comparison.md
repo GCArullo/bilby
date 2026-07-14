@@ -11,8 +11,9 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 
 Condor jobs use the Bilby container by default. Before the first submission,
 run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-reads the resulting `container_image.txt`. Use `--container-image URL` to
-override it or `--no-container` to use the existing node environment.
+selects the current Git branch from `container_images.json`. Use
+`--container-image URL` to override it or `--no-container` to use the existing
+node environment.
 
 Add `--dry-run` to write files without submitting.
 

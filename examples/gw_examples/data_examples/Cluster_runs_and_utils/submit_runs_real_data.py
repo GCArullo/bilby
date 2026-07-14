@@ -35,8 +35,8 @@ from submission_sine_gaussian_utils import (
 
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
-DEFAULT_CONTAINER_IMAGE_FILE = (
-    Path(__file__).resolve().parent / "container_creation" / "container_image.txt"
+DEFAULT_CONTAINER_IMAGES_FILE = (
+    Path(__file__).resolve().parent / "container_creation" / "container_images.json"
 )
 
 
@@ -307,7 +307,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     add_container_arguments(
         parser,
-        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
     return parser
@@ -713,7 +713,7 @@ def main() -> int:
     container_image = resolve_container_image(
         use_container=args.container,
         container_image=args.container_image,
-        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
 
     defaults = EVENT_DEFAULTS[args.event]

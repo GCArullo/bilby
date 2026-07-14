@@ -4,7 +4,7 @@ From: ubuntu:26.04
 %environment
     # set up environment for when using the container
     . /opt/conda/etc/profile.d/conda.sh
-    conda activate
+    conda activate bilby
 
 %post
     # base os
@@ -24,18 +24,14 @@ From: ubuntu:26.04
     conda config --env --remove channels defaults
     conda config --env --set channel_priority strict
 
-    conda install -y -c conda-forge numpy pip
+    conda create -y -n bilby python=3.12 numpy pip
+    conda activate bilby
     conda update --all
 
     # install Bilby and bilby-pipe from the selected refs
     pip install "bilby[gw] @ git+https://github.com/GCArullo/bilby.git@{{ BILBY_BRANCH }}"
     pip install "bilby_pipe @ git+https://git.ligo.org/gregorio.carullo/bilby-pipe-gc.git@{{ BILBY_PIPE_BRANCH }}"
     pip install bilby_tgr
-
-    # Torch CPU-only version for nessai
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-    # install nessai
-    pip install nessai
 
     # install pesummary
     pip install pesummary

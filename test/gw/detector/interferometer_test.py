@@ -151,6 +151,41 @@ class TestInterferometer(unittest.TestCase):
             )
         )
 
+    def test_independent_sine_gaussian_uses_its_own_sky_response(self):
+        def antenna_response(ra, dec, time, psi, mode):
+            if ra == 0.0:
+                return 2.0
+            return {"plus": 3.0, "cross": 5.0}[mode]
+
+        self.ifo.antenna_response = mock.MagicMock(side_effect=antenna_response)
+        self.ifo.time_delay_from_geocenter = mock.MagicMock(
+            side_effect=lambda ra, dec, time: 0.01 if ra == 0.0 else 0.02
+        )
+        self.ifo.strain_data.start_time = 0
+        frequencies = self.ifo.frequency_array
+        mask = self.ifo.frequency_mask
+        response = self.ifo.get_detector_response(
+            waveform_polarizations={
+                "plus": np.ones_like(frequencies),
+                "independent_sine_gaussian_plus": 2 * np.ones_like(frequencies),
+                "independent_sine_gaussian_cross": 4 * np.ones_like(frequencies),
+            },
+            parameters=dict(
+                ra=0.0,
+                dec=0.0,
+                geocent_time=0.0,
+                psi=0.0,
+                independent_sine_gaussian_ra=1.0,
+                independent_sine_gaussian_dec=-0.2,
+                independent_sine_gaussian_psi=0.4,
+            ),
+        )
+        expected = mask * (
+            2 * np.exp(-1j * 2 * np.pi * 0.01 * frequencies)
+            + 26 * np.exp(-1j * 2 * np.pi * 0.02 * frequencies)
+        )
+        self.assertTrue(np.allclose(response, expected))
+
     def test_detector_local_mode_not_time_shifted(self):
         self.ifo.antenna_response = mock.MagicMock(return_value=1)
         self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=1)

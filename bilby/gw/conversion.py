@@ -301,6 +301,10 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
         or ``phase_offset``.  Incoherent components use keys of the form
         ``sine_gaussian_<index>_<detector>_<field>`` where ``detector`` is the
         interferometer name and ``field`` matches the coherent set.
+        Independently localized coherent components use
+        ``independent_sine_gaussian_<index>_<field>`` together with
+        ``independent_sine_gaussian_ra``, ``independent_sine_gaussian_dec`` and
+        ``independent_sine_gaussian_psi``.
 
     Returns
     -------
@@ -314,16 +318,28 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
     sine_gaussian_pattern = re.compile(
         r"sine_gaussian_(\d+)_(hrss|Q|frequency|time_offset|phase_offset)"
     )
+    independent_pattern = re.compile(
+        r"independent_sine_gaussian_(\d+)_(hrss|Q|frequency|time_offset|phase_offset)"
+    )
     incoherent_pattern = re.compile(
         r"sine_gaussian_(\d+)_([A-Za-z0-9]+)_(hrss|Q|frequency|time_offset|phase_offset)"
     )
     grouped_parameters = {}
+    independent_grouped_parameters = {}
     incoherent_grouped_parameters = {}
     unsupported_polarization_pattern = re.compile(
         r"sine_gaussian_(\d+)_([A-Za-z0-9]+)_polarization"
     )
 
     for key in list(converted_parameters.keys()):
+        independent_match = independent_pattern.fullmatch(key)
+        if independent_match is not None:
+            index = int(independent_match.group(1))
+            field = independent_match.group(2)
+            independent_grouped_parameters.setdefault(index, {})[field] = \
+                converted_parameters.pop(key)
+            continue
+
         match = sine_gaussian_pattern.fullmatch(key)
         if match is not None:
             index = int(match.group(1))
@@ -357,6 +373,23 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
 
     required_fields = {"hrss", "Q", "frequency", "time_offset", "phase_offset"}
     is_dataframe = isinstance(converted_parameters, DataFrame)
+
+    if independent_grouped_parameters:
+        required_sky_parameters = {
+            "independent_sine_gaussian_ra",
+            "independent_sine_gaussian_dec",
+            "independent_sine_gaussian_psi",
+        }
+        missing_sky_parameters = required_sky_parameters.difference(
+            converted_parameters
+        )
+        if missing_sky_parameters:
+            raise KeyError(
+                "Independently localized sine-Gaussians are missing sky "
+                "parameters: {}".format(
+                    ", ".join(sorted(missing_sky_parameters))
+                )
+            )
 
     def _row_values(value):
         if isinstance(value, Series):
@@ -410,6 +443,58 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
 
         converted_parameters["sine_gaussian_parameters"] = sine_gaussian_parameters
         added_keys = list(added_keys) + ["sine_gaussian_parameters"]
+
+    if independent_grouped_parameters:
+        if is_dataframe:
+            independent_parameters = [[] for _ in range(len(converted_parameters))]
+        else:
+            independent_parameters = []
+
+        for index in sorted(independent_grouped_parameters):
+            parameter_set = independent_grouped_parameters[index]
+            missing_fields = required_fields.difference(parameter_set)
+            if missing_fields:
+                raise KeyError(
+                    "Independently localized sine-Gaussian {} is missing required "
+                    "parameters: {}".format(
+                        index, ", ".join(sorted(missing_fields))
+                    )
+                )
+
+            if is_dataframe:
+                row_values = zip(
+                    _row_values(parameter_set["hrss"]),
+                    _row_values(parameter_set["Q"]),
+                    _row_values(parameter_set["frequency"]),
+                    _row_values(parameter_set["time_offset"]),
+                    _row_values(parameter_set["phase_offset"]),
+                )
+                for row_components, (
+                    hrss, quality_factor, frequency, time_offset, phase_offset
+                ) in zip(independent_parameters, row_values):
+                    row_components.append(
+                        dict(
+                            hrss=hrss,
+                            Q=quality_factor,
+                            frequency=frequency,
+                            time_offset=time_offset,
+                            phase_offset=phase_offset,
+                        )
+                    )
+            else:
+                independent_parameters.append({
+                    "hrss": parameter_set["hrss"],
+                    "Q": parameter_set["Q"],
+                    "frequency": parameter_set["frequency"],
+                    "time_offset": parameter_set["time_offset"],
+                    "phase_offset": parameter_set["phase_offset"],
+                })
+
+        converted_parameters["independent_sine_gaussian_parameters"] = \
+            independent_parameters
+        added_keys = list(added_keys) + [
+            "independent_sine_gaussian_parameters"
+        ]
 
     if incoherent_grouped_parameters:
         if is_dataframe:
@@ -1976,7 +2061,9 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
         ``sine_gaussian_<index>_<field>`` are bundled into the
         ``sine_gaussian_parameters`` list while entries of the form
         ``sine_gaussian_<index>_<detector>_<field>`` are grouped into the
-        detector-specific incoherent collections.
+        detector-specific incoherent collections. Entries of the form
+        ``independent_sine_gaussian_<index>_<field>`` are bundled into the
+        independently localized coherent collection.
     likelihood : bilby.gw.likelihood.GravitationalWaveTransient, optional
         Likelihood used for sampling. Passed through to
         :func:`_generate_all_cbc_parameters`.
@@ -1990,7 +2077,8 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
     dict or pandas.DataFrame
         The converted samples augmented with the standard CBC parameters and a
         ``sine_gaussian_parameters`` entry and an
-        ``incoherent_sine_gaussian_parameters`` mapping when applicable. For
+        ``incoherent_sine_gaussian_parameters`` mapping or an
+        ``independent_sine_gaussian_parameters`` entry when applicable. For
         DataFrame posterior samples, the scalar ``sine_gaussian_*`` columns are
         retained instead so the result remains serializable.
     """
@@ -1999,12 +2087,12 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
     if is_dataframe:
         sine_gaussian_columns = [
             column for column in sample.columns
-            if column.startswith("sine_gaussian_")
+            if column.startswith(("sine_gaussian_", "independent_sine_gaussian_"))
         ]
     else:
         sine_gaussian_columns = [
             key for key in sample
-            if key.startswith("sine_gaussian_")
+            if key.startswith(("sine_gaussian_", "independent_sine_gaussian_"))
         ]
     sine_gaussian_values = {key: sample[key] for key in sine_gaussian_columns}
 
@@ -2026,12 +2114,14 @@ def generate_all_cbc_plus_sine_gaussian_parameters(sample, likelihood=None, prio
             columns=[
                 "sine_gaussian_parameters",
                 "incoherent_sine_gaussian_parameters",
+                "independent_sine_gaussian_parameters",
             ],
             errors="ignore",
         )
     else:
         output_sample.pop("sine_gaussian_parameters", None)
         output_sample.pop("incoherent_sine_gaussian_parameters", None)
+        output_sample.pop("independent_sine_gaussian_parameters", None)
     for column, value in sine_gaussian_values.items():
         output_sample[column] = value
 

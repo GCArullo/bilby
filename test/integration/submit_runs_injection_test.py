@@ -159,6 +159,11 @@ def test_injected_sine_gaussian_values_are_loaded_from_json_and_within_bounds():
         time_offset=pytest.approx(0.0),
         phase_offset=pytest.approx(0.0),
     )
+    assert values["coherent_independent"] == dict(
+        ra=pytest.approx(2.0),
+        dec=pytest.approx(-0.4),
+        psi=pytest.approx(0.7),
+    )
 
     coherent_components = module.load_injected_sine_gaussian_component_series(
         mode="coherent",
@@ -202,6 +207,23 @@ def test_injected_sine_gaussian_values_are_loaded_from_json_and_within_bounds():
             frequency_minimum=20.0,
             frequency_maximum=448.0,
         )
+
+    independent_parameters = module.add_injected_sine_gaussians(
+        {},
+        template_settings=dict(
+            minimum_frequency=20.0,
+            maximum_frequency=448.0,
+        ),
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=True, total_components=1, mode="coherent-independent"),
+        )(),
+    )
+    assert independent_parameters["independent_sine_gaussian_ra"] == 2.0
+    assert independent_parameters["independent_sine_gaussian_dec"] == -0.4
+    assert independent_parameters["independent_sine_gaussian_psi"] == 0.7
+    assert independent_parameters["independent_sine_gaussian_0_frequency"] == 130.0
 
 
 def test_injected_sine_gaussian_validation_rejects_out_of_bounds_component():

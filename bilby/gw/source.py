@@ -189,7 +189,10 @@ def cbc_plus_sine_gaussians(
         frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
         phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, lambda_1=0.0,
         lambda_2=0.0, eccentricity=0.0, sine_gaussian_parameters=None,
-        incoherent_sine_gaussian_parameters=None, **kwargs):
+        incoherent_sine_gaussian_parameters=None,
+        independent_sine_gaussian_parameters=None,
+        independent_sine_gaussian_ra=None, independent_sine_gaussian_dec=None,
+        independent_sine_gaussian_psi=None, **kwargs):
     """A CBC waveform model augmented with a collection of sine-Gaussians.
 
     This function evaluates a compact binary coalescence (CBC) waveform using
@@ -236,6 +239,15 @@ def cbc_plus_sine_gaussians(
         ``time_offset`` and ``phase_offset``).  These detector-local bursts are
         added directly to the interferometer strain without applying antenna
         pattern projections or polarization choices.
+    independent_sine_gaussian_parameters : list[dict] or dict or None, optional
+        Coherent sine-Gaussian components projected using their own shared sky
+        position and polarization angle rather than those of the CBC.
+    independent_sine_gaussian_ra, independent_sine_gaussian_dec : float, optional
+        Right ascension and declination of the independently localized
+        sine-Gaussian source in radians.
+    independent_sine_gaussian_psi : float, optional
+        Polarization angle of the independently localized sine-Gaussian source
+        in radians.
     **kwargs
         Additional keyword arguments forwarded to the underlying CBC waveform
         generator.
@@ -328,6 +340,63 @@ def cbc_plus_sine_gaussians(
 
             h_plus += sine_gaussian_waveform['plus']
             h_cross += sine_gaussian_waveform['cross']
+
+    if isinstance(independent_sine_gaussian_parameters, dict):
+        independent_sine_gaussian_parameters = [
+            independent_sine_gaussian_parameters
+        ]
+
+    if independent_sine_gaussian_parameters:
+        sky_parameters = {
+            "ra": independent_sine_gaussian_ra,
+            "dec": independent_sine_gaussian_dec,
+            "psi": independent_sine_gaussian_psi,
+        }
+        missing_sky_parameters = [
+            key for key, value in sky_parameters.items() if value is None
+        ]
+        if missing_sky_parameters:
+            raise ValueError(
+                "Independently localized sine-Gaussians require: {}".format(
+                    ", ".join(
+                        f"independent_sine_gaussian_{key}"
+                        for key in missing_sky_parameters
+                    )
+                )
+            )
+
+        independent_plus = np.zeros_like(h_plus, dtype=h_plus.dtype)
+        independent_cross = np.zeros_like(h_cross, dtype=h_cross.dtype)
+        for index, parameters in enumerate(independent_sine_gaussian_parameters):
+            try:
+                hrss = parameters['hrss']
+                quality_factor = parameters['Q']
+                peak_frequency = parameters['frequency']
+                time_offset = parameters['time_offset']
+                phase_offset = parameters['phase_offset']
+            except KeyError as error:
+                missing_key = error.args[0]
+                raise KeyError(
+                    "Missing '{}' for independently localized sine-Gaussian {}. "
+                    "Each sine-Gaussian requires 'hrss', 'Q', 'frequency', "
+                    "'time_offset', and 'phase_offset'.".format(
+                        missing_key, index
+                    )
+                ) from error
+
+            sine_gaussian_waveform = sinegaussian(
+                frequency_array,
+                hrss=hrss,
+                Q=quality_factor,
+                frequency=peak_frequency,
+                time_offset=time_offset,
+                phase_offset=phase_offset,
+            )
+            independent_plus += sine_gaussian_waveform['plus']
+            independent_cross += sine_gaussian_waveform['cross']
+
+        combined_waveform['independent_sine_gaussian_plus'] = independent_plus
+        combined_waveform['independent_sine_gaussian_cross'] = independent_cross
 
     if incoherent_sine_gaussian_parameters:
         for detector, components in incoherent_sine_gaussian_parameters.items():

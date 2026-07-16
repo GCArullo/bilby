@@ -350,8 +350,18 @@ class Interferometer(object):
         else:
             antenna_time = self.reference_time
 
+        independent_sine_gaussian_modes = {
+            "independent_sine_gaussian_plus": "plus",
+            "independent_sine_gaussian_cross": "cross",
+        }
+        independent_modes = [
+            mode for mode in waveform_polarizations
+            if mode in independent_sine_gaussian_modes
+        ]
         signal = {}
         for mode in waveform_polarizations.keys():
+            if mode in independent_sine_gaussian_modes:
+                continue
             det_response = self.antenna_response(
                 parameters['ra'],
                 parameters['dec'],
@@ -360,6 +370,8 @@ class Interferometer(object):
 
             signal[mode] = waveform_polarizations[mode] * det_response
         signal_ifo = sum(signal.values()) * mask
+        if independent_modes:
+            signal_ifo = np.asarray(signal_ifo, dtype=complex)
 
         time_shift = self.time_delay_from_geocenter(
             parameters['ra'], parameters['dec'], parameters['geocent_time'])
@@ -370,6 +382,31 @@ class Interferometer(object):
         dt = dt_geocent + time_shift
 
         signal_ifo[mask] = signal_ifo[mask] * np.exp(-1j * 2 * np.pi * dt * frequencies)
+
+        if independent_modes:
+            independent_ra = parameters['independent_sine_gaussian_ra']
+            independent_dec = parameters['independent_sine_gaussian_dec']
+            independent_psi = parameters['independent_sine_gaussian_psi']
+            independent_signal = np.asarray(sum(
+                waveform_polarizations[mode] * self.antenna_response(
+                    independent_ra,
+                    independent_dec,
+                    antenna_time,
+                    independent_psi,
+                    independent_sine_gaussian_modes[mode],
+                )
+                for mode in independent_modes
+            ) * mask, dtype=complex)
+            independent_time_shift = self.time_delay_from_geocenter(
+                independent_ra,
+                independent_dec,
+                parameters['geocent_time'],
+            )
+            independent_dt = dt_geocent + independent_time_shift
+            independent_signal[mask] *= np.exp(
+                -1j * 2 * np.pi * independent_dt * frequencies
+            )
+            signal_ifo += independent_signal
 
         signal_ifo[mask] *= self.calibration_model.get_calibration_factor(
             frequencies, prefix='recalib_{}_'.format(self.name), **parameters

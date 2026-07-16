@@ -701,6 +701,29 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             "Injected SG values file must define an 'incoherent' object keyed by detector."
         )
 
+    independent_sky_raw = raw_values.get("coherent-independent")
+    if not isinstance(independent_sky_raw, dict):
+        raise ValueError(
+            "Injected SG values file must define a 'coherent-independent' sky object."
+        )
+    independent_sky = {}
+    for key, bounds in {
+        "ra": (0.0, 2.0 * float(np.pi)),
+        "dec": (-0.5 * float(np.pi), 0.5 * float(np.pi)),
+        "psi": (0.0, float(np.pi)),
+    }.items():
+        try:
+            value = float(independent_sky_raw[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"coherent-independent.{key} must be a finite numeric value."
+            ) from exc
+        if not np.isfinite(value) or not bounds[0] <= value <= bounds[1]:
+            raise ValueError(
+                f"coherent-independent.{key}={value} is outside {bounds}."
+            )
+        independent_sky[key] = value
+
     def parse_count(raw_count, *, context: str) -> int:
         try:
             count = int(raw_count)
@@ -787,7 +810,11 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             )
         incoherent[str(detector)] = detector_components
 
-    return dict(coherent=coherent, incoherent=incoherent)
+    return dict(
+        coherent=coherent,
+        coherent_independent=independent_sky,
+        incoherent=incoherent,
+    )
 
 
 def load_injected_sine_gaussian_component_series(
@@ -800,7 +827,7 @@ def load_injected_sine_gaussian_component_series(
         raise ValueError(f"Sine-Gaussian component count must be >= 1, got {count}.")
 
     injected_values = load_injected_sine_gaussian_values()
-    if mode == "coherent":
+    if mode in {"coherent", "coherent-independent"}:
         if detector is not None:
             raise ValueError("Coherent SG injections do not take a detector selector.")
         component_series = injected_values["coherent"].get(count)
@@ -860,8 +887,13 @@ def flatten_sine_gaussian_component(
     component: dict[str, float],
     *,
     detector: str | None = None,
+    independent: bool = False,
 ) -> dict[str, float]:
-    prefix = f"sine_gaussian_{index}_"
+    prefix = (
+        f"independent_sine_gaussian_{index}_"
+        if independent
+        else f"sine_gaussian_{index}_"
+    )
     if detector is not None:
         prefix += f"{detector}_"
     return {
@@ -906,6 +938,37 @@ def add_injected_sine_gaussians(
                     component,
                 )
             )
+        return updated_parameters
+
+    if sine_gaussian_config.mode == "coherent-independent":
+        components = load_injected_sine_gaussian_component_series(
+            mode="coherent-independent",
+            count=sine_gaussian_config.total_components,
+        )
+        for index, component in enumerate(components):
+            validate_injected_sine_gaussian_component(
+                component,
+                frequency_minimum=frequency_minimum,
+                frequency_maximum=frequency_maximum,
+                context=(
+                    "coherent-independent"
+                    f"[{sine_gaussian_config.total_components}][{index}]"
+                ),
+            )
+            updated_parameters.update(
+                flatten_sine_gaussian_component(
+                    index,
+                    component,
+                    independent=True,
+                )
+            )
+        independent_sky = load_injected_sine_gaussian_values()[
+            "coherent_independent"
+        ]
+        updated_parameters.update({
+            f"independent_sine_gaussian_{key}": value
+            for key, value in independent_sky.items()
+        })
         return updated_parameters
 
     component_index = 0

@@ -46,9 +46,8 @@ Here, we dissect the steps implied by the command above.
 
 The `image` target force-rebuilds the temporary image from the requested Bilby,
 bilby-pipe, and `pesummary_GC` refs, reads their installed versions and commits,
-checks that the SEOBNRv5PHM gwsignal generator loads, and copies the image to
-its timestamped final name. The image includes `pyseobnr` and its GSL/SWIG
-build dependencies. The equivalent expanded build command for the defaults is:
+and copies the image to its timestamped final name. The equivalent expanded
+build command for the defaults is:
 
 ```
 apptainer build --force \

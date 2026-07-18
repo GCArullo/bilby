@@ -259,6 +259,141 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             keys.extend(self.delta_parameter_keys)
         return keys
 
+    def _gaussian_limit_parameter(self, priors, parameter_name, key, fixed_value):
+        if not getattr(self, f"infer_{parameter_name}"):
+            return float(fixed_value), "fixed"
+
+        prior = priors[key]
+        source = "fixed prior" if prior.is_fixed else "prior max"
+        return float(prior.maximum), source
+
+    @classmethod
+    def _gaussian_limit_statistics(cls, alpha, delta, dimension):
+        argument = alpha * delta
+        scaled_bessel = cls._scaled_bessel_k_half_integer(dimension, argument)
+        next_scaled_bessel = cls._scaled_bessel_k_half_integer(
+            dimension + 2, argument
+        )
+        variance_scale = (delta / alpha) * next_scaled_bessel / scaled_bessel
+        std_scale = np.sqrt(variance_scale)
+
+        hyperbolic_logl = cls._compute_bin_log_terms(
+            quadratic_forms=[float(dimension)],
+            dimensions=[dimension],
+            alpha=alpha,
+            delta=delta,
+        )[0]
+        gaussian_logl = (
+            -0.5 * dimension * np.log(2.0 * np.pi) - 0.5 * dimension
+        )
+        return dict(
+            variance_scale=variance_scale,
+            std_scale=std_scale,
+            relative_variance_error=variance_scale - 1.0,
+            relative_std_error=std_scale - 1.0,
+            log_likelihood_ratio_at_typical_radius=hyperbolic_logl
+            - gaussian_logl,
+        )
+
+    def print_gaussian_limit_diagnostic(self, priors):
+        """Print the closest Gaussian limit available within the shape priors."""
+        fixed_alphas = dict(zip(self.alpha_parameter_keys, np.ravel(self._fixed_alpha)))
+        fixed_deltas = dict(zip(self.delta_parameter_keys, np.ravel(self._fixed_delta)))
+
+        coordinates = []
+        if self.detector_dependent_noise:
+            for interferometer in self.interferometers:
+                frequencies = interferometer.frequency_array[
+                    interferometer.frequency_mask
+                ]
+                for band_index, band_mask in enumerate(
+                    self._get_frequency_band_masks(frequencies)
+                ):
+                    if np.any(band_mask):
+                        coordinates.append((interferometer.name, band_index, 2))
+        else:
+            active_frequencies = [
+                interferometer.frequency_array[interferometer.frequency_mask]
+                for interferometer in self.interferometers
+                if np.any(interferometer.frequency_mask)
+            ]
+            network_frequencies, active_counts = np.unique(
+                np.concatenate(active_frequencies), return_counts=True
+            )
+            for band_index, band_mask in enumerate(
+                self._get_frequency_band_masks(network_frequencies)
+            ):
+                for dimension in np.unique(2 * active_counts[band_mask]):
+                    coordinates.append((None, band_index, int(dimension)))
+
+        rows = []
+        for detector_name, band_index, dimension in coordinates:
+            if detector_name is None:
+                alpha_key = self.alpha_parameter_keys[band_index]
+                delta_key = self.delta_parameter_keys[band_index]
+                coordinate = "shared"
+            else:
+                alpha_key = self._detector_parameter_key(
+                    "alpha", detector_name, band_index
+                )
+                delta_key = self._detector_parameter_key(
+                    "delta", detector_name, band_index
+                )
+                coordinate = detector_name
+            if self.num_frequency_bands > 1:
+                coordinate = f"{coordinate} band {band_index + 1}"
+
+            alpha, alpha_source = self._gaussian_limit_parameter(
+                priors, "alpha", alpha_key, fixed_alphas[alpha_key]
+            )
+            delta, delta_source = self._gaussian_limit_parameter(
+                priors, "delta", delta_key, fixed_deltas[delta_key]
+            )
+            stats = self._gaussian_limit_statistics(alpha, delta, dimension)
+            rows.append(
+                (
+                    coordinate,
+                    dimension,
+                    alpha,
+                    alpha_source,
+                    delta,
+                    delta_source,
+                    stats,
+                )
+            )
+
+        closest_row = min(
+            rows, key=lambda row: abs(row[6]["relative_variance_error"])
+        )
+        worst_row = max(
+            rows, key=lambda row: abs(row[6]["relative_variance_error"])
+        )
+        rows_to_print = [("closest available corner", closest_row)]
+        if worst_row is not closest_row:
+            rows_to_print.append(("worst available corner", worst_row))
+
+        print("\n* Hyperbolic Gaussian-limit diagnostic (per frequency bin):")
+        for label, row in rows_to_print:
+            coordinate, dimension, alpha, alpha_source, delta, delta_source, stats = row
+            print(
+                "  {} ({}, d={}): alpha = {:.6g} ({}), delta = {:.6g} ({}), "
+                "variance scale = {:.6g} ({:+.3%}), std scale = {:.6g} "
+                "({:+.3%}), logL_hyp-logL_gauss at q=d = {:.6g}.".format(
+                    label,
+                    coordinate,
+                    dimension,
+                    alpha,
+                    alpha_source,
+                    delta,
+                    delta_source,
+                    stats["variance_scale"],
+                    stats["relative_variance_error"],
+                    stats["std_scale"],
+                    stats["relative_std_error"],
+                    stats["log_likelihood_ratio_at_typical_radius"],
+                )
+            )
+
     @property
     def meta_data(self):
         meta_data = super().meta_data

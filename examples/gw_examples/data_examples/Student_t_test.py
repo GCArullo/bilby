@@ -21,9 +21,9 @@ single_par           = True
 
 waveform_approximant = "IMRPhenomXPHM" # Waveform approximant to use. Must be supported by your version of LALSimulation. Examples: "IMRPhenomD", "IMRPhenomPv2", "IMRPhenomXPHM", "SEOBNRv4_ROM", etc.
 
-nu_min, nu_max       = 2.1, 200             # Range for log-uniform prior on nu (if infer_nu=True). Must be > 2 for finite variance in 2D.
-alpha_min, alpha_max = 0.5, 200             # Range for log-uniform prior on alpha (if infer_alpha=True). Larger alpha approaches Gaussian.
-delta_min, delta_max = 0.1, 20              # Range for log-uniform prior on delta (if infer_delta=True).
+nu_min, nu_max       = 2.1, 1000            # Range for uniform prior on nu (if infer_nu=True). Must be > 2 for finite variance in 2D.
+alpha_min, alpha_max = 1e-6, 30             # HyperWave-style uniform prior range for alpha (if infer_alpha=True).
+delta_min, delta_max = 1e-6, 30             # HyperWave-style uniform prior range for delta (if infer_delta=True).
 num_frequency_bands  = 2                    # Number of frequency bands. For N > 1, sample nu_i or alpha_i for each band.
 
 location_type        = "sky" # Available options: ["sky", "L1"]. This sets the reference frame and time reference for the likelihood. "sky" uses the standard geocentric frame and time, while "L1" uses the L1 frame and time. The latter is a non-inertial frame which can cause issues with the standard bilby likelihood, but should work fine with the heavy-tailed likelihoods used here.
@@ -169,10 +169,10 @@ elif("Student" in likelihood_type):
 
     # Prior must be > 2 for finite variance in 2D
     if num_frequency_bands == 1:
-        priors["nu"]                   = bilby.core.prior.LogUniform(nu_min, nu_max, name="nu"              )
+        priors["nu"]                   = bilby.core.prior.Uniform(nu_min, nu_max, name="nu"              )
     else:
         for band_index in range(1, num_frequency_bands + 1):
-            priors[f"nu_{band_index}"] = bilby.core.prior.LogUniform(nu_min, nu_max, name=f"nu_{band_index}")
+            priors[f"nu_{band_index}"] = bilby.core.prior.Uniform(nu_min, nu_max, name=f"nu_{band_index}")
 
     likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
     
@@ -196,14 +196,14 @@ elif("Student" in likelihood_type):
 elif("Hyperbolic" in likelihood_type):
 
     if num_frequency_bands == 1:
-        priors["alpha"] = bilby.core.prior.LogUniform(alpha_min, alpha_max, name="alpha")
-        priors["delta"] = bilby.core.prior.LogUniform(delta_min, delta_max, name="delta")
+        priors["alpha"] = bilby.core.prior.Uniform(alpha_min, alpha_max, name="alpha")
+        priors["delta"] = bilby.core.prior.Uniform(delta_min, delta_max, name="delta")
     else:
         for band_index in range(1, num_frequency_bands + 1):
-            priors[f"alpha_{band_index}"] = bilby.core.prior.LogUniform(
+            priors[f"alpha_{band_index}"] = bilby.core.prior.Uniform(
                 alpha_min, alpha_max, name=f"alpha_{band_index}"
             )
-            priors[f"delta_{band_index}"] = bilby.core.prior.LogUniform(
+            priors[f"delta_{band_index}"] = bilby.core.prior.Uniform(
                 delta_min, delta_max, name=f"delta_{band_index}"
             )
 

@@ -102,8 +102,10 @@ def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
     ini_template = "\n".join(
         [
             "accounting-user=old",
+            "container=None",
             "queue=None",
             "create-summary=False",
+            "environment-variables={}",
             "summarypages-arguments=None",
             "duration=8.0",
             "data-dict=None",
@@ -413,6 +415,7 @@ def test_render_ini_writes_maxmcmc_override(tmp_path):
     ini_template = "\n".join(
         [
             "accounting-user=old",
+            "container=None",
             "queue=None",
             "create-summary=False",
             "environment-variables={}",
@@ -703,8 +706,8 @@ def test_main_hyperbolic_multi_band_writes_single_gaussian_companion(
     assert "'infer_delta': True" in hyperbolic_ini
     assert "'num_frequency_bands': 4" in hyperbolic_ini
     assert "extra-likelihood-kwargs=None" in gaussian_ini
-    assert "alpha_1 = LogUniform(name='alpha_1', minimum=0.5, maximum=200.0)" in hyperbolic_prior
-    assert "delta_4 = LogUniform(name='delta_4', minimum=0.1, maximum=20.0)" in hyperbolic_prior
+    assert "alpha_1 = Uniform(name='alpha_1', minimum=1e-06, maximum=30.0)" in hyperbolic_prior
+    assert "delta_4 = Uniform(name='delta_4', minimum=1e-06, maximum=30.0)" in hyperbolic_prior
 
 
 def test_main_student_detector_dependent_noise_writes_detector_specific_priors(
@@ -778,11 +781,11 @@ def test_main_hyperbolic_detector_dependent_noise_writes_detector_specific_prior
 
     assert "'detector_dependent_noise': True" in hyperbolic_ini
     assert (
-        "alpha_H1_1 = LogUniform(name='alpha_H1_1', minimum=0.5, maximum=200.0)"
+        "alpha_H1_1 = Uniform(name='alpha_H1_1', minimum=1e-06, maximum=30.0)"
         in hyperbolic_prior
     )
     assert (
-        "delta_L1_2 = LogUniform(name='delta_L1_2', minimum=0.1, maximum=20.0)"
+        "delta_L1_2 = Uniform(name='delta_L1_2', minimum=1e-06, maximum=30.0)"
         in hyperbolic_prior
     )
 
@@ -886,10 +889,10 @@ def test_main_noise_only_inference_writes_zero_waveform_hyperbolic_run(
     )
     assert "chirp_mass =" not in prior_text
     assert "luminosity_distance =" not in prior_text
-    assert "alpha_1 = LogUniform(name='alpha_1', minimum=0.5, maximum=200.0)" in prior_text
-    assert "alpha_2 = LogUniform(name='alpha_2', minimum=0.5, maximum=200.0)" in prior_text
-    assert "delta_1 = LogUniform(name='delta_1', minimum=0.1, maximum=20.0)" in prior_text
-    assert "delta_2 = LogUniform(name='delta_2', minimum=0.1, maximum=20.0)" in prior_text
+    assert "alpha_1 = Uniform(name='alpha_1', minimum=1e-06, maximum=30.0)" in prior_text
+    assert "alpha_2 = Uniform(name='alpha_2', minimum=1e-06, maximum=30.0)" in prior_text
+    assert "delta_1 = Uniform(name='delta_1', minimum=1e-06, maximum=30.0)" in prior_text
+    assert "delta_2 = Uniform(name='delta_2', minimum=1e-06, maximum=30.0)" in prior_text
     assert "L1_time = DeltaFunction(name='L1_time'" in prior_text
 
 

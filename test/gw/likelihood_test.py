@@ -324,6 +324,24 @@ class TestStudentTGWTransient(unittest.TestCase):
         self.assertEqual(likelihood.meta_data["num_frequency_bands"], 2)
         self.assertEqual(likelihood.meta_data["noise_evidence_method"], "quadrature")
 
+    def test_gaussian_limit_diagnostic_uses_nu_prior_maximum(self):
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_nu=True,
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(nu=bilby.core.prior.Uniform(2.1, 1000.0, name="nu"))
+        )
+
+        with patch("builtins.print") as print_mock:
+            likelihood.print_gaussian_limit_diagnostic(priors)
+
+        output = "\n".join(call.args[0] for call in print_mock.call_args_list)
+        self.assertIn("Student-t Gaussian-limit diagnostic", output)
+        self.assertIn("nu = 1000 (prior max)", output)
+        self.assertIn("variance scale = 1.002 (+0.200%)", output)
+
     def test_invalid_nu_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
@@ -1187,6 +1205,29 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         self.assertFalse(likelihood.meta_data["detector_dependent_noise"])
         self.assertEqual(likelihood.meta_data["num_frequency_bands"], 2)
         self.assertEqual(likelihood.meta_data["noise_evidence_method"], "quadrature")
+
+    def test_gaussian_limit_diagnostic_uses_shape_prior_maxima(self):
+        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_alpha=True,
+            infer_delta=True,
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                alpha=bilby.core.prior.Uniform(1e-6, 30.0, name="alpha"),
+                delta=bilby.core.prior.Uniform(1e-6, 30.0, name="delta"),
+            )
+        )
+
+        with patch("builtins.print") as print_mock:
+            likelihood.print_gaussian_limit_diagnostic(priors)
+
+        output = "\n".join(call.args[0] for call in print_mock.call_args_list)
+        self.assertIn("Hyperbolic Gaussian-limit diagnostic", output)
+        self.assertIn("alpha = 30 (prior max)", output)
+        self.assertIn("delta = 30 (prior max)", output)
+        self.assertIn("variance scale = 1.00222 (+0.222%)", output)
 
     def test_detector_dependent_fixed_shape_matches_direct_calculation(self):
         interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])

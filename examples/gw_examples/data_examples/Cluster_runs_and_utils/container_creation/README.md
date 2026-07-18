@@ -24,16 +24,17 @@ make publish CIT=false
 Both paths update the selected Bilby branch in `container_images.json` for the
 submission launchers in the parent directory.
 
-Both Bilby and bilby-pipe default to their `sine_gaussians_addition` branches.
-Select different branches or tags on the same command:
+Bilby defaults to `sine_gaussians_addition`, bilby-pipe follows the selected
+Bilby ref unless explicitly overridden, and PESummary defaults to `master` in
+`pesummary_GC`. Select different branches, tags, or commits on the same command:
 
 ```
-make publish BILBY_BRANCH=my-bilby-ref BILBY_PIPE_BRANCH=my-pipe-ref
+make publish BILBY_BRANCH=my-bilby-ref BILBY_PIPE_BRANCH=my-pipe-ref PESUMMARY_REF=my-pesummary-ref
 ```
 
-Images built from branches include the first 12 characters of both exact
-installed commits in their filename. A release-tag build omits the commit for
-that package.
+Images built from branches include the first 12 characters of the exact Bilby
+and bilby-pipe commits in their filename. Every image also includes the exact
+installed `pesummary_GC` commit.
 
 ------------------------------------------------------------------------------------------------------------
 
@@ -43,22 +44,23 @@ Here, we dissect the steps implied by the command above.
 
 1. Building the container image
 
-The `image` target force-rebuilds the temporary image from the requested Bilby
-and bilby-pipe refs, reads both installed versions and commits, and copies the
-image to its timestamped final name. The equivalent expanded build command for
-the defaults is:
+The `image` target force-rebuilds the temporary image from the requested Bilby,
+bilby-pipe, and `pesummary_GC` refs, reads their installed versions and commits,
+and copies the image to its timestamped final name. The equivalent expanded
+build command for the defaults is:
 
 ```
 apptainer build --force \
   --build-arg BILBY_BRANCH="sine_gaussians_addition" \
   --build-arg BILBY_PIPE_BRANCH="sine_gaussians_addition" \
+  --build-arg PESUMMARY_REF="master" \
   temp_image.sif image.def
 ```
 
 The generated image name has the form:
 
 ```
-bilby-<version>-<commit>-bilby_pipe-<version>-<commit>-<timestamp>.sif
+bilby-<version>-<commit>-bilby_pipe-<version>-<commit>-pesummary_GC-<version>-<commit>-<timestamp>.sif
 ```
 
 Image names must be unique in OSDF, so the timestamp includes seconds.
@@ -107,18 +109,21 @@ with `--container-image URL`, or use the previous node environment with
 ### Updating the image used by the runbooks
 
 The image URL is not stored in the individual runbook Markdown files. Both
-runbook submission launchers read it from:
+runbook submission launchers select the current Git branch from:
 
 ```
-examples/gw_examples/data_examples/Cluster_runs_and_utils/container_creation/container_image.txt
+examples/gw_examples/data_examples/Cluster_runs_and_utils/container_creation/container_images.json
 ```
 
-`make publish` updates this file automatically. If an image is created or
-published by another route, replace its contents with the full OSDF URL of the
-new image, on one line. For example:
+`make publish` updates the entry named by `BILBY_BRANCH` automatically. If an
+image is created or published by another route, replace that branch's value
+with the full OSDF URL. For example:
 
 ```
-osdf:///igwn/cit/staging/<username>/<generated-image-name>.sif
+{
+  "hyp": "osdf:///igwn/cit/staging/<username>/<hyp-image-name>.sif",
+  "sine_gaussians_addition": "osdf:///igwn/cit/staging/<username>/<sg-image-name>.sif"
+}
 ```
 
 Use `--container-image URL` instead when the new image is only a one-off

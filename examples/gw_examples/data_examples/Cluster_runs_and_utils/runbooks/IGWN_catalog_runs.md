@@ -15,7 +15,9 @@ python "$EXTRACT"
 ```
 
 The real-data launcher submits by default. Add `--dry-run` if you only want to
-write the ini/prior files.
+write the ini/prior files. Pass `--disable-calibration` to clear the calibration
+model, uncertainty inputs, marginalization, and lookup table, and to omit the
+calibration envelope from PESummary arguments in every generated run.
 
 ## GW150914 Hyperbolic Runs
 
@@ -30,6 +32,18 @@ python "$REAL" \
   --likelihood hyperbolic \
   --range \
   --num-frequency-bands 4
+```
+
+To submit only the detector-independent, single-band Hyperbolic run and its
+Gaussian companion without calibration uncertainties:
+
+```
+python "$REAL" \
+  --event GW150914 \
+  --likelihood hyperbolic \
+  --num-frequency-bands 1 \
+  --disable-calibration \
+  --outdir-label no_calibration
 ```
 
 Det-dependent Hyperbolic, bands 1..4:

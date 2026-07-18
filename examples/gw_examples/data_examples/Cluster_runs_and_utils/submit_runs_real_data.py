@@ -198,6 +198,11 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--disable-calibration",
+        action="store_true",
+        help="Disable calibration uncertainties in every generated run.",
+    )
+    parser.add_argument(
         "--likelihood",
         choices=(*HEAVY_TAILED_LIKELIHOODS, "gaussian"),
         default="gaussian",
@@ -715,6 +720,18 @@ def replace_line(text: str, key: str, value: str) -> str:
 def disable_calibration_settings(text: str) -> str:
     rendered = replace_line(text, "calibration-model", "None")
     rendered = replace_line(rendered, "spline-calibration-envelope-dict", "None")
+    rendered = replace_line(
+        rendered,
+        "spline-calibration-amplitude-uncertainty-dict",
+        "None",
+    )
+    rendered = replace_line(
+        rendered,
+        "spline-calibration-phase-uncertainty-dict",
+        "None",
+    )
+    rendered = replace_line(rendered, "calibration-marginalization", "False")
+    rendered = replace_line(rendered, "calibration-lookup-table", "None")
     return rendered
 
 
@@ -800,6 +817,7 @@ def render_ini(
     template_settings: dict[str, object],
     sine_gaussian_config,
     noise_only_inference: bool = False,
+    disable_calibration: bool = False,
 ) -> str:
     resolved_template_settings = resolve_template_settings(
         template_settings,
@@ -831,13 +849,18 @@ def render_ini(
         rendered = replace_line(rendered, "summarypages-arguments", "None")
     else:
         rendered = replace_line(rendered, "create-summary", "True")
+        summary_settings = dict(resolved_template_settings)
+        if disable_calibration:
+            summary_settings["spline_calibration_envelope_dict"] = None
         rendered = replace_line(
             rendered,
             "summarypages-arguments",
-            repr(build_pesummary_arguments(resolved_template_settings)),
+            repr(build_pesummary_arguments(summary_settings)),
         )
     if noise_only_inference:
         rendered = apply_noise_only_inference_settings(rendered)
+    elif disable_calibration:
+        rendered = disable_calibration_settings(rendered)
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(
         int(sampler_kwargs["nlive"]),
@@ -948,6 +971,7 @@ def prepare_run(
     maxmcmc: int | None,
     sine_gaussian_config,
     noise_only_inference: bool,
+    disable_calibration: bool,
     approximant_suffix: str = "",
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
@@ -1062,6 +1086,7 @@ def prepare_run(
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             noise_only_inference=noise_only_inference,
+            disable_calibration=disable_calibration,
         ),
         encoding="utf-8",
     )
@@ -1201,6 +1226,7 @@ def main() -> int:
                 maxmcmc=args.maxmcmc,
                 sine_gaussian_config=sine_gaussian_config,
                 noise_only_inference=args.noise_only_inference,
+                disable_calibration=args.disable_calibration,
                 approximant_suffix=approximant_suffix,
             )
             if not args.dry_run:

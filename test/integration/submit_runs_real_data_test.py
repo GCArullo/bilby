@@ -243,6 +243,7 @@ def test_render_ini_writes_maxmcmc_override():
     ini_template = "\n".join(
         [
             "accounting-user=old",
+            "container=None",
             "queue=None",
             "create-summary=False",
             "environment-variables={}",
@@ -250,6 +251,8 @@ def test_render_ini_writes_maxmcmc_override():
             "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
             "likelihood-type=old",
             "extra-likelihood-kwargs=old",
+            "waveform-approximant=old",
+            "minimum-frequency=20",
             "",
         ]
     )
@@ -274,6 +277,7 @@ def test_render_ini_writes_maxmcmc_override():
         detector_dependent_noise=False,
         working_directory=Path("working"),
         accounting_user="acct",
+        container_image=None,
         require_epnfs=False,
         maxmcmc=10000,
         template_settings=template_settings,
@@ -342,6 +346,56 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
         "H1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/H1.txt",
         "L1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/L1.txt",
     }
+
+
+def test_main_disable_calibration_applies_to_hyperbolic_and_gaussian(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW150914",
+            "--likelihood",
+            "hyperbolic",
+            "--num-frequency-bands",
+            "1",
+            "--disable-calibration",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_paths = sorted(ini_dir.glob("*.ini"))
+    assert [path.name for path in ini_paths] == [
+        "GW150914_IGWN_C01_IMRPhenomXPHM_gaussian.ini",
+        "GW150914_IGWN_C01_IMRPhenomXPHM_hyperbolic_N1.ini",
+    ]
+    for ini_path in ini_paths:
+        ini_text = ini_path.read_text(encoding="utf-8")
+        assert "calibration-model=None\n" in ini_text
+        assert "spline-calibration-envelope-dict=None\n" in ini_text
+        assert "calibration-marginalization=False\n" in ini_text
+        assert "calibration-lookup-table=None\n" in ini_text
+        summary_line = next(
+            line for line in ini_text.splitlines()
+            if line.startswith("summarypages-arguments=")
+        )
+        summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
+        assert "calibration" not in summary_arguments
 
 
 def test_main_student_range_writes_single_gaussian_run_without_n_suffix(

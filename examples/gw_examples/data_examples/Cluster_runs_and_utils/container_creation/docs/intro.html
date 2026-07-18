@@ -639,7 +639,7 @@
       <ol class="timeline">
         <li>
           <h3>Describe the environment</h3>
-          <p><code>image.def</code> starts from Ubuntu and installs Miniconda, the selected Bilby and bilby-pipe sources, bilby_tgr, and PESummary. Both refs default to <code>sine_gaussians_addition</code> and can be overridden with <code>BILBY_BRANCH</code> and <code>BILBY_PIPE_BRANCH</code>.</p>
+          <p><code>image.def</code> starts from Ubuntu and installs Miniconda, the selected Bilby and bilby-pipe sources, bilby_tgr, and <code>pesummary_GC</code>. Bilby defaults to <code>sine_gaussians_addition</code>, bilby-pipe follows the selected Bilby ref unless overridden with <code>BILBY_PIPE_BRANCH</code>, and PESummary defaults to <code>master</code> unless overridden with <code>PESUMMARY_REF</code>.</p>
         </li>
         <li>
           <h3>Build a SIF image</h3>
@@ -647,7 +647,7 @@
         </li>
         <li>
           <h3>Give the build a distinct name</h3>
-          <p>The Makefile combines both package versions with a seconds-resolution UTC timestamp. Branch builds also include the first 12 characters of each exact installed commit, giving <code>bilby-&lt;version&gt;-&lt;commit&gt;-bilby_pipe-&lt;version&gt;-&lt;commit&gt;-&lt;timestamp&gt;.sif</code>; a release-tag component omits its commit.</p>
+          <p>The Makefile combines all three package versions with a seconds-resolution UTC timestamp. Branch builds include the first 12 characters of the exact Bilby and bilby-pipe commits, and every build includes the exact <code>pesummary_GC</code> commit, giving <code>bilby-&lt;version&gt;-&lt;commit&gt;-bilby_pipe-&lt;version&gt;-&lt;commit&gt;-pesummary_GC-&lt;version&gt;-&lt;commit&gt;-&lt;timestamp&gt;.sif</code>.</p>
         </li>
         <li>
           <h3>Publish the image</h3>

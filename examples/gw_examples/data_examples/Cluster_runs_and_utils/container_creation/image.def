@@ -33,8 +33,8 @@ From: ubuntu:26.04
     pip install "bilby_pipe @ git+https://git.ligo.org/gregorio.carullo/bilby-pipe-gc.git@{{ BILBY_PIPE_BRANCH }}"
     pip install bilby_tgr
 
-    # install pesummary
-    pip install pesummary
+    # install PESummary from the selected pesummary_GC ref
+    pip install "pesummary @ git+https://git.ligo.org/gregorio.carullo/pesummary_GC.git@{{ PESUMMARY_REF }}"
 
     # cleanup
     apt-get clean -y

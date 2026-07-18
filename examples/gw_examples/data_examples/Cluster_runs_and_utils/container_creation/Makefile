@@ -1,18 +1,21 @@
 BILBY_BRANCH?=sine_gaussians_addition
-BILBY_PIPE_BRANCH?=sine_gaussians_addition
+BILBY_PIPE_BRANCH?=$(BILBY_BRANCH)
+PESUMMARY_REF?=master
 CIT?=true
 USERNAME=$(shell htdecodetoken | jq .uid -a -r -- | tr -d '"')
 BILBY_VERSION=$(shell cat bilby_version.txt)
 BILBY_COMMIT=$(shell cat bilby_commit.txt)
 BILBY_PIPE_VERSION=$(shell cat bilby_pipe_version.txt)
 BILBY_PIPE_COMMIT=$(shell cat bilby_pipe_commit.txt)
+PESUMMARY_VERSION=$(shell cat pesummary_version.txt)
+PESUMMARY_COMMIT=$(shell cat pesummary_commit.txt)
 BILBY_RELEASE_TAG=$(shell git ls-remote --tags --refs https://github.com/GCArullo/bilby.git refs/tags/$(BILBY_BRANCH) 2>/dev/null)
 BILBY_PIPE_RELEASE_TAG=$(shell git ls-remote --tags --refs https://git.ligo.org/gregorio.carullo/bilby-pipe-gc.git refs/tags/$(BILBY_PIPE_BRANCH) 2>/dev/null)
 BILBY_COMMIT_SUFFIX=$(if $(BILBY_RELEASE_TAG),,-$(BILBY_COMMIT))
 BILBY_PIPE_COMMIT_SUFFIX=$(if $(BILBY_PIPE_RELEASE_TAG),,-$(BILBY_PIPE_COMMIT))
 TIMESTAMP?=$(shell date -u +"%Y-%m-%dT%H_%M_%S")
 export TIMESTAMP
-IMAGE=bilby-$(BILBY_VERSION)$(BILBY_COMMIT_SUFFIX)-bilby_pipe-$(BILBY_PIPE_VERSION)$(BILBY_PIPE_COMMIT_SUFFIX)-$(TIMESTAMP).sif
+IMAGE=bilby-$(BILBY_VERSION)$(BILBY_COMMIT_SUFFIX)-bilby_pipe-$(BILBY_PIPE_VERSION)$(BILBY_PIPE_COMMIT_SUFFIX)-pesummary_GC-$(PESUMMARY_VERSION)-$(PESUMMARY_COMMIT)-$(TIMESTAMP).sif
 IMAGE_URL=osdf:///igwn/cit/staging/$(USERNAME)/$(IMAGE)
 IMAGE_REGISTRY=container_images.json
 
@@ -21,12 +24,13 @@ IMAGE_REGISTRY=container_images.json
 default: image
 
 clean:
-	rm -f temp_image.sif bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt
+	rm -f temp_image.sif bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt pesummary_version.txt pesummary_commit.txt
 
 temp_image.sif: image.def
 	apptainer build --force \
 		--build-arg BILBY_BRANCH="$(BILBY_BRANCH)" \
 		--build-arg BILBY_PIPE_BRANCH="$(BILBY_PIPE_BRANCH)" \
+		--build-arg PESUMMARY_REF="$(PESUMMARY_REF)" \
 		temp_image.sif image.def
 
 bilby_version.txt: temp_image.sif
@@ -41,14 +45,19 @@ bilby_pipe_version.txt: temp_image.sif
 bilby_pipe_commit.txt: temp_image.sif
 	apptainer exec temp_image.sif python -c 'import importlib.metadata as m, json; print(json.loads(m.distribution("bilby_pipe").read_text("direct_url.json"))["vcs_info"]["commit_id"][:12])' > bilby_pipe_commit.txt
 
-image: bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt
+pesummary_version.txt: temp_image.sif
+	apptainer exec temp_image.sif python -c 'import pesummary; print(pesummary.__version__)' > pesummary_version.txt
+
+pesummary_commit.txt: temp_image.sif
+	apptainer exec temp_image.sif python -c 'import importlib.metadata as m, json; print(json.loads(m.distribution("pesummary").read_text("direct_url.json"))["vcs_info"]["commit_id"][:12])' > pesummary_commit.txt
+
+image: bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt pesummary_version.txt pesummary_commit.txt
 	cp temp_image.sif $(IMAGE)
 
 scitoken:
 	htgettoken --nooidc -a vault.ligo.org -i igwn --scopes write:/staging
 
 publish: clean
-	rm -f container_image.txt
 	$(MAKE) _publish
 
 ifeq ($(CIT),true)

@@ -104,6 +104,26 @@ Git branch and use its URL from `container_images.json` by default. Override it
 with `--container-image URL`, or use the previous node environment with
 `--no-container`.
 
+### Updating the image used by the runbooks
+
+The image URL is not stored in the individual runbook Markdown files. Both
+runbook submission launchers read it from:
+
+```
+examples/gw_examples/data_examples/Cluster_runs_and_utils/container_creation/container_image.txt
+```
+
+`make publish` updates this file automatically. If an image is created or
+published by another route, replace its contents with the full OSDF URL of the
+new image, on one line. For example:
+
+```
+osdf:///igwn/cit/staging/<username>/<generated-image-name>.sif
+```
+
+Use `--container-image URL` instead when the new image is only a one-off
+override and should not become the runbook default.
+
 Here is a minimal standalone Condor example:
 
 ```

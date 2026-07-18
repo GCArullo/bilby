@@ -17,7 +17,9 @@ node environment.
 
 The real-data launcher submits by default. Add `--dry-run` if you only want to
 write the ini/prior files. The templates use `maxmcmc=5000`; the commands below
-set this explicitly with `--maxmcmc "$MAXMCMC"`.
+set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written
+below `$HOME/public_html/GW230814` by default, with each summary in
+`Runs/<run-name>/web`.
 
 Default non-GR run, det-independent `nu`, Student-t bands 1..4 plus the
 single-band Gaussian companion:

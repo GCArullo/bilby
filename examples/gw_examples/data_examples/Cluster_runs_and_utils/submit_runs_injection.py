@@ -74,7 +74,9 @@ def default_accounting_user() -> str:
 
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
-DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
+DEFAULT_BASE_SUBDIR = (
+    Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
+)
 DEFAULT_ENVIRONMENT_VARIABLES = {
     "HDF5_USE_FILE_LOCKING": False,
     "NUMBA_CACHE_DIR": "/tmp",
@@ -187,8 +189,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_HOME_DIR,
         help=(
-            "Base home directory used to build the default --base-dir when "
-            "--base-dir is not provided."
+            "Base home directory containing public_html, used to build the "
+            "default --base-dir when --base-dir is not provided."
         ),
     )
     parser.add_argument(
@@ -198,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory where staged data, generated ini/prior files, and "
             "run/web folders are written. Defaults to "
-            "<home-dir>/GW231123/t_Student/Runs_injections."
+            "<home-dir>/public_html/GW231123/t_Student/Runs_injections."
         ),
     )
     parser.add_argument(
@@ -1651,7 +1653,6 @@ def write_run_files(
     prior_dir = ensure_dir(base_dir / "Priors")
     ini_dir = ensure_dir(base_dir / "ini_files")
     run_dir = ensure_dir(base_dir / "Runs")
-    web_dir = ensure_dir(base_dir / "web")
 
     label = build_run_label(
         bundle["staged_label_prefix"],
@@ -1671,7 +1672,7 @@ def write_run_files(
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
     outdir = ensure_dir(run_dir / run_directory_name)
-    webdir = ensure_dir(web_dir / run_directory_name)
+    webdir = ensure_dir(outdir / "web")
 
     prior_path.write_text(
         render_prior(

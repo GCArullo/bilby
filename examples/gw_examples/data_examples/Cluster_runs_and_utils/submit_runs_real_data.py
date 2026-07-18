@@ -242,8 +242,8 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_HOME_DIR,
         help=(
-            "Base home directory used to build default output paths when "
-            "--outdir-base/--webdir-base are not provided."
+            "Base home directory containing public_html, used to build default "
+            "output paths when --outdir-base/--webdir-base are not provided."
         ),
     )
     parser.add_argument(
@@ -371,8 +371,8 @@ def determine_submit_directory(outdir_base: str, webdir_base: str) -> Path:
 
 def default_output_bases(home_dir: Path, run_subdir: str) -> tuple[str, str]:
     resolved_home = home_dir.expanduser()
-    outdir_base = resolved_home / run_subdir
-    webdir_base = resolved_home / "public_html" / run_subdir
+    outdir_base = resolved_home / "public_html" / run_subdir
+    webdir_base = outdir_base
     return str(outdir_base), str(webdir_base)
 
 
@@ -626,7 +626,6 @@ def prepare_run(
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
-        run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
             prior_dir
             / f"{file_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}.prior"
@@ -645,13 +644,14 @@ def prepare_run(
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
-        run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior").resolve()
         ini_path = (ini_dir / f"{file_prefix}_gaussian{waveform_suffix}.ini").resolve()
         include_nu_priors = False
         run_detector_dependent_nu = False
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
+
+    run_webdir = f"{webdir_base}/{run_directory_name}/web"
 
     prior_path.write_text(
         render_prior(
@@ -726,12 +726,12 @@ def main() -> int:
         script_dir / defaults.prior_template,
     )
     label_prefix = args.label_prefix or defaults.label_prefix
-    default_outdir_base, default_webdir_base = default_output_bases(
+    default_outdir_base, _ = default_output_bases(
         args.home_dir,
         defaults.run_subdir,
     )
     outdir_base = args.outdir_base or default_outdir_base
-    webdir_base = args.webdir_base or default_webdir_base
+    webdir_base = args.webdir_base or outdir_base
     file_prefix = args.file_prefix or defaults.file_prefix
     detectors = tuple(args.detectors) if args.detectors else defaults.detectors
     working_directory = resolve_path(

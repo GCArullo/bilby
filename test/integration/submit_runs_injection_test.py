@@ -61,6 +61,14 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
     assert args.accounting_user == "name.surname"
 
 
+def test_default_base_subdir_is_under_public_event_directory():
+    module = load_submit_runs_injection_module()
+
+    assert module.DEFAULT_BASE_SUBDIR == (
+        Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
+    )
+
+
 def test_zero_gaussian_injection_noise_is_available():
     module = load_submit_runs_injection_module()
     parser = module.build_parser()
@@ -335,6 +343,13 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert "distance-marginalization=False\n" in gaussian_ini
     assert "generation-function=None\n" in gaussian_ini
     assert "queue=EPNFS\n" in gaussian_ini
+
+    ini_settings = dict(
+        line.split("=", maxsplit=1)
+        for line in gaussian_ini.splitlines()
+        if "=" in line
+    )
+    assert Path(ini_settings["webdir"]) == Path(ini_settings["outdir"]) / "web"
 
 
 def test_render_ini_writes_maxmcmc_override(tmp_path):

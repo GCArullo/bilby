@@ -15,7 +15,9 @@ selects the current Git branch from `container_images.json`. Use
 `--container-image URL` to override it or `--no-container` to use the existing
 node environment.
 
-Add `--dry-run` to write files without submitting.
+Add `--dry-run` to write files without submitting. Run and web outputs are
+written below `$HOME/public_html/GW231123` by default, with each summary in
+`Runs/<run-name>/web`.
 
 The commands below show both coherent SG choices where relevant. `coherent`
 uses the CBC sky position; `coherent-independent` samples one separate SG

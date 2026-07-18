@@ -409,6 +409,39 @@ class TestConvertToLALParams(unittest.TestCase):
             if key.startswith("sine_gaussian_0_H1_") or key.startswith("sine_gaussian_0_L1_"):
                 self.assertNotIn(key, converted)
 
+    def test_convert_to_independently_localized_sine_gaussian(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            independent_sine_gaussian_ra=1.0,
+            independent_sine_gaussian_dec=-0.2,
+            independent_sine_gaussian_psi=0.4,
+            independent_sine_gaussian_0_hrss=3e-22,
+            independent_sine_gaussian_0_Q=7.0,
+            independent_sine_gaussian_0_frequency=90.0,
+            independent_sine_gaussian_0_time_offset=0.02,
+            independent_sine_gaussian_0_phase_offset=-0.4,
+        )
+
+        converted, added_keys = \
+            conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
+        self.assertEqual(
+            converted["independent_sine_gaussian_parameters"],
+            [dict(
+                hrss=3e-22,
+                Q=7.0,
+                frequency=90.0,
+                time_offset=0.02,
+                phase_offset=-0.4,
+            )],
+        )
+        self.assertEqual(converted["independent_sine_gaussian_ra"], 1.0)
+        self.assertEqual(converted["independent_sine_gaussian_dec"], -0.2)
+        self.assertEqual(converted["independent_sine_gaussian_psi"], 0.4)
+        self.assertIn("independent_sine_gaussian_parameters", added_keys)
+
     def test_incoherent_polarization_fields_raise(self):
         parameters = dict(
             mass_1=30.0,

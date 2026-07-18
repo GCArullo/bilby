@@ -9,14 +9,17 @@ MAXMCMC=5000
 
 Condor jobs use the Bilby container by default. Before the first submission,
 run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-reads the resulting `container_image.txt`. Use `--container-image URL` to
-override it or `--no-container` to use the existing node environment.
+selects the current Git branch from `container_images.json`. Use
+`--container-image URL` to override it or `--no-container` to use the existing
+node environment.
 
 ## Real Runs
 
 The real-data launcher submits by default. Add `--dry-run` if you only want to
 write the ini/prior files. The templates use `maxmcmc=5000`; the commands below
-set this explicitly with `--maxmcmc "$MAXMCMC"`.
+set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written
+below `$HOME/public_html/GW230814` by default, with each summary in
+`Runs/<run-name>/web`.
 
 Default non-GR run, det-independent `nu`, Student-t bands 1..4 plus the
 single-band Gaussian companion:

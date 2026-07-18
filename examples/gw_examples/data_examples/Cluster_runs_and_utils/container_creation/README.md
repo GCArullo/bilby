@@ -21,8 +21,8 @@ back to Pelican without rebuilding. To use Pelican directly, run:
 make publish CIT=false
 ```
 
-Both paths write the published URL to `container_image.txt` for the submission
-launchers in the parent directory.
+Both paths update the selected Bilby branch in `container_images.json` for the
+submission launchers in the parent directory.
 
 Both Bilby and bilby-pipe default to their `sine_gaussians_addition` branches.
 Select different branches or tags on the same command:
@@ -92,15 +92,37 @@ USERNAME=$(htdecodetoken | jq .uid -a -r -- | tr -d '"')
 pelican object put "${IMAGE}" "osdf:///igwn/cit/staging/${USERNAME}/${IMAGE}"
 ```
 
-Both publication paths record the URL in `container_image.txt`. Do not push an
-image with a generic name such as `bilby.sif`: staged images are cached, and
-reusing a name can cause different sites to run different image contents.
+Both publication paths record the URL under `BILBY_BRANCH` in
+`container_images.json`, preserving images recorded for other branches. Do not
+push an image with a generic name such as `bilby.sif`: staged images are cached,
+and reusing a name can cause different sites to run different image contents.
 
 ## Using in Condor jobs
 
-The real-data and injection launchers in the parent directory use the URL in
-`container_image.txt` by default. Override it with `--container-image URL`, or
-use the previous node environment with `--no-container`.
+The real-data and injection launchers in the parent directory detect the current
+Git branch and use its URL from `container_images.json` by default. Override it
+with `--container-image URL`, or use the previous node environment with
+`--no-container`.
+
+### Updating the image used by the runbooks
+
+The image URL is not stored in the individual runbook Markdown files. Both
+runbook submission launchers read it from:
+
+```
+examples/gw_examples/data_examples/Cluster_runs_and_utils/container_creation/container_image.txt
+```
+
+`make publish` updates this file automatically. If an image is created or
+published by another route, replace its contents with the full OSDF URL of the
+new image, on one line. For example:
+
+```
+osdf:///igwn/cit/staging/<username>/<generated-image-name>.sif
+```
+
+Use `--container-image URL` instead when the new image is only a one-off
+override and should not become the runbook default.
 
 Here is a minimal standalone Condor example:
 

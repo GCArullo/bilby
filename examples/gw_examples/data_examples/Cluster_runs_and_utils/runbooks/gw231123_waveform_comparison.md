@@ -11,10 +11,17 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 
 Condor jobs use the Bilby container by default. Before the first submission,
 run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-reads the resulting `container_image.txt`. Use `--container-image URL` to
-override it or `--no-container` to use the existing node environment.
+selects the current Git branch from `container_images.json`. Use
+`--container-image URL` to override it or `--no-container` to use the existing
+node environment.
 
-Add `--dry-run` to write files without submitting.
+Add `--dry-run` to write files without submitting. Run and web outputs are
+written below `$HOME/public_html/GW231123` by default, with each summary in
+`Runs/<run-name>/web`.
+
+The commands below show both coherent SG choices where relevant. `coherent`
+uses the CBC sky position; `coherent-independent` samples one separate SG
+`ra`, `dec`, and `psi` shared by all SG components.
 
 ## SEOBNRv5PHM
 
@@ -31,6 +38,13 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant SEO
   --num-sine-gaussians 1 --sine-gaussian-mode coherent
 ```
 
+Gaussian + 1 SG (coherent, independently localized):
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant SEOBNRv5PHM \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent-independent
+```
+
 
 ## IMRPhenomXPHM
 
@@ -43,30 +57,53 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
 Gaussian + 1 SG (coherent):
 
 ```
-python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPHM --num-sine-gaussians 1 --sine-gaussian-mode coherent
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPHM \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent
+```
+
+Gaussian + 1 SG (coherent, independently localized):
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPHM \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent-independent
 ```
 
 ## IMRPhenomXPNR
 
-Gaussian baseline:
+Gaussian + 1 SG (coherent):
 
 ```
 python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPNR \
   --num-sine-gaussians 1 --sine-gaussian-mode coherent
 ```
 
+Gaussian + 1 SG (coherent, independently localized):
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPNR \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent-independent
+```
+
 ## IMRPhenomX04a
 
-Gaussian baseline:
+Gaussian + 1 SG (coherent):
 
 ```
 python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXO4a \
   --num-sine-gaussians 1 --sine-gaussian-mode coherent
 ```
 
+Gaussian + 1 SG (coherent, independently localized):
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXO4a \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent-independent
+```
+
 ## Notes
 
-- No prior changes are needed; the CBC mass/spin priors are approximant-agnostic.
+- No manual prior changes are needed; the launcher adds the independent SG sky
+  priors and the CBC mass/spin priors are approximant-agnostic.
 - SEOBNRv5PHM and IMRPhenomXPHM are both in LALSuite; no additional data files
   need to be transferred (`additional-transfer-paths` is only required for NRSur7dq4).
 - SEOBNRv5PHM (and SEOBNRv5HM) sine-Gaussian runs: `bilby.gw.source.cbc_plus_sine_gaussians`

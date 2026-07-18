@@ -58,6 +58,22 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
     assert args.accounting_user == "name.surname"
 
 
+def test_default_output_bases_are_under_public_event_directory(tmp_path):
+    module = load_submit_runs_real_data_module()
+
+    outdir_base, webdir_base = module.default_output_bases(
+        tmp_path,
+        "GW231123/t_Student/Runs",
+    )
+
+    event_dir = tmp_path / "public_html" / "GW231123" / "t_Student"
+    assert Path(outdir_base) == event_dir / "Runs"
+    assert Path(webdir_base) == event_dir / "Runs"
+    assert Path(webdir_base) / "run-name" / "web" == (
+        Path(outdir_base) / "run-name" / "web"
+    )
+
+
 def test_student_likelihood_runs_student_and_gaussian_by_default():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)
@@ -159,8 +175,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
     prior_dir = tmp_path / "prior"
-    outdir_base = tmp_path / "out"
-    webdir_base = tmp_path / "web"
 
     monkeypatch.setattr(
         sys,
@@ -180,10 +194,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(ini_dir),
             "--prior-dir",
             str(prior_dir),
-            "--outdir-base",
-            str(outdir_base),
-            "--webdir-base",
-            str(webdir_base),
+            "--home-dir",
+            str(tmp_path),
             "--require-epnfs",
         ],
     )
@@ -204,6 +216,15 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in ini_text
     assert "queue=EPNFS\n" in ini_text
+
+    ini_settings = dict(
+        line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
+    )
+    outdir = Path(ini_settings["outdir"])
+    assert outdir.parent == (
+        tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
+    )
+    assert Path(ini_settings["webdir"]) == outdir / "web"
 
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
     assert (

@@ -293,6 +293,35 @@ class TestCBCPlusSineGaussians(unittest.TestCase):
         self.assertTrue(np.allclose(waveform["H1"], expected_h1))
         self.assertTrue(np.allclose(waveform["L1"], expected_l1))
 
+    def test_independently_localized_components_generate_separate_modes(self):
+        base_plus = np.ones_like(self.frequency_array, dtype=complex)
+        base_cross = 1j * np.ones_like(self.frequency_array, dtype=complex)
+
+        with mock.patch(
+            "bilby.gw.source._base_lal_cbc_fd_waveform",
+            return_value=dict(plus=base_plus, cross=base_cross),
+        ):
+            waveform = bilby.gw.source.cbc_plus_sine_gaussians(
+                self.frequency_array,
+                independent_sine_gaussian_parameters=[self.sine_gaussian],
+                independent_sine_gaussian_ra=1.0,
+                independent_sine_gaussian_dec=-0.2,
+                independent_sine_gaussian_psi=0.4,
+                **self.parameters,
+            )
+
+        expected = bilby.gw.source.sinegaussian(
+            self.frequency_array, **self.sine_gaussian
+        )
+        self.assertTrue(np.array_equal(waveform["plus"], base_plus))
+        self.assertTrue(np.array_equal(waveform["cross"], base_cross))
+        self.assertTrue(np.allclose(
+            waveform["independent_sine_gaussian_plus"], expected["plus"]
+        ))
+        self.assertTrue(np.allclose(
+            waveform["independent_sine_gaussian_cross"], expected["cross"]
+        ))
+
     def test_incoherent_component_invalid_polarization_raises(self):
         base_plus = np.ones_like(self.frequency_array, dtype=complex)
         base_cross = 1j * np.ones_like(self.frequency_array, dtype=complex)

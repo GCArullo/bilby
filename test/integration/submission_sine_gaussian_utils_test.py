@@ -93,3 +93,33 @@ def test_sine_gaussian_submission_settings_disable_distance_and_generation():
     ) in rendered
     assert "generation-function=None\n" in rendered
     assert "distance-marginalization=False\n" in rendered
+
+
+def test_independently_localized_coherent_configuration_and_priors():
+    module = load_submission_sine_gaussian_utils_module()
+
+    configurations = module.resolve_sine_gaussian_configurations(
+        num_sine_gaussians=1,
+        range_mode=False,
+        mode="coherent-independent",
+        incoherent_detectors=None,
+        incoherent_counts_spec=None,
+        detectors=("H1", "L1"),
+    )
+
+    assert configurations == [
+        module.SineGaussianConfiguration(
+            total_components=1,
+            mode="coherent-independent",
+        )
+    ]
+    assert configurations[0].label_suffix == "_sg_coherent_independent_1"
+    prior = module.build_sine_gaussian_prior_block(
+        configurations[0],
+        minimum_frequency=20.0,
+        maximum_frequency=448.0,
+    )
+    assert "independent_sine_gaussian_ra = Uniform(" in prior
+    assert "independent_sine_gaussian_dec = Cosine(" in prior
+    assert "independent_sine_gaussian_psi = Uniform(" in prior
+    assert "independent_sine_gaussian_0_hrss = LogUniform(" in prior

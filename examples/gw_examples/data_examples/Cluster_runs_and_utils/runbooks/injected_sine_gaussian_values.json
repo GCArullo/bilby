@@ -79,6 +79,11 @@
       }
     ]
   },
+  "coherent-independent": {
+    "ra": 2.0,
+    "dec": -0.4,
+    "psi": 0.7
+  },
   "incoherent": {
     "H1": {
       "1": [

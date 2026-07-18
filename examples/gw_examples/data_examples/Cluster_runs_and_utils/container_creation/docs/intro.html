@@ -639,7 +639,7 @@
       <ol class="timeline">
         <li>
           <h3>Describe the environment</h3>
-          <p><code>image.def</code> starts from Ubuntu and installs Miniconda, the selected Bilby and bilby-pipe sources, CPU-only PyTorch, nessai, and PESummary. Both refs default to <code>sine_gaussians_addition</code> and can be overridden with <code>BILBY_BRANCH</code> and <code>BILBY_PIPE_BRANCH</code>.</p>
+          <p><code>image.def</code> starts from Ubuntu and installs Miniconda, the selected Bilby and bilby-pipe sources, bilby_tgr, and PESummary. Both refs default to <code>sine_gaussians_addition</code> and can be overridden with <code>BILBY_BRANCH</code> and <code>BILBY_PIPE_BRANCH</code>.</p>
         </li>
         <li>
           <h3>Build a SIF image</h3>
@@ -651,11 +651,11 @@
         </li>
         <li>
           <h3>Publish the image</h3>
-          <p>On CIT, the image is copied directly to the user’s local OSDF staging directory. If that fails, or when <code>CIT=false</code> is selected, a scoped SciToken and Pelican publish the same built image remotely.</p>
+          <p>On CIT, the image is copied directly to the user’s local OSDF staging directory. If that fails, or when <code>CIT=false</code> is selected, a scoped SciToken and Pelican publish the same built image remotely. The URL is recorded under the selected Bilby branch in <code>container_images.json</code>.</p>
         </li>
         <li>
           <h3>Submit the job</h3>
-          <p>The HTCondor description names the OSDF URL as <code>container_image</code> and requests resources such as memory, disk, and CPUs.</p>
+          <p>The launcher detects the current Git branch, reads its OSDF URL from <code>container_images.json</code>, and writes that URL as <code>container_image</code> in the HTCondor description.</p>
         </li>
         <li>
           <h3>Stage, execute, return</h3>

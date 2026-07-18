@@ -53,18 +53,19 @@ def add_sine_gaussian_arguments(
         action="store_true",
         help=(
             "Generate every sine-Gaussian configuration up to "
-            f"{option('num-sine-gaussians')}. In coherent mode this expands to "
-            "counts 1..N. In incoherent mode it expands to every detector-count "
-            "partition for each total count."
+            f"{option('num-sine-gaussians')}. In either coherent mode this "
+            "expands to counts 1..N. In incoherent mode it expands to every "
+            "detector-count partition for each total count."
         ),
     )
     parser.add_argument(
         option("sine-gaussian-mode"),
-        choices=("coherent", "incoherent"),
+        choices=("coherent", "coherent-independent", "incoherent"),
         default="coherent",
         help=(
             f"How the additional sine-Gaussians are added to the {subject}. "
-            "Coherent components are projected through the antenna patterns; "
+            "Coherent components use the CBC sky position; coherent-independent "
+            "components have a shared, independently sampled sky position; "
             "incoherent components are detector-local."
         ),
     )
@@ -109,6 +110,8 @@ class SineGaussianConfiguration:
             return ""
         if self.mode == "coherent":
             return f"_sg_coherent_{self.total_components}"
+        if self.mode == "coherent-independent":
+            return f"_sg_coherent_independent_{self.total_components}"
         detector_suffix = "_".join(
             f"{detector}x{count}" for detector, count in self.detector_counts
         )
@@ -120,6 +123,8 @@ class SineGaussianConfiguration:
             return "CBC only"
         if self.mode == "coherent":
             return f"coherent SGs={self.total_components}"
+        if self.mode == "coherent-independent":
+            return f"independently localized coherent SGs={self.total_components}"
         detector_summary = ", ".join(
             f"{detector}={count}" for detector, count in self.detector_counts
         )
@@ -287,21 +292,21 @@ def resolve_sine_gaussian_configurations(
             )
         return [SineGaussianConfiguration()]
 
-    if mode == "coherent":
+    if mode in {"coherent", "coherent-independent"}:
         if incoherent_counts_spec is not None or incoherent_detectors is not None:
             raise ValueError(
                 "Incoherent sine-Gaussian options cannot be used with "
-                "--sine-gaussian-mode coherent"
+                f"--sine-gaussian-mode {mode}"
             )
         if range_mode:
             return [
-                SineGaussianConfiguration(total_components=count, mode="coherent")
+                SineGaussianConfiguration(total_components=count, mode=mode)
                 for count in range(1, num_sine_gaussians + 1)
             ]
         return [
             SineGaussianConfiguration(
                 total_components=num_sine_gaussians,
-                mode="coherent",
+                mode=mode,
             )
         ]
 
@@ -526,6 +531,30 @@ def _build_sine_gaussian_prior_block(
                     prefix=f"sine_gaussian_{index}_",
                     upper_bound_name=(
                         None if index == 0 else f"sine_gaussian_{index - 1}_hrss"
+                    ),
+                    frequency_minimum=frequency_minimum,
+                    frequency_maximum=frequency_maximum,
+                )
+            )
+    elif config.mode == "coherent-independent":
+        lines.extend([
+            "independent_sine_gaussian_ra = Uniform("
+            "name='independent_sine_gaussian_ra', minimum=0, "
+            "maximum=2 * np.pi, boundary='periodic')",
+            "independent_sine_gaussian_dec = Cosine("
+            "name='independent_sine_gaussian_dec')",
+            "independent_sine_gaussian_psi = Uniform("
+            "name='independent_sine_gaussian_psi', minimum=0, "
+            "maximum=np.pi, boundary='periodic')",
+        ])
+        for index in range(config.total_components):
+            lines.extend(
+                _sine_gaussian_prior_lines(
+                    prefix=f"independent_sine_gaussian_{index}_",
+                    upper_bound_name=(
+                        None
+                        if index == 0
+                        else f"independent_sine_gaussian_{index - 1}_hrss"
                     ),
                     frequency_minimum=frequency_minimum,
                     frequency_maximum=frequency_maximum,

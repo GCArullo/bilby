@@ -57,8 +57,8 @@ from submission_sine_gaussian_utils import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_CONTAINER_IMAGE_FILE = (
-    SCRIPT_DIR / "container_creation" / "container_image.txt"
+DEFAULT_CONTAINER_IMAGES_FILE = (
+    SCRIPT_DIR / "container_creation" / "container_images.json"
 )
 
 
@@ -74,7 +74,9 @@ def default_accounting_user() -> str:
 
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
-DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
+DEFAULT_BASE_SUBDIR = (
+    Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
+)
 DEFAULT_ENVIRONMENT_VARIABLES = {
     "HDF5_USE_FILE_LOCKING": False,
     "NUMBA_CACHE_DIR": "/tmp",
@@ -196,8 +198,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_HOME_DIR,
         help=(
-            "Base home directory used to build the default --base-dir when "
-            "--base-dir is not provided."
+            "Base home directory containing public_html, used to build the "
+            "default --base-dir when --base-dir is not provided."
         ),
     )
     parser.add_argument(
@@ -207,7 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory where staged data, generated ini/prior files, and "
             "run/web folders are written. Defaults to "
-            "<home-dir>/GW231123/t_Student/Runs_injections."
+            "<home-dir>/public_html/GW231123/t_Student/Runs_injections."
         ),
     )
     parser.add_argument(
@@ -462,7 +464,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_container_arguments(
         parser,
-        default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
     add_sine_gaussian_arguments(
@@ -864,6 +866,29 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             "Injected SG values file must define an 'incoherent' object keyed by detector."
         )
 
+    independent_sky_raw = raw_values.get("coherent-independent")
+    if not isinstance(independent_sky_raw, dict):
+        raise ValueError(
+            "Injected SG values file must define a 'coherent-independent' sky object."
+        )
+    independent_sky = {}
+    for key, bounds in {
+        "ra": (0.0, 2.0 * float(np.pi)),
+        "dec": (-0.5 * float(np.pi), 0.5 * float(np.pi)),
+        "psi": (0.0, float(np.pi)),
+    }.items():
+        try:
+            value = float(independent_sky_raw[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"coherent-independent.{key} must be a finite numeric value."
+            ) from exc
+        if not np.isfinite(value) or not bounds[0] <= value <= bounds[1]:
+            raise ValueError(
+                f"coherent-independent.{key}={value} is outside {bounds}."
+            )
+        independent_sky[key] = value
+
     def parse_count(raw_count, *, context: str) -> int:
         try:
             count = int(raw_count)
@@ -950,7 +975,11 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             )
         incoherent[str(detector)] = detector_components
 
-    return dict(coherent=coherent, incoherent=incoherent)
+    return dict(
+        coherent=coherent,
+        coherent_independent=independent_sky,
+        incoherent=incoherent,
+    )
 
 
 def load_injected_sine_gaussian_component_series(
@@ -963,7 +992,7 @@ def load_injected_sine_gaussian_component_series(
         raise ValueError(f"Sine-Gaussian component count must be >= 1, got {count}.")
 
     injected_values = load_injected_sine_gaussian_values()
-    if mode == "coherent":
+    if mode in {"coherent", "coherent-independent"}:
         if detector is not None:
             raise ValueError("Coherent SG injections do not take a detector selector.")
         component_series = injected_values["coherent"].get(count)
@@ -1023,8 +1052,13 @@ def flatten_sine_gaussian_component(
     component: dict[str, float],
     *,
     detector: str | None = None,
+    independent: bool = False,
 ) -> dict[str, float]:
-    prefix = f"sine_gaussian_{index}_"
+    prefix = (
+        f"independent_sine_gaussian_{index}_"
+        if independent
+        else f"sine_gaussian_{index}_"
+    )
     if detector is not None:
         prefix += f"{detector}_"
     return {
@@ -1069,6 +1103,37 @@ def add_injected_sine_gaussians(
                     component,
                 )
             )
+        return updated_parameters
+
+    if sine_gaussian_config.mode == "coherent-independent":
+        components = load_injected_sine_gaussian_component_series(
+            mode="coherent-independent",
+            count=sine_gaussian_config.total_components,
+        )
+        for index, component in enumerate(components):
+            validate_injected_sine_gaussian_component(
+                component,
+                frequency_minimum=frequency_minimum,
+                frequency_maximum=frequency_maximum,
+                context=(
+                    "coherent-independent"
+                    f"[{sine_gaussian_config.total_components}][{index}]"
+                ),
+            )
+            updated_parameters.update(
+                flatten_sine_gaussian_component(
+                    index,
+                    component,
+                    independent=True,
+                )
+            )
+        independent_sky = load_injected_sine_gaussian_values()[
+            "coherent_independent"
+        ]
+        updated_parameters.update({
+            f"independent_sine_gaussian_{key}": value
+            for key, value in independent_sky.items()
+        })
         return updated_parameters
 
     component_index = 0
@@ -1943,7 +2008,6 @@ def write_run_files(
     prior_dir = ensure_dir(base_dir / "Priors")
     ini_dir = ensure_dir(base_dir / "ini_files")
     run_dir = ensure_dir(base_dir / "Runs")
-    web_dir = ensure_dir(base_dir / "web")
 
     label = build_run_label(
         bundle["staged_label_prefix"],
@@ -1971,7 +2035,7 @@ def write_run_files(
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
     outdir = ensure_dir(run_dir / run_directory_name)
-    webdir = ensure_dir(web_dir / run_directory_name)
+    webdir = ensure_dir(outdir / "web")
 
     prior_path.write_text(
         render_prior(
@@ -2118,7 +2182,7 @@ def main() -> int:
         args.container_image = resolve_container_image(
             use_container=args.container,
             container_image=args.container_image,
-            default_image_file=DEFAULT_CONTAINER_IMAGE_FILE,
+            default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
         )
     except (FileNotFoundError, ValueError) as exc:
         print(exc, file=sys.stderr)

@@ -5,18 +5,21 @@ BASE_DIR="$(git rev-parse --show-toplevel)"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
-BASE="$HOME/GW231123/t_Student/Runs_injections_runbook_gw231123_student"
+BASE="$HOME/public_html/GW231123/t_Student/Runs_injections_runbook_gw231123_student"
 MAXMCMC=5000
 ```
 
 Condor jobs use the Bilby container by default. Before the first submission,
 run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-reads the resulting `container_image.txt`. Use `--container-image URL` to
-override it or `--no-container` to use the existing node environment.
+selects the current Git branch from `container_images.json`. Use
+`--container-image URL` to override it or `--no-container` to use the existing
+node environment.
 
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
-set this explicitly with `--maxmcmc "$MAXMCMC"`.
+set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written
+below `$HOME/public_html/GW231123` by default, with each summary in
+`Runs/<run-name>/web`.
 
 ## Real Runs
 

@@ -42,6 +42,7 @@ def test_num_frequency_bands_defaults_to_one():
     args = parser.parse_args([])
 
     assert args.num_frequency_bands is None
+    assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
@@ -55,6 +56,22 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
 
     assert module.DEFAULT_ACCOUNTING_USER == "name.surname"
     assert args.accounting_user == "name.surname"
+
+
+def test_default_output_bases_are_under_public_event_directory(tmp_path):
+    module = load_submit_runs_real_data_module()
+
+    outdir_base, webdir_base = module.default_output_bases(
+        tmp_path,
+        "GW231123/t_Student/Runs",
+    )
+
+    event_dir = tmp_path / "public_html" / "GW231123" / "t_Student"
+    assert Path(outdir_base) == event_dir / "Runs"
+    assert Path(webdir_base) == event_dir / "Runs"
+    assert Path(webdir_base) / "run-name" / "web" == (
+        Path(outdir_base) / "run-name" / "web"
+    )
 
 
 def test_student_likelihood_runs_student_and_gaussian_by_default():
@@ -158,8 +175,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
     prior_dir = tmp_path / "prior"
-    outdir_base = tmp_path / "out"
-    webdir_base = tmp_path / "web"
 
     monkeypatch.setattr(
         sys,
@@ -179,10 +194,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(ini_dir),
             "--prior-dir",
             str(prior_dir),
-            "--outdir-base",
-            str(outdir_base),
-            "--webdir-base",
-            str(webdir_base),
+            "--home-dir",
+            str(tmp_path),
             "--require-epnfs",
         ],
     )
@@ -204,6 +217,15 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     ) in ini_text
     assert "queue=EPNFS\n" in ini_text
 
+    ini_settings = dict(
+        line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
+    )
+    outdir = Path(ini_settings["outdir"])
+    assert outdir.parent == (
+        tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
+    )
+    assert Path(ini_settings["webdir"]) == outdir / "web"
+
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
     assert (
         "luminosity_distance =  bilby.gw.prior.UniformSourceFrame("
@@ -214,6 +236,64 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "sine_gaussian_0_time_offset = Uniform("
         "name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)"
     ) in prior_text
+
+
+def test_render_ini_writes_maxmcmc_override():
+    module = load_submit_runs_real_data_module()
+    ini_template = "\n".join(
+        [
+            "accounting-user=old",
+            "container=None",
+            "queue=None",
+            "create-summary=False",
+            "environment-variables={}",
+            "summarypages-arguments=None",
+            "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
+            "likelihood-type=old",
+            "extra-likelihood-kwargs=old",
+            "waveform-approximant=old",
+            "minimum-frequency=20",
+            "",
+        ]
+    )
+    template_settings = dict(
+        minimum_frequency={"H1": 20.0, "waveform": 10.0},
+        maximum_frequency=448.0,
+        reference_frequency=10.0,
+        waveform_approximant="NRSur7dq4",
+        spline_calibration_envelope_dict=None,
+        psd_dict=None,
+        sampler_kwargs={"nlive": 2000, "maxmcmc": 5000},
+    )
+
+    rendered = module.render_ini(
+        ini_template,
+        hypothesis="gaussian",
+        label="label",
+        outdir="out",
+        webdir="web",
+        prior_file=Path("prior.prior"),
+        band_count=1,
+        detector_dependent_noise=False,
+        working_directory=Path("working"),
+        accounting_user="acct",
+        container_image=None,
+        require_epnfs=False,
+        maxmcmc=10000,
+        template_settings=template_settings,
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+
+    sampler_line = next(
+        line for line in rendered.splitlines()
+        if line.startswith("sampler-kwargs=")
+    )
+    sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
+    assert sampler_kwargs["maxmcmc"] == 10000
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
@@ -266,6 +346,56 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
         "H1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/H1.txt",
         "L1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/L1.txt",
     }
+
+
+def test_main_disable_calibration_applies_to_hyperbolic_and_gaussian(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW150914",
+            "--likelihood",
+            "hyperbolic",
+            "--num-frequency-bands",
+            "1",
+            "--disable-calibration",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_paths = sorted(ini_dir.glob("*.ini"))
+    assert [path.name for path in ini_paths] == [
+        "GW150914_IGWN_C01_IMRPhenomXPHM_gaussian.ini",
+        "GW150914_IGWN_C01_IMRPhenomXPHM_hyperbolic_N1.ini",
+    ]
+    for ini_path in ini_paths:
+        ini_text = ini_path.read_text(encoding="utf-8")
+        assert "calibration-model=None\n" in ini_text
+        assert "spline-calibration-envelope-dict=None\n" in ini_text
+        assert "calibration-marginalization=False\n" in ini_text
+        assert "calibration-lookup-table=None\n" in ini_text
+        summary_line = next(
+            line for line in ini_text.splitlines()
+            if line.startswith("summarypages-arguments=")
+        )
+        summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
+        assert "calibration" not in summary_arguments
 
 
 def test_main_student_range_writes_single_gaussian_run_without_n_suffix(

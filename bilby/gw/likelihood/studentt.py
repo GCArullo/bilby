@@ -205,6 +205,81 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             return []
         return list(self.nu_parameter_keys)
 
+    @staticmethod
+    def _gaussian_limit_statistics(nu):
+        if nu > 2.0:
+            variance_scale = nu / (nu - 2.0)
+            std_scale = np.sqrt(variance_scale)
+        else:
+            variance_scale = np.inf
+            std_scale = np.inf
+
+        dimension = 2
+        log_likelihood_ratio = (
+            -0.5 * (nu + dimension) * np.log1p(dimension / nu)
+            + 0.5 * dimension
+        )
+        return dict(
+            variance_scale=variance_scale,
+            std_scale=std_scale,
+            relative_variance_error=variance_scale - 1.0,
+            relative_std_error=std_scale - 1.0,
+            log_likelihood_ratio_at_typical_radius=log_likelihood_ratio,
+        )
+
+    def print_gaussian_limit_diagnostic(self, priors):
+        """Print the closest Gaussian limit available within the nu priors."""
+        fixed_nus = dict(zip(self.nu_parameter_keys, np.ravel(self._fixed_nu)))
+        rows = []
+
+        for parameter_index, key in enumerate(self.nu_parameter_keys):
+            if self.infer_nu:
+                prior = priors[key]
+                source = "fixed prior" if prior.is_fixed else "prior max"
+                nu = float(prior.maximum)
+            else:
+                source = "fixed"
+                nu = float(fixed_nus[key])
+
+            if self.detector_dependent_noise:
+                detector_index = parameter_index // self.num_frequency_bands
+                band_index = parameter_index % self.num_frequency_bands
+                coordinate = self._detector_names[detector_index]
+            else:
+                band_index = parameter_index
+                coordinate = "shared"
+            if self.num_frequency_bands > 1:
+                coordinate = f"{coordinate} band {band_index + 1}"
+
+            rows.append((coordinate, nu, source, self._gaussian_limit_statistics(nu)))
+
+        closest_row = min(
+            rows, key=lambda row: abs(row[3]["relative_variance_error"])
+        )
+        worst_row = max(rows, key=lambda row: abs(row[3]["relative_variance_error"]))
+        rows_to_print = [("closest available limit", closest_row)]
+        if worst_row is not closest_row:
+            rows_to_print.append(("worst available limit", worst_row))
+
+        print("\n* Student-t Gaussian-limit diagnostic (per complex frequency bin):")
+        for label, row in rows_to_print:
+            coordinate, nu, source, stats = row
+            print(
+                "  {} ({}, d=2): nu = {:.6g} ({}), variance scale = {:.6g} "
+                "({:+.3%}), std scale = {:.6g} ({:+.3%}), "
+                "logL_student-logL_gauss at q=d = {:.6g}.".format(
+                    label,
+                    coordinate,
+                    nu,
+                    source,
+                    stats["variance_scale"],
+                    stats["relative_variance_error"],
+                    stats["std_scale"],
+                    stats["relative_std_error"],
+                    stats["log_likelihood_ratio_at_typical_radius"],
+                )
+            )
+
     @property
     def meta_data(self):
         meta_data = super().meta_data

@@ -5,8 +5,8 @@ from gwpy.timeseries import TimeSeries
 
 """
 
-Tutorial to demonstrate running parameter estimation on GW150914 using a
-Student-t likelihood instead of the standard Gaussian likelihood.
+Tutorial to demonstrate running parameter estimation on GW150914 using either a
+Student-t or hyperbolic likelihood instead of the standard Gaussian likelihood.
 
 """
 
@@ -15,14 +15,16 @@ Student-t likelihood instead of the standard Gaussian likelihood.
 ########################
 
 event                = "GW150914"                   # Available options: ["GW150914", "GW231123"]
-likelihood_type      = "Student"                    # Available options: ["Gaussian", "Student"]
+likelihood_type      = "Hyperbolic"                    # Available options: ["Gaussian", "Student", "Hyperbolic"]
 outdir_label         = "test_multiband_N2"     # Label for output directory, e.g. "test", "test_fixed_nu", "test_GW231123"
 single_par           = True           
 
 waveform_approximant = "IMRPhenomXPHM" # Waveform approximant to use. Must be supported by your version of LALSimulation. Examples: "IMRPhenomD", "IMRPhenomPv2", "IMRPhenomXPHM", "SEOBNRv4_ROM", etc.
 
-nu_min, nu_max       = 2.1, 200             # Range for log-uniform prior on nu (if infer_nu=True). Must be > 2 for finite variance in 2D.
-num_frequency_bands  = 2                    # Number of frequency bands. For N > 1, sample nu_i for each band.
+nu_min, nu_max       = 2.1, 1000            # Range for uniform prior on nu (if infer_nu=True). Must be > 2 for finite variance in 2D.
+alpha_min, alpha_max = 1e-6, 30             # HyperWave-style uniform prior range for alpha (if infer_alpha=True).
+delta_min, delta_max = 1e-6, 30             # HyperWave-style uniform prior range for delta (if infer_delta=True).
+num_frequency_bands  = 2                    # Number of frequency bands. For N > 1, sample nu_i or alpha_i for each band.
 
 location_type        = "sky" # Available options: ["sky", "L1"]. This sets the reference frame and time reference for the likelihood. "sky" uses the standard geocentric frame and time, while "L1" uses the L1 frame and time. The latter is a non-inertial frame which can cause issues with the standard bilby likelihood, but should work fine with the heavy-tailed likelihoods used here.
 
@@ -167,10 +169,10 @@ elif("Student" in likelihood_type):
 
     # Prior must be > 2 for finite variance in 2D
     if num_frequency_bands == 1:
-        priors["nu"]                   = bilby.core.prior.LogUniform(nu_min, nu_max, name="nu"              )
+        priors["nu"]                   = bilby.core.prior.Uniform(nu_min, nu_max, name="nu"              )
     else:
         for band_index in range(1, num_frequency_bands + 1):
-            priors[f"nu_{band_index}"] = bilby.core.prior.LogUniform(nu_min, nu_max, name=f"nu_{band_index}")
+            priors[f"nu_{band_index}"] = bilby.core.prior.Uniform(nu_min, nu_max, name=f"nu_{band_index}")
 
     likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
     
@@ -191,8 +193,43 @@ elif("Student" in likelihood_type):
 
     )
 
+elif("Hyperbolic" in likelihood_type):
+
+    if num_frequency_bands == 1:
+        priors["alpha"] = bilby.core.prior.Uniform(alpha_min, alpha_max, name="alpha")
+        priors["delta"] = bilby.core.prior.Uniform(delta_min, delta_max, name="delta")
+    else:
+        for band_index in range(1, num_frequency_bands + 1):
+            priors[f"alpha_{band_index}"] = bilby.core.prior.Uniform(
+                alpha_min, alpha_max, name=f"alpha_{band_index}"
+            )
+            priors[f"delta_{band_index}"] = bilby.core.prior.Uniform(
+                delta_min, delta_max, name=f"delta_{band_index}"
+            )
+
+    likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+
+    interferometers             = ifo_list,
+    waveform_generator          = waveform_generator,
+
+    alpha                       = 10.0,  # initial/fixed value
+    delta                       = 1.0,   # initial/fixed value
+    infer_alpha                 = True,  # False to fix it
+    infer_delta                 = True,  # False to fix it
+    num_frequency_bands         = num_frequency_bands,
+
+    phase_marginalization       = False,
+    time_marginalization        = False,
+    distance_marginalization    = False,
+    calibration_marginalization = False,
+
+    reference_frame             = reference_frame,
+    time_reference              = time_reference,
+
+    )
+
 else:
-    raise ValueError("likelihood_type must be one of ['Gaussian', 'Student']")
+    raise ValueError("likelihood_type must be one of ['Gaussian', 'Student', 'Hyperbolic']")
 
 
 ###########

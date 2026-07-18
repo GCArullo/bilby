@@ -319,6 +319,12 @@ def run_sampler(
 
     priors.fill_priors()
 
+    gaussian_limit_diagnostic = getattr(
+        likelihood, "print_gaussian_limit_diagnostic", None
+    )
+    if callable(gaussian_limit_diagnostic):
+        gaussian_limit_diagnostic(priors)
+
     # Generate the meta-data if not given and append the likelihood meta_data
     if meta_data is None:
         meta_data = dict()

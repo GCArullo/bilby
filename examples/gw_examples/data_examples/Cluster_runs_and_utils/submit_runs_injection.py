@@ -107,10 +107,10 @@ DEFAULT_INJECTION_NOISE = "student"
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
 DEFAULT_HYPERBOLIC_ALPHA = "10.0"
 DEFAULT_HYPERBOLIC_DELTA = "1.0"
-DEFAULT_HYPERBOLIC_ALPHA_MIN = 0.5
-DEFAULT_HYPERBOLIC_ALPHA_MAX = 200.0
-DEFAULT_HYPERBOLIC_DELTA_MIN = 0.1
-DEFAULT_HYPERBOLIC_DELTA_MAX = 20.0
+DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
+DEFAULT_HYPERBOLIC_ALPHA_MAX = 30.0
+DEFAULT_HYPERBOLIC_DELTA_MIN = 1e-6
+DEFAULT_HYPERBOLIC_DELTA_MAX = 30.0
 FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
@@ -1602,7 +1602,7 @@ def build_hyperbolic_priors(
             minimum = format_prior_value(args.delta_min)
             maximum = format_prior_value(args.delta_max)
         lines.append(
-            f"{key} = LogUniform(name='{key}', minimum={minimum}, maximum={maximum})"
+            f"{key} = Uniform(name='{key}', minimum={minimum}, maximum={maximum})"
         )
     return "\n".join(lines)
 

@@ -796,13 +796,14 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
     def tearDown(self):
         bilby.utils.command_line_args.bilby_test_mode = True
 
-    def test_run_sampler_passes_custom_railing_settings_to_postprocessing(self):
+    def test_run_sampler_calls_prior_diagnostic_and_passes_railing_settings(self):
         check_railing_mock = None
 
         class SimpleLikelihood(bilby.Likelihood):
             def __init__(self):
                 super().__init__(parameters={"x": None})
                 self.meta_data = {"likelihood_class": "SimpleLikelihood"}
+                self.print_gaussian_limit_diagnostic = MagicMock()
 
             def log_likelihood(self, parameters=None):
                 return -1.0
@@ -864,6 +865,7 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
 
         check_railing_mock.assert_called_once_with(bins=123, tolerance=4.5)
         result.plot_corner.assert_called_once_with()
+        likelihood.print_gaussian_limit_diagnostic.assert_called_once_with(priors)
 
     def test_free_noise_parameter_evidence_runs_after_plotting(self):
         order = []

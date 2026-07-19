@@ -4,6 +4,7 @@ from .waveform_generator import WaveformGenerator, LALCBCWaveformGenerator
 from .likelihood import (
     GravitationalWaveTransient,
     HyperbolicGravitationalWaveTransient,
+    MixedGravitationalWaveTransient,
     StudentTGravitationalWaveTransient,
 )
 from .detector import calibration

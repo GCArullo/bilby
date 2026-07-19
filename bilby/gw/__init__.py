@@ -3,6 +3,8 @@ from . import (conversion, cosmology, detector, eos, likelihood, prior,
 from .waveform_generator import WaveformGenerator, LALCBCWaveformGenerator
 from .likelihood import (
     GravitationalWaveTransient,
+    HyperbolicGravitationalWaveTransient,
+    MixedGravitationalWaveTransient,
     StudentTGravitationalWaveTransient,
 )
 from .detector import calibration

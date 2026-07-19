@@ -1,5 +1,7 @@
 from .base import GravitationalWaveTransient
 from .basic import BasicGravitationalWaveTransient
+from .hyperbolic import HyperbolicGravitationalWaveTransient
+from .mixed import MixedGravitationalWaveTransient
 from .roq import BilbyROQParamsRangeError, ROQGravitationalWaveTransient
 from .multiband import MBGravitationalWaveTransient
 from .relative import RelativeBinningGravitationalWaveTransient

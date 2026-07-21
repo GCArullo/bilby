@@ -1,0 +1,47 @@
+{
+  "approximant": "IMRPhenomXPHM",
+  "calibration_detectors": [
+    "H1",
+    "L1",
+    "V1"
+  ],
+  "checksum": "md5:05b60e342b3f85372b469d3f7fd4a07e",
+  "detectors": [
+    "H1",
+    "L1",
+    "V1"
+  ],
+  "duration": 16.0,
+  "embedded_config_available": true,
+  "event": "GW190725_174728",
+  "filename": "IGWN-GWTC2p1-v2-GW190725_174728_PEDataRelease_mixed_nocosmo.h5",
+  "maximum_frequency": {
+    "H1": 1792.0,
+    "L1": 1792.0,
+    "V1": 1792.0
+  },
+  "metadata_snapshot": null,
+  "minimum_frequency": {
+    "H1": 20.0,
+    "L1": 20.0,
+    "V1": 20.0
+  },
+  "prior": "priors/GW190725_174728.prior",
+  "psd_detectors": [
+    "H1",
+    "L1",
+    "V1"
+  ],
+  "reconstructed_prior": true,
+  "record_event": "GW190725_174728",
+  "sampling_frequency": 4096.0,
+  "selected_run": "C01:IMRPhenomXPHM",
+  "size": 443661936,
+  "source_configs": [
+    "source_configs/GW190725_174728/IMRPhenomXPHM.ini"
+  ],
+  "source_selects_glitch_subtracted_channel": false,
+  "template": "templates/GW190725_174728.ini",
+  "trigger_time": 1248112066.4,
+  "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190725_174728_PEDataRelease_mixed_nocosmo.h5?download=1"
+}

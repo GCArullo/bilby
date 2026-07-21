@@ -1,5 +1,6 @@
 import importlib.util
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -45,6 +46,17 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert module.hypothesis_list(args) == ["gaussian"]
+
+
+def test_all_gwtc21_manifest_events_are_available():
+    module = load_submit_runs_real_data_module()
+    manifest_path = SCRIPT_PATH.parent / "GWTC-2.1" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    events = {item["event"] for item in manifest["events"]}
+
+    assert len(events) == 54
+    assert {"GW150914", "GW190425_081805", "GW190930_133541"} <= events
+    assert events <= module.EVENT_DEFAULTS.keys()
 
 
 def test_accounting_user_defaults_to_home_basename(monkeypatch):

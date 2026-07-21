@@ -1,0 +1,48 @@
+{
+  "approximant": "IMRPhenomXPHM",
+  "calibration_detectors": [
+    "H1",
+    "L1",
+    "V1"
+  ],
+  "checksum": "md5:11b0382c160c230c868c1ba255227dc3",
+  "detectors": [
+    "H1",
+    "L1",
+    "V1"
+  ],
+  "duration": 8.0,
+  "embedded_config_available": true,
+  "event": "GW190408_181802",
+  "filename": "IGWN-GWTC2p1-v2-GW190408_181802_PEDataRelease_mixed_nocosmo.h5",
+  "maximum_frequency": {
+    "H1": 896.0,
+    "L1": 896.0,
+    "V1": 896.0
+  },
+  "metadata_snapshot": null,
+  "minimum_frequency": {
+    "H1": 20.0,
+    "L1": 20.0,
+    "V1": 20.0
+  },
+  "prior": "priors/GW190408_181802.prior",
+  "psd_detectors": [
+    "H1",
+    "L1",
+    "V1"
+  ],
+  "reconstructed_prior": false,
+  "record_event": "GW190408_181802",
+  "sampling_frequency": 2048.0,
+  "selected_run": "C01:IMRPhenomXPHM",
+  "size": 401689304,
+  "source_configs": [
+    "source_configs/GW190408_181802/IMRPhenomXPHM.ini",
+    "source_configs/GW190408_181802/SEOBNRv4PHM.ini"
+  ],
+  "source_selects_glitch_subtracted_channel": false,
+  "template": "templates/GW190408_181802.ini",
+  "trigger_time": 1238782700.286133,
+  "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190408_181802_PEDataRelease_mixed_nocosmo.h5?download=1"
+}

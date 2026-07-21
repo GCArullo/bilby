@@ -1,0 +1,2470 @@
+{
+  "events": [
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:f0e0436739c6f667d4331b275de17e94",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW150914",
+      "filename": "IGWN-GWTC2p1-v2-GW150914_095045_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW150914.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW150914_095045",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 286654048,
+      "source_configs": [
+        "source_configs/GW150914/IMRPhenomXPHM.ini",
+        "source_configs/GW150914/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW150914.ini",
+      "trigger_time": 1126259462.391,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW150914_095045_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:a203b8dc36c049c62ae4ddf6a4a397cd",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW151012",
+      "filename": "IGWN-GWTC2p1-v2-GW151012_095443_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW151012.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW151012_095443",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 193445848,
+      "source_configs": [
+        "source_configs/GW151012/IMRPhenomXPHM.ini",
+        "source_configs/GW151012/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW151012.ini",
+      "trigger_time": 1128678900.444336,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW151012_095443_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:5b04f5ecad7baeb653f737361a1d8a86",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW151226",
+      "filename": "IGWN-GWTC2p1-v2-GW151226_033853_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW151226.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW151226_033853",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 429949344,
+      "source_configs": [
+        "source_configs/GW151226/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW151226.ini",
+      "trigger_time": 1135136350.647758,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW151226_033853_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:7cb98cdff8c08f33c7b3c90f7880db37",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW170104",
+      "filename": "IGWN-GWTC2p1-v2-GW170104_101158_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW170104.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW170104_101158",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 282381128,
+      "source_configs": [
+        "source_configs/GW170104/IMRPhenomXPHM.ini",
+        "source_configs/GW170104/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170104.ini",
+      "trigger_time": 1167559936.599121,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170104_101158_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:ee94ab244525300b7899f9b158365cd5",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW170608",
+      "filename": "IGWN-GWTC2p1-v2-GW170608_020116_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 30.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW170608.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW170608_020116",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 383121794,
+      "source_configs": [
+        "source_configs/GW170608/IMRPhenomXPHM.ini",
+        "source_configs/GW170608/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170608.ini",
+      "trigger_time": 1180922494.5,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170608_020116_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:47f525263d23560730ad138be24515d4",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW170729",
+      "filename": "IGWN-GWTC2p1-v2-GW170729_185629_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW170729.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW170729_185629",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 338348008,
+      "source_configs": [
+        "source_configs/GW170729/IMRPhenomXPHM.ini",
+        "source_configs/GW170729/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170729.ini",
+      "trigger_time": 1185389807.328125,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170729_185629_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:1a3707cc6bc098628e706345b0ea74ed",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW170809",
+      "filename": "IGWN-GWTC2p1-v2-GW170809_082821_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW170809.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW170809_082821",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 347005608,
+      "source_configs": [
+        "source_configs/GW170809/IMRPhenomXPHM.ini",
+        "source_configs/GW170809/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170809.ini",
+      "trigger_time": 1186302519.746663,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170809_082821_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:75d3fcf027f903f5fe294651436d26bf",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW170814",
+      "filename": "IGWN-GWTC2p1-v2-GW170814_103043_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW170814.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW170814_103043",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 508009968,
+      "source_configs": [
+        "source_configs/GW170814/IMRPhenomXPHM.ini",
+        "source_configs/GW170814/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170814.ini",
+      "trigger_time": 1186741861.52678,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170814_103043_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:64270ab914aa7016445860647f2f4327",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW170818",
+      "filename": "IGWN-GWTC2p1-v2-GW170818_022509_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW170818.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW170818_022509",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 472748744,
+      "source_configs": [
+        "source_configs/GW170818/IMRPhenomXPHM.ini",
+        "source_configs/GW170818/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170818.ini",
+      "trigger_time": 1187058327.081509,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170818_022509_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:9780d34748f383bc4bb8abd90e74e191",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW170823",
+      "filename": "IGWN-GWTC2p1-v2-GW170823_131358_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW170823.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW170823_131358",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 215129920,
+      "source_configs": [
+        "source_configs/GW170823/IMRPhenomXPHM.ini",
+        "source_configs/GW170823/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW170823.ini",
+      "trigger_time": 1187529256.517903,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW170823_131358_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:fb24cd62c46ce755229bb344cdf7b535",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190403_051519",
+      "filename": "IGWN-GWTC2p1-v2-GW190403_051519_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190403_051519.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190403_051519",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 303032432,
+      "source_configs": [
+        "source_configs/GW190403_051519/IMRPhenomXPHM.ini",
+        "source_configs/GW190403_051519/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190403_051519.ini",
+      "trigger_time": 1238303737.232422,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190403_051519_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:11b0382c160c230c868c1ba255227dc3",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190408_181802",
+      "filename": "IGWN-GWTC2p1-v2-GW190408_181802_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190408_181802.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190408_181802",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 401689304,
+      "source_configs": [
+        "source_configs/GW190408_181802/IMRPhenomXPHM.ini",
+        "source_configs/GW190408_181802/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190408_181802.ini",
+      "trigger_time": 1238782700.286133,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190408_181802_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:58c9df829fa82a5936b7f0d81d58b4b6",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190412_053044",
+      "filename": "IGWN-GWTC2p1-v2-GW190412_053044_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190412_053044.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190412_053044",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 582255088,
+      "source_configs": [
+        "source_configs/GW190412_053044/IMRPhenomXPHM.ini",
+        "source_configs/GW190412_053044/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190412_053044.ini",
+      "trigger_time": 1239082262.17041,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190412_053044_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:92a9083801aefa4345605865573f901a",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190413_052954",
+      "filename": "IGWN-GWTC2p1-v2-GW190413_052954_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190413_052954.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190413_052954",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 505072696,
+      "source_configs": [
+        "source_configs/GW190413_052954/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190413_052954.ini",
+      "trigger_time": 1239168612.503418,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190413_052954_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:d8d625ac884e31d2afa67e7185ea60c0",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190413_134308",
+      "filename": "IGWN-GWTC2p1-v2-GW190413_134308_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 35.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190413_134308.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190413_134308",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 534181368,
+      "source_configs": [
+        "source_configs/GW190413_134308/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190413_134308.ini",
+      "trigger_time": 1239198206.741211,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190413_134308_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:41a4492e3b7e194c4ab4d24b20f90959",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190421_213856",
+      "filename": "IGWN-GWTC2p1-v2-GW190421_213856_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190421_213856.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190421_213856",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 335148848,
+      "source_configs": [
+        "source_configs/GW190421_213856/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190421_213856.ini",
+      "trigger_time": 1239917954.260254,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190421_213856_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomPv2_NRTidal",
+      "calibration_detectors": [],
+      "checksum": "md5:f8faf5b65534804b1dc4c9bc63efde36",
+      "detectors": [
+        "L1",
+        "V1"
+      ],
+      "duration": 128.0,
+      "embedded_config_available": false,
+      "event": "GW190425_081805",
+      "filename": "IGWN-GWTC2p1-v2-GW190425_081805_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": "source_configs/GW190425_081805/IMRPhenomPv2_NRTidal__LowSpin__command_line_args.ini",
+      "minimum_frequency": {
+        "L1": 19.3984375,
+        "V1": 19.3984375
+      },
+      "prior": "priors/GW190425_081805.prior",
+      "psd_detectors": [],
+      "reconstructed_prior": true,
+      "record_event": "GW190425_081805",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomPv2_NRTidal:LowSpin",
+      "size": 45762144,
+      "source_configs": [],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190425_081805.ini",
+      "trigger_time": 1240215503.017,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190425_081805_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:8a162e15ac25ccee795d6cc041b8ef61",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190426_190642",
+      "filename": "IGWN-GWTC2p1-v2-GW190426_190642_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190426_190642.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190426_190642",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 440560824,
+      "source_configs": [
+        "source_configs/GW190426_190642/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190426_190642.ini",
+      "trigger_time": 1240340820.676,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190426_190642_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:04c02e20e3cfced6d9e5f4bdc85165c4",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190503_185404",
+      "filename": "IGWN-GWTC2p1-v2-GW190503_185404_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190503_185404.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190503_185404",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 479157080,
+      "source_configs": [
+        "source_configs/GW190503_185404/IMRPhenomXPHM.ini",
+        "source_configs/GW190503_185404/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190503_185404.ini",
+      "trigger_time": 1240944862.297852,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190503_185404_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:7d0f539ce60ba3d98d3b1b932fbe6c03",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190512_180714",
+      "filename": "IGWN-GWTC2p1-v2-GW190512_180714_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190512_180714.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190512_180714",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 414807752,
+      "source_configs": [
+        "source_configs/GW190512_180714/IMRPhenomXPHM.ini",
+        "source_configs/GW190512_180714/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190512_180714.ini",
+      "trigger_time": 1241719652.418945,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190512_180714_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:6906da3e20fdbd390ee8564a554c502a",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190513_205428",
+      "filename": "IGWN-GWTC2p1-v2-GW190513_205428_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190513_205428.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190513_205428",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 414416128,
+      "source_configs": [
+        "source_configs/GW190513_205428/IMRPhenomXPHM.ini",
+        "source_configs/GW190513_205428/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190513_205428.ini",
+      "trigger_time": 1241816086.747,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190513_205428_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:a80397d83d97d4fe8ba1208f1bb8f5e8",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190514_065416",
+      "filename": "IGWN-GWTC2p1-v2-GW190514_065416_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 50.0
+      },
+      "prior": "priors/GW190514_065416.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190514_065416",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 196676504,
+      "source_configs": [
+        "source_configs/GW190514_065416/IMRPhenomXPHM.ini",
+        "source_configs/GW190514_065416/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190514_065416.ini",
+      "trigger_time": 1241852074.84668,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190514_065416_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:fa713aa8cdf4467c3c4b9af46fc6a6b7",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190517_055101",
+      "filename": "IGWN-GWTC2p1-v2-GW190517_055101_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190517_055101.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190517_055101",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 463354360,
+      "source_configs": [
+        "source_configs/GW190517_055101/IMRPhenomXPHM.ini",
+        "source_configs/GW190517_055101/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190517_055101.ini",
+      "trigger_time": 1242107479.838379,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190517_055101_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:ce75a83120e850bd145c9a080c4e33c3",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190519_153544",
+      "filename": "IGWN-GWTC2p1-v2-GW190519_153544_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190519_153544.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190519_153544",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 291538272,
+      "source_configs": [
+        "source_configs/GW190519_153544/IMRPhenomXPHM.ini",
+        "source_configs/GW190519_153544/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190519_153544.ini",
+      "trigger_time": 1242315362.398,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190519_153544_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:e9400820a6ab597836997f044c543902",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190521_030229",
+      "filename": "IGWN-GWTC2p1-v2-GW190521_030229_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 224.0,
+        "L1": 224.0,
+        "V1": 224.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190521_030229.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190521_030229",
+      "sampling_frequency": 512.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 261950056,
+      "source_configs": [
+        "source_configs/GW190521_030229/IMRPhenomXPHM.ini",
+        "source_configs/GW190521_030229/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190521_030229.ini",
+      "trigger_time": 1242442967.459473,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190521_030229_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:7e2dbc147e4c8ab211aa1393586e4f9e",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190521_074359",
+      "filename": "IGWN-GWTC2p1-v2-GW190521_074359_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 224.0,
+        "L1": 224.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190521_074359.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190521_074359",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 298772256,
+      "source_configs": [
+        "source_configs/GW190521_074359/IMRPhenomXPHM.ini",
+        "source_configs/GW190521_074359/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190521_074359.ini",
+      "trigger_time": 1242459857.466309,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190521_074359_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:281c151f07e20bfbf61b1e7a7fbb268e",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190527_092055",
+      "filename": "IGWN-GWTC2p1-v2-GW190527_092055_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190527_092055.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190527_092055",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 215194984,
+      "source_configs": [
+        "source_configs/GW190527_092055/IMRPhenomXPHM.ini",
+        "source_configs/GW190527_092055/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190527_092055.ini",
+      "trigger_time": 1242984073.79,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190527_092055_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:43ac5177a01862b79e134878e62d3c6e",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190602_175927",
+      "filename": "IGWN-GWTC2p1-v2-GW190602_175927_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190602_175927.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190602_175927",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 459003128,
+      "source_configs": [
+        "source_configs/GW190602_175927/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190602_175927.ini",
+      "trigger_time": 1243533585.089,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190602_175927_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:33f25110b7086a386e5a3f4238462131",
+      "detectors": [
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190620_030421",
+      "filename": "IGWN-GWTC2p1-v2-GW190620_030421_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190620_030421.prior",
+      "psd_detectors": [
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190620_030421",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 203410640,
+      "source_configs": [
+        "source_configs/GW190620_030421/IMRPhenomXPHM.ini",
+        "source_configs/GW190620_030421/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190620_030421.ini",
+      "trigger_time": 1245035079.311435,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190620_030421_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:de53f530f9d6bbcbab7903fc1462c1fd",
+      "detectors": [
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190630_185205",
+      "filename": "IGWN-GWTC2p1-v2-GW190630_185205_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190630_185205.prior",
+      "psd_detectors": [
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190630_185205",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 266085488,
+      "source_configs": [
+        "source_configs/GW190630_185205/IMRPhenomXPHM.ini",
+        "source_configs/GW190630_185205/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190630_185205.ini",
+      "trigger_time": 1245955943.18021,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190630_185205_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:71b64a3796a8853a78fa60e0376fc03a",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190701_203306",
+      "filename": "IGWN-GWTC2p1-v2-GW190701_203306_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190701_203306.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190701_203306",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 473988264,
+      "source_configs": [
+        "source_configs/GW190701_203306/IMRPhenomXPHM.ini",
+        "source_configs/GW190701_203306/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190701_203306.ini",
+      "trigger_time": 1246048404.580494,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190701_203306_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:41698cc98b3a7764015b41a893eb908e",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190706_222641",
+      "filename": "IGWN-GWTC2p1-v2-GW190706_222641_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190706_222641.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190706_222641",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 241253536,
+      "source_configs": [
+        "source_configs/GW190706_222641/IMRPhenomXPHM.ini",
+        "source_configs/GW190706_222641/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190706_222641.ini",
+      "trigger_time": 1246487219.346191,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190706_222641_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:d9fbb93c21bde485cd26f38190e24ad3",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW190707_093326",
+      "filename": "IGWN-GWTC2p1-v2-GW190707_093326_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190707_093326.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190707_093326",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 434447216,
+      "source_configs": [
+        "source_configs/GW190707_093326/IMRPhenomXPHM.ini",
+        "source_configs/GW190707_093326/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190707_093326.ini",
+      "trigger_time": 1246527224.1,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190707_093326_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:2064a34c15ce2a983e3ff2ff64622963",
+      "detectors": [
+        "L1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190708_232457",
+      "filename": "IGWN-GWTC2p1-v2-GW190708_232457_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190708_232457.prior",
+      "psd_detectors": [
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190708_232457",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 136575920,
+      "source_configs": [
+        "source_configs/GW190708_232457/IMRPhenomXPHM.ini",
+        "source_configs/GW190708_232457/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190708_232457.ini",
+      "trigger_time": 1246663515.38359,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190708_232457_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:80fa386bd7ffd29550b90de830056ba5",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190719_215514",
+      "filename": "IGWN-GWTC2p1-v2-GW190719_215514_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190719_215514.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190719_215514",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 347669360,
+      "source_configs": [
+        "source_configs/GW190719_215514/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190719_215514.ini",
+      "trigger_time": 1247608532.930176,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190719_215514_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:344c8870a0bf71f35f69d617117a1765",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW190720_000836",
+      "filename": "IGWN-GWTC2p1-v2-GW190720_000836_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190720_000836.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190720_000836",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 396827944,
+      "source_configs": [
+        "source_configs/GW190720_000836/IMRPhenomXPHM.ini",
+        "source_configs/GW190720_000836/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190720_000836.ini",
+      "trigger_time": 1247616534.7,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190720_000836_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:05b60e342b3f85372b469d3f7fd4a07e",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW190725_174728",
+      "filename": "IGWN-GWTC2p1-v2-GW190725_174728_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190725_174728.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190725_174728",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 443661936,
+      "source_configs": [
+        "source_configs/GW190725_174728/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190725_174728.ini",
+      "trigger_time": 1248112066.4,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190725_174728_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:d7dc060eea8c0b86e1ce00983e740057",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190727_060333",
+      "filename": "IGWN-GWTC2p1-v2-GW190727_060333_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 50.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190727_060333.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190727_060333",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 463951368,
+      "source_configs": [
+        "source_configs/GW190727_060333/IMRPhenomXPHM.ini",
+        "source_configs/GW190727_060333/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190727_060333.ini",
+      "trigger_time": 1248242631.98877,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190727_060333_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:388c744e2b1b6b4784756f4b3aaed528",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW190728_064510",
+      "filename": "IGWN-GWTC2p1-v2-GW190728_064510_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190728_064510.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190728_064510",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 250414568,
+      "source_configs": [
+        "source_configs/GW190728_064510/IMRPhenomXPHM.ini",
+        "source_configs/GW190728_064510/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190728_064510.ini",
+      "trigger_time": 1248331528.5,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190728_064510_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:7dd8a067bd02a04487060fc639fb7f27",
+      "detectors": [
+        "L1",
+        "H1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190731_140936",
+      "filename": "IGWN-GWTC2p1-v2-GW190731_140936_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190731_140936.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190731_140936",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 175992008,
+      "source_configs": [
+        "source_configs/GW190731_140936/IMRPhenomXPHM.ini",
+        "source_configs/GW190731_140936/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190731_140936.ini",
+      "trigger_time": 1248617394.641113,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190731_140936_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:5d001778a679b1a8f2c608b7abbebe38",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190803_022701",
+      "filename": "IGWN-GWTC2p1-v2-GW190803_022701_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190803_022701.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190803_022701",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 311057592,
+      "source_configs": [
+        "source_configs/GW190803_022701/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190803_022701.ini",
+      "trigger_time": 1248834439.87793,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190803_022701_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:48f54be02ce96a88289f9b993f6f169b",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190805_211137",
+      "filename": "IGWN-GWTC2p1-v2-GW190805_211137_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 448.0,
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190805_211137.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190805_211137",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 335235368,
+      "source_configs": [
+        "source_configs/GW190805_211137/IMRPhenomXPHM.ini",
+        "source_configs/GW190805_211137/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190805_211137.ini",
+      "trigger_time": 1249074715.350098,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190805_211137_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:cddf95a9932df3b2c0b72ad557e79dd3",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 32.0,
+      "embedded_config_available": true,
+      "event": "GW190814_211039",
+      "filename": "IGWN-GWTC2p1-v2-GW190814_211039_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 30.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190814_211039.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190814_211039",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 332620480,
+      "source_configs": [
+        "source_configs/GW190814_211039/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190814_211039.ini",
+      "trigger_time": 1249852257.0,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190814_211039_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:91bca9807b25fd563ea15d4fd29a9131",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190828_063405",
+      "filename": "IGWN-GWTC2p1-v2-GW190828_063405_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190828_063405.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190828_063405",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 407659576,
+      "source_configs": [
+        "source_configs/GW190828_063405/IMRPhenomXPHM.ini",
+        "source_configs/GW190828_063405/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190828_063405.ini",
+      "trigger_time": 1251009263.767578,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190828_063405_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:8a78deb714c9271d63c9f87d2f62301e",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190828_065509",
+      "filename": "IGWN-GWTC2p1-v2-GW190828_065509_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190828_065509.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190828_065509",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 531303360,
+      "source_configs": [
+        "source_configs/GW190828_065509/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190828_065509.ini",
+      "trigger_time": 1251010527.89,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190828_065509_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:b94149ed8b1636385a45f2282c3f9671",
+      "detectors": [
+        "V1",
+        "L1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190910_112807",
+      "filename": "IGWN-GWTC2p1-v2-GW190910_112807_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "L1": 448.0,
+        "V1": 448.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190910_112807.prior",
+      "psd_detectors": [
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190910_112807",
+      "sampling_frequency": 1024.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 217312056,
+      "source_configs": [
+        "source_configs/GW190910_112807/IMRPhenomXPHM.ini",
+        "source_configs/GW190910_112807/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190910_112807.ini",
+      "trigger_time": 1252150105.324095,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190910_112807_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:a1b4d4257abbd9ac861fdc76d349c4c8",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190915_235702",
+      "filename": "IGWN-GWTC2p1-v2-GW190915_235702_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190915_235702.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190915_235702",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 299057072,
+      "source_configs": [
+        "source_configs/GW190915_235702/IMRPhenomXPHM.ini",
+        "source_configs/GW190915_235702/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190915_235702.ini",
+      "trigger_time": 1252627040.691895,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190915_235702_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:aa9c6cdd06523b2dc78eee428fee96a9",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190916_200658",
+      "filename": "IGWN-GWTC2p1-v2-GW190916_200658_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190916_200658.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190916_200658",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 209592024,
+      "source_configs": [
+        "source_configs/GW190916_200658/IMRPhenomXPHM.ini",
+        "source_configs/GW190916_200658/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190916_200658.ini",
+      "trigger_time": 1252699636.905762,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190916_200658_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:b80cbbb1325bdb458a197e47fe3e2e5c",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 64.0,
+      "embedded_config_available": true,
+      "event": "GW190917_114630",
+      "filename": "IGWN-GWTC2p1-v2-GW190917_114630_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190917_114630.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190917_114630",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 80695736,
+      "source_configs": [
+        "source_configs/GW190917_114630/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190917_114630.ini",
+      "trigger_time": 1252756008.0,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190917_114630_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:26488231313495909354b1886199c60f",
+      "detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "duration": 32.0,
+      "embedded_config_available": true,
+      "event": "GW190924_021846",
+      "filename": "IGWN-GWTC2p1-v2-GW190924_021846_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 3584.0,
+        "L1": 3584.0,
+        "V1": 3584.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190924_021846.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": true,
+      "record_event": "GW190924_021846",
+      "sampling_frequency": 8192.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 155935416,
+      "source_configs": [
+        "source_configs/GW190924_021846/IMRPhenomXPHM.ini",
+        "source_configs/GW190924_021846/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": true,
+      "template": "templates/GW190924_021846.ini",
+      "trigger_time": 1253326744.8,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190924_021846_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "V1"
+      ],
+      "checksum": "md5:9e03629caab8e2f44ebaf61e99724184",
+      "detectors": [
+        "H1",
+        "V1"
+      ],
+      "duration": 8.0,
+      "embedded_config_available": true,
+      "event": "GW190925_232845",
+      "filename": "IGWN-GWTC2p1-v2-GW190925_232845_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "V1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190925_232845.prior",
+      "psd_detectors": [
+        "H1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190925_232845",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 278544624,
+      "source_configs": [
+        "source_configs/GW190925_232845/IMRPhenomXPHM.ini",
+        "source_configs/GW190925_232845/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190925_232845.ini",
+      "trigger_time": 1253489343.114258,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190925_232845_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:f7d95846c8192b2f6d40a5d1c1dd5fc2",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190926_050336",
+      "filename": "IGWN-GWTC2p1-v2-GW190926_050336_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190926_050336.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190926_050336",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 465455800,
+      "source_configs": [
+        "source_configs/GW190926_050336/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190926_050336.ini",
+      "trigger_time": 1253509434.066406,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190926_050336_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "checksum": "md5:1b66d842281c4b516faaf23455dbae2b",
+      "detectors": [
+        "L1",
+        "H1",
+        "V1"
+      ],
+      "duration": 4.0,
+      "embedded_config_available": true,
+      "event": "GW190929_012149",
+      "filename": "IGWN-GWTC2p1-v2-GW190929_012149_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 896.0,
+        "L1": 896.0,
+        "V1": 896.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0,
+        "V1": 20.0
+      },
+      "prior": "priors/GW190929_012149.prior",
+      "psd_detectors": [
+        "H1",
+        "L1",
+        "V1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190929_012149",
+      "sampling_frequency": 2048.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 435633976,
+      "source_configs": [
+        "source_configs/GW190929_012149/IMRPhenomXPHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190929_012149.ini",
+      "trigger_time": 1253755327.498,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190929_012149_PEDataRelease_mixed_nocosmo.h5?download=1"
+    },
+    {
+      "approximant": "IMRPhenomXPHM",
+      "calibration_detectors": [
+        "H1",
+        "L1"
+      ],
+      "checksum": "md5:9ee67863c5b60adf1288ede818a1cc01",
+      "detectors": [
+        "H1",
+        "L1"
+      ],
+      "duration": 16.0,
+      "embedded_config_available": true,
+      "event": "GW190930_133541",
+      "filename": "IGWN-GWTC2p1-v2-GW190930_133541_PEDataRelease_mixed_nocosmo.h5",
+      "maximum_frequency": {
+        "H1": 1792.0,
+        "L1": 1792.0
+      },
+      "metadata_snapshot": null,
+      "minimum_frequency": {
+        "H1": 20.0,
+        "L1": 20.0
+      },
+      "prior": "priors/GW190930_133541.prior",
+      "psd_detectors": [
+        "H1",
+        "L1"
+      ],
+      "reconstructed_prior": false,
+      "record_event": "GW190930_133541",
+      "sampling_frequency": 4096.0,
+      "selected_run": "C01:IMRPhenomXPHM",
+      "size": 212608488,
+      "source_configs": [
+        "source_configs/GW190930_133541/IMRPhenomXPHM.ini",
+        "source_configs/GW190930_133541/SEOBNRv4PHM.ini"
+      ],
+      "source_selects_glitch_subtracted_channel": false,
+      "template": "templates/GW190930_133541.ini",
+      "trigger_time": 1253885759.239746,
+      "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190930_133541_PEDataRelease_mixed_nocosmo.h5?download=1"
+    }
+  ],
+  "record_id": 6513631,
+  "record_url": "https://zenodo.org/records/6513631"
+}

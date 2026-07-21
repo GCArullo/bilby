@@ -1,0 +1,34 @@
+{
+  "approximant": "IMRPhenomPv2_NRTidal",
+  "calibration_detectors": [],
+  "checksum": "md5:f8faf5b65534804b1dc4c9bc63efde36",
+  "detectors": [
+    "L1",
+    "V1"
+  ],
+  "duration": 128.0,
+  "embedded_config_available": false,
+  "event": "GW190425_081805",
+  "filename": "IGWN-GWTC2p1-v2-GW190425_081805_PEDataRelease_mixed_nocosmo.h5",
+  "maximum_frequency": {
+    "L1": 1792.0,
+    "V1": 1792.0
+  },
+  "metadata_snapshot": "source_configs/GW190425_081805/IMRPhenomPv2_NRTidal__LowSpin__command_line_args.ini",
+  "minimum_frequency": {
+    "L1": 19.3984375,
+    "V1": 19.3984375
+  },
+  "prior": "priors/GW190425_081805.prior",
+  "psd_detectors": [],
+  "reconstructed_prior": true,
+  "record_event": "GW190425_081805",
+  "sampling_frequency": 4096.0,
+  "selected_run": "C01:IMRPhenomPv2_NRTidal:LowSpin",
+  "size": 45762144,
+  "source_configs": [],
+  "source_selects_glitch_subtracted_channel": true,
+  "template": "templates/GW190425_081805.ini",
+  "trigger_time": 1240215503.017,
+  "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW190425_081805_PEDataRelease_mixed_nocosmo.h5?download=1"
+}

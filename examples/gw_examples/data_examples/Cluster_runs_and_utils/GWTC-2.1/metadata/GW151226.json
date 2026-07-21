@@ -1,0 +1,42 @@
+{
+  "approximant": "IMRPhenomXPHM",
+  "calibration_detectors": [
+    "H1",
+    "L1"
+  ],
+  "checksum": "md5:5b04f5ecad7baeb653f737361a1d8a86",
+  "detectors": [
+    "H1",
+    "L1"
+  ],
+  "duration": 16.0,
+  "embedded_config_available": true,
+  "event": "GW151226",
+  "filename": "IGWN-GWTC2p1-v2-GW151226_033853_PEDataRelease_mixed_nocosmo.h5",
+  "maximum_frequency": {
+    "H1": 1792.0,
+    "L1": 1792.0
+  },
+  "metadata_snapshot": null,
+  "minimum_frequency": {
+    "H1": 20.0,
+    "L1": 20.0
+  },
+  "prior": "priors/GW151226.prior",
+  "psd_detectors": [
+    "H1",
+    "L1"
+  ],
+  "reconstructed_prior": false,
+  "record_event": "GW151226_033853",
+  "sampling_frequency": 4096.0,
+  "selected_run": "C01:IMRPhenomXPHM",
+  "size": 429949344,
+  "source_configs": [
+    "source_configs/GW151226/IMRPhenomXPHM.ini"
+  ],
+  "source_selects_glitch_subtracted_channel": false,
+  "template": "templates/GW151226.ini",
+  "trigger_time": 1135136350.647758,
+  "url": "https://zenodo.org/records/6513631/files/IGWN-GWTC2p1-v2-GW151226_033853_PEDataRelease_mixed_nocosmo.h5?download=1"
+}

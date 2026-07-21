@@ -4,7 +4,28 @@
 BASE_DIR="$(git rev-parse --show-toplevel)"
 EXTRACT="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/Scripts/extract_gw150914_c01_products.py"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
+GWTC21="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC-2.1"
 ```
+
+## GWTC-2.1 Catalog Runs
+
+`$GWTC21` contains templates, priors, embedded source configs, PSDs, and
+calibration envelopes for all 54 events in the GWTC-2.1 PE release. The
+event-by-event data-quality audit is `$GWTC21/data_quality.html`; preparation
+and glitch-frame download details are in `$GWTC21/README.md`.
+
+For example:
+
+```
+python "$REAL" \
+  --event GW190727_060333 \
+  --likelihood hyperbolic \
+  --num-frequency-bands 1 \
+  --dry-run
+```
+
+Remove `--dry-run` to submit. Seven glitch-subtracted events first require the
+public L1 frames downloaded by `python "$GWTC21/download_glitch_data.py"`.
 
 The extractor only needs to be run once per checkout. It writes the calibration
 and PSD products expected by the GW150914 IGWN template into

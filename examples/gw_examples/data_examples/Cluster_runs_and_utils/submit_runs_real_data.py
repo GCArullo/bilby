@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import subprocess
 import sys
@@ -126,6 +127,31 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         detectors=("L1",),
     ),
 }
+
+
+def load_gwtc21_event_defaults() -> dict[str, EventDefaults]:
+    manifest_path = Path(__file__).resolve().parent / "GWTC-2.1" / "manifest.json"
+    if not manifest_path.is_file():
+        return {}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    defaults = {}
+    for item in manifest["events"]:
+        event = item["event"]
+        approximant = item["approximant"]
+        prefix = f"{event}_IGWN_C01_{approximant}"
+        defaults[event] = EventDefaults(
+            label_prefix=f"{event}_{approximant}",
+            run_subdir=f"GWTC-2.1/{event}/Runs",
+            file_prefix=prefix,
+            ini_template=f"GWTC-2.1/{item['template']}",
+            prior_template=f"GWTC-2.1/{item['prior']}",
+            working_directory="GWTC-2.1",
+            detectors=tuple(item["detectors"]),
+        )
+    return defaults
+
+
+EVENT_DEFAULTS.update(load_gwtc21_event_defaults())
 
 
 def outdir_label(value: str) -> str:

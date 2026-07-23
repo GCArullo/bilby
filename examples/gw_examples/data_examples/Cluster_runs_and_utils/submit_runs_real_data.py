@@ -56,6 +56,11 @@ DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
+LIKELIHOOD_OUTPUT_NAMES = {
+    "student": "t_Student",
+    "hyperbolic": "hyperbolic",
+    "gaussian": "gaussian",
+}
 DEFAULT_HYPERBOLIC_ALPHA = 10.0
 DEFAULT_HYPERBOLIC_DELTA = 1.0
 DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
@@ -471,6 +476,13 @@ def default_output_bases(home_dir: Path, run_subdir: str) -> tuple[str, str]:
     outdir_base = resolved_home / "public_html" / run_subdir
     webdir_base = outdir_base
     return str(outdir_base), str(webdir_base)
+
+
+def likelihood_run_subdir(run_subdir: str, likelihood: str) -> str:
+    return run_subdir.replace(
+        "t_Student",
+        LIKELIHOOD_OUTPUT_NAMES[likelihood],
+    )
 
 
 def build_run_directory_name(name: str, outdir_label: str | None) -> str:
@@ -1163,7 +1175,7 @@ def main() -> int:
     label_prefix = args.label_prefix or defaults.label_prefix
     default_outdir_base, _ = default_output_bases(
         args.home_dir,
-        defaults.run_subdir,
+        likelihood_run_subdir(defaults.run_subdir, args.likelihood),
     )
     outdir_base = args.outdir_base or default_outdir_base
     webdir_base = args.webdir_base or outdir_base
@@ -1221,6 +1233,9 @@ def main() -> int:
     prior_dir = args.prior_dir.expanduser().resolve()
     ini_dir.mkdir(parents=True, exist_ok=True)
     prior_dir.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        Path(outdir_base).mkdir(parents=True, exist_ok=True)
+        Path(webdir_base).mkdir(parents=True, exist_ok=True)
 
     if args.range_mode:
         band_counts = range(1, args.num_frequency_bands + 1)

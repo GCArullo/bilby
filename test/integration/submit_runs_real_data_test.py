@@ -86,6 +86,56 @@ def test_default_output_bases_are_under_public_event_directory(tmp_path):
     )
 
 
+def test_likelihood_run_subdir_uses_requested_model_likelihood():
+    module = load_submit_runs_real_data_module()
+    run_subdir = "GW230814/t_Student_pSEOB/Runs"
+
+    assert module.likelihood_run_subdir(run_subdir, "student") == run_subdir
+    assert module.likelihood_run_subdir(run_subdir, "hyperbolic") == (
+        "GW230814/hyperbolic_pSEOB/Runs"
+    )
+    assert module.likelihood_run_subdir(run_subdir, "gaussian") == (
+        "GW230814/gaussian_pSEOB/Runs"
+    )
+
+
+def test_main_creates_missing_output_bases_before_submission(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    outdir_base = tmp_path / "new" / "out"
+    webdir_base = tmp_path / "new" / "web"
+    submitted = []
+
+    monkeypatch.setattr(
+        module,
+        "submit_run",
+        lambda *args, **kwargs: submitted.append(1),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "gaussian",
+            "--ini-dir",
+            str(tmp_path / "ini"),
+            "--prior-dir",
+            str(tmp_path / "prior"),
+            "--outdir-base",
+            str(outdir_base),
+            "--webdir-base",
+            str(webdir_base),
+        ],
+    )
+
+    assert module.main() == 0
+    assert outdir_base.is_dir()
+    assert webdir_base.is_dir()
+    assert submitted == [1]
+
+
 def test_student_likelihood_runs_student_and_gaussian_by_default():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)
@@ -234,7 +284,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     )
     outdir = Path(ini_settings["outdir"])
     assert outdir.parent == (
-        tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
+        tmp_path / "public_html" / "GW231123" / "gaussian" / "Runs"
     )
     assert Path(ini_settings["webdir"]) == outdir / "web"
 

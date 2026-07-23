@@ -9,7 +9,7 @@ From: ubuntu:26.04
 %post
     # base os
     apt-get update -y
-    apt-get install -y build-essential wget git git-lfs
+    apt-get install -y build-essential wget git git-lfs libgsl-dev swig
     git lfs install --skip-repo
 
     # install miniconda
@@ -32,6 +32,7 @@ From: ubuntu:26.04
     pip install "bilby[gw] @ git+https://github.com/GCArullo/bilby.git@{{ BILBY_BRANCH }}"
     pip install "bilby_pipe @ git+https://git.ligo.org/gregorio.carullo/bilby-pipe-gc.git@{{ BILBY_PIPE_BRANCH }}"
     pip install bilby_tgr
+    pip install pyseobnr
 
     # install PESummary from the selected pesummary_GC ref
     pip install "pesummary @ git+https://git.ligo.org/gregorio.carullo/pesummary_GC.git@{{ PESUMMARY_REF }}"

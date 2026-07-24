@@ -101,7 +101,7 @@ class EventDefaults:
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
     "GW150914": EventDefaults(
         label_prefix="GW150914_IMRPhenomXPHM",
-        run_subdir="GW150914/GWTC_parametric_noise/Runs",
+        run_subdir="GWTC_parametric_noise/Runs/GW150914",
         file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
         ini_template="Initialisation_file_templates/GW150914_t_student_igwn_template.ini",
         prior_template="Prior_templates/GW150914_igwn_template.prior",
@@ -141,7 +141,7 @@ def load_gwtc21_event_defaults() -> dict[str, EventDefaults]:
         prefix = f"{event}_IGWN_C01_{approximant}"
         defaults[event] = EventDefaults(
             label_prefix=f"{event}_{approximant}",
-            run_subdir=f"GWTC-2.1/{event}/Runs",
+            run_subdir=f"GWTC_parametric_noise/Runs/{event}",
             file_prefix=prefix,
             ini_template=f"GWTC-2.1/{item['template']}",
             prior_template=f"GWTC-2.1/{item['prior']}",

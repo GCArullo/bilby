@@ -26,6 +26,10 @@ python "$REAL" \
 
 Remove `--dry-run` to submit. Seven glitch-subtracted events first require the
 public L1 frames downloaded by `python "$GWTC21/download_glitch_data.py"`.
+By default, each event is written below
+`/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
+O3a event directories retain the time suffix from the full record name so
+events occurring on the same date remain distinct.
 
 The extractor only needs to be run once per checkout. It writes the calibration
 and PSD products expected by the GW150914 IGWN template into
@@ -43,7 +47,9 @@ calibration envelope from PESummary arguments in every generated run.
 ## GW150914 Hyperbolic Runs
 
 Both commands below use the two-detector H1/L1 setup embedded in the event
-defaults and generate the single-band Gaussian companion run as well.
+defaults and generate the single-band Gaussian companion run as well. Their
+run directories are created below
+`/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/GW150914`.
 
 Det-independent Hyperbolic, bands 1..4:
 

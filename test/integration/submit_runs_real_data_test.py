@@ -57,6 +57,11 @@ def test_all_gwtc21_manifest_events_are_available():
     assert len(events) == 54
     assert {"GW150914", "GW190425_081805", "GW190930_133541"} <= events
     assert events <= module.EVENT_DEFAULTS.keys()
+    for event in events:
+        assert (
+            module.EVENT_DEFAULTS[event].run_subdir
+            == f"GWTC_parametric_noise/Runs/{event}"
+        )
 
 
 def test_accounting_user_defaults_to_home_basename(monkeypatch):

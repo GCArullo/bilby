@@ -46,6 +46,10 @@ python submit_runs_real_data.py \
 
 Omit `--dry-run` to submit. The GWTC-1 events use their standard short names,
 for example `--event GW150914`; the O3a events use the full record name.
+Default run directories are created under
+`/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
+The O3a directory name retains the record's time suffix because the catalog
+contains distinct events occurring on the same date.
 
 ## Glitch-subtracted events
 

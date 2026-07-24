@@ -363,8 +363,9 @@ def test_render_ini_writes_maxmcmc_override():
     assert sampler_kwargs["maxmcmc"] == 10000
 
 
-def test_main_creates_summarypages_without_recalib_parameters_by_default(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("likelihood", ["gaussian", "student", "hyperbolic"])
+def test_main_creates_summarypages_without_recalib_parameters_for_all_likelihoods(
+    monkeypatch, tmp_path, likelihood
 ):
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
@@ -372,30 +373,35 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
     outdir_base = tmp_path / "out"
     webdir_base = tmp_path / "web"
 
+    argv = [
+        str(SCRIPT_PATH),
+        "--event",
+        "GW231123",
+        "--likelihood",
+        likelihood,
+        "--dry-run",
+        "--ini-dir",
+        str(ini_dir),
+        "--prior-dir",
+        str(prior_dir),
+        "--outdir-base",
+        str(outdir_base),
+        "--webdir-base",
+        str(webdir_base),
+    ]
+    if likelihood in module.HEAVY_TAILED_LIKELIHOODS:
+        argv.append("--no-add-gaussian")
     monkeypatch.setattr(
         sys,
         "argv",
-        [
-            str(SCRIPT_PATH),
-            "--event",
-            "GW231123",
-            "--likelihood",
-            "gaussian",
-            "--dry-run",
-            "--ini-dir",
-            str(ini_dir),
-            "--prior-dir",
-            str(prior_dir),
-            "--outdir-base",
-            str(outdir_base),
-            "--webdir-base",
-            str(webdir_base),
-        ],
+        argv,
     )
 
     assert module.main() == 0
 
-    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    ini_paths = list(ini_dir.glob("*.ini"))
+    assert len(ini_paths) == 1
+    ini_text = ini_paths[0].read_text(encoding="utf-8")
     summary_line = next(
         line for line in ini_text.splitlines()
         if line.startswith("summarypages-arguments=")

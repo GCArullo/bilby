@@ -44,6 +44,28 @@ write the ini/prior files. Pass `--disable-calibration` to clear the calibration
 model, uncertainty inputs, marginalization, and lookup table, and to omit the
 calibration envelope from PESummary arguments in every generated run.
 
+## PESummary Pages
+
+Exclude the spline-calibration nuisance parameters from every PESummary page,
+for Gaussian, Student-t, and Hyperbolic likelihoods. The real-data launcher
+sets this automatically for per-run pages:
+
+```
+ignore_parameters = ["recalib*"]
+```
+
+When constructing a standalone or comparison page from existing result files,
+always pass the same exclusion explicitly:
+
+```
+summarypages \
+  ... \
+  --ignore_parameters 'recalib*'
+```
+
+Keep the wildcard quoted so that the shell does not expand it. This rule also
+applies when every result file contains calibration samples.
+
 ## GW150914 Hyperbolic Runs
 
 Both commands below use the two-detector H1/L1 setup embedded in the event

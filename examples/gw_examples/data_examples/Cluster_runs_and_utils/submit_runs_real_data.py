@@ -251,7 +251,7 @@ EVENT_DEFAULTS["GW241127_SEOB"] = EventDefaults(
         f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
         "GW241127_SEOB_template.prior"
     ),
-    working_directory="LVK_posteriors/GW241127_061008",
+    working_directory=str(DEFAULT_HOME_DIR / "LVK_posteriors/GW241127_061008"),
     detectors=("H1", "L1", "V1"),
 )
 
@@ -267,7 +267,7 @@ EVENT_DEFAULTS["GW241127_pSEOB"] = EventDefaults(
         f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
         "GW241127_pSEOB_template.prior"
     ),
-    working_directory="LVK_posteriors/GW241127_061008",
+    working_directory=str(DEFAULT_HOME_DIR / "LVK_posteriors/GW241127_061008"),
     detectors=("H1", "L1", "V1"),
 )
 

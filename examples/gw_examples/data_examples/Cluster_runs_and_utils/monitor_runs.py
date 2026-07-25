@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import shlex
 import subprocess
 import sys
 from collections import Counter
@@ -67,34 +66,6 @@ def analysis_label(ad: dict) -> str | None:
     return match.group(1) if match else None
 
 
-def analysis_root(ad: dict) -> Path | None:
-    arguments = ad.get("Args") or ""
-    try:
-        tokens = shlex.split(arguments)
-    except ValueError:
-        tokens = []
-    for index, token in enumerate(tokens):
-        if token == "--outdir" and index + 1 < len(tokens):
-            outdir = Path(tokens[index + 1]).expanduser()
-            if not outdir.is_absolute():
-                iwd = ad.get("Iwd")
-                if not iwd:
-                    break
-                outdir = Path(iwd) / outdir
-            return outdir.resolve().parent
-        if token.startswith("--outdir="):
-            outdir = Path(token.split("=", maxsplit=1)[1]).expanduser()
-            if not outdir.is_absolute():
-                iwd = ad.get("Iwd")
-                if not iwd:
-                    break
-                outdir = Path(iwd) / outdir
-            return outdir.resolve().parent
-
-    iwd = ad.get("Iwd")
-    return Path(iwd).resolve() if iwd else None
-
-
 def tail_text(path: Path, size: int = 2_000_000) -> str:
     try:
         with path.open("rb") as stream:
@@ -140,7 +111,7 @@ def fatal_error(run_dir: Path, label: str, ad: dict) -> str:
 def latest_ads(ads: list[dict], root: Path) -> dict[str, dict]:
     selected = {}
     for ad in ads:
-        if analysis_root(ad) != root:
+        if Path(ad.get("Iwd") or "").resolve() != root:
             continue
         label = analysis_label(ad)
         if not label:
@@ -156,33 +127,53 @@ def latest_ads(ads: list[dict], root: Path) -> dict[str, dict]:
     return selected
 
 
-def active_roots(ads: list[dict]) -> list[Path]:
-    roots = {
-        root
-        for ad in ads
-        if analysis_label(ad)
-        if (root := analysis_root(ad)) is not None
-    }
-    return sorted(
-        root
-        for root in roots
-        if any(root.glob("*/submit/*_analysis_*_par*.submit"))
-    )
-
-
 def paint(state: str, text: str, enabled: bool) -> str:
     if not enabled:
         return text
     return f"{COLOUR[state]}{text}{RESET}"
 
 
-def print_snapshot(
-    root: Path,
-    queued: list[dict],
-    history: list[dict],
-    colour: bool,
-) -> None:
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Show the state and latest dZ of bilby_pipe analysis jobs."
+    )
+    parser.add_argument(
+        "run_directory",
+        nargs="?",
+        default=".",
+        type=Path,
+        help="directory containing the run subdirectories (default: current directory)",
+    )
+    parser.add_argument("--no-color", action="store_true")
+    args = parser.parse_args()
+
+    root = args.run_directory.expanduser().resolve()
     submit_files = sorted(root.glob("*/submit/*_analysis_*_par*.submit"))
+    if not submit_files:
+        parser.error(f"no analysis submit files found below {root}")
+
+    attributes = (
+        "ClusterId,ProcId,JobStatus,HoldReason,ExitCode,ExitBySignal,"
+        "ExitSignal,Iwd,Args,Out,Err"
+    )
+    try:
+        queued = condor_json(
+            ["condor_q", "-json", "-attributes", attributes]
+        )
+        history = condor_json(
+            [
+                "condor_history",
+                "-limit",
+                "10000",
+                "-json",
+                "-attributes",
+                attributes,
+            ]
+        )
+    except (OSError, RuntimeError, json.JSONDecodeError) as error:
+        print(f"monitor_runs.py: unable to query HTCondor: {error}", file=sys.stderr)
+        return 1
+
     queue_by_label = latest_ads(queued, root)
     history_by_label = latest_ads(history, root)
     rows = []
@@ -217,6 +208,7 @@ def print_snapshot(
                 detail = "waiting for DAG dependencies"
         rows.append((run_dir.name, job, state, detail))
 
+    colour = sys.stdout.isatty() and not args.no_color
     counts = Counter(row[2] for row in rows)
     summary_order = ("RUNNING", "IDLE", "HELD", "FAILED", "DONE", "WAITING")
     summary = "  ".join(
@@ -234,56 +226,6 @@ def print_snapshot(
         marker = paint(state, f"{SYMBOL[state]} {state:<7}", colour)
         print(f"{run_name:<{name_width}}  {job:<4}  {marker}  {detail}")
     print()
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Show the state and latest dZ of bilby_pipe analysis jobs."
-    )
-    parser.add_argument(
-        "run_directory",
-        nargs="?",
-        type=Path,
-        help="specific run root to inspect (default: discover active roots from Condor)",
-    )
-    parser.add_argument("--no-color", action="store_true")
-    args = parser.parse_args()
-
-    attributes = (
-        "ClusterId,ProcId,JobStatus,HoldReason,ExitCode,ExitBySignal,"
-        "ExitSignal,RemoveReason,Iwd,Args,Out,Err"
-    )
-    try:
-        queued = condor_json(
-            ["condor_q", "-json", "-attributes", attributes]
-        )
-        history = condor_json(
-            [
-                "condor_history",
-                "-limit",
-                "10000",
-                "-json",
-                "-attributes",
-                attributes,
-            ]
-        )
-    except (OSError, RuntimeError, json.JSONDecodeError) as error:
-        print(f"monitor_runs.py: unable to query HTCondor: {error}", file=sys.stderr)
-        return 1
-
-    if args.run_directory:
-        roots = [args.run_directory.expanduser().resolve()]
-        if not any(roots[0].glob("*/submit/*_analysis_*_par*.submit")):
-            parser.error(f"no analysis submit files found below {roots[0]}")
-    else:
-        roots = active_roots(queued)
-        if not roots:
-            print("No active bilby_pipe run directories found in your Condor queue.")
-            return 0
-
-    colour = sys.stdout.isatty() and not args.no_color
-    for root in roots:
-        print_snapshot(root, queued, history, colour)
     return 0
 
 

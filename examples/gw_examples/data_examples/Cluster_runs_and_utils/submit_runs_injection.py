@@ -138,7 +138,10 @@ FD_DATA_FORMAT = "bilby_frequency_domain_hdf5"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
 INJECTED_SINE_GAUSSIAN_VALUES_PATH = (
-    SCRIPT_DIR / "runbooks" / "injected_sine_gaussian_values.json"
+    SCRIPT_DIR
+    / "Special_events_configs"
+    / "runbooks"
+    / "injected_sine_gaussian_values.json"
 )
 INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS = (
     "hrss",

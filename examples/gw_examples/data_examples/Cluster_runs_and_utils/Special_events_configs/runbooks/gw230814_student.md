@@ -1,4 +1,4 @@
-# GW230814 Student Runs
+# GW230814 Special-Event Student Runs
 
 ```
 BASE_DIR="$(git rev-parse --show-toplevel)"

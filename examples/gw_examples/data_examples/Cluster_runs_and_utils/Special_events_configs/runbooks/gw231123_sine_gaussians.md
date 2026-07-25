@@ -1,6 +1,7 @@
 # GW231123 Sine-Gaussian Runs
 
-Injected SG values for the injection commands are read from `runbooks/injected_sine_gaussian_values.json`.
+Injected SG values for the injection commands are read from
+`Special_events_configs/runbooks/injected_sine_gaussian_values.json`.
 
 The three supported SG modes are:
 
@@ -19,7 +20,7 @@ SG sky position.
 BASE_DIR="$(git rev-parse --show-toplevel)"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
-SG_JSON="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/runbooks/injected_sine_gaussian_values.json"
+SG_JSON="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs/runbooks/injected_sine_gaussian_values.json"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
 BASE="$HOME/public_html/GW231123/t_Student/Runs_injections_gw231123_sine_gaussians"
 MAXMCMC=5000

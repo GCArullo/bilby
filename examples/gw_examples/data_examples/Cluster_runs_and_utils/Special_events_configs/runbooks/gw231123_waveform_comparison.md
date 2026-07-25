@@ -1,4 +1,4 @@
-# GW231123 Waveform Comparison Runs
+# GW231123 Special-Event Waveform Comparison Runs
 
 Runs with non-default waveform approximants. The `--waveform-approximant` flag
 overrides the template value (NRSur7dq4) and appends the approximant name as a

@@ -45,6 +45,7 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.num_frequency_bands is None
     assert args.maxmcmc is None
     assert args.require_epnfs is False
+    assert args.joint is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
@@ -382,6 +383,29 @@ def test_hyperbolic_accepts_detector_dependent_noise():
     )
 
     assert module.hypothesis_list(args) == ["hyperbolic", "gaussian"]
+
+
+def test_joint_requires_detector_independent_hyperbolic_likelihood():
+    module = load_submit_runs_real_data_module()
+    parser = module.build_argument_parser(SCRIPT_PATH.parent)
+
+    args = parser.parse_args(["--likelihood", "student", "--joint"])
+    with pytest.raises(ValueError, match="--joint requires --likelihood hyperbolic"):
+        module.hypothesis_list(args)
+
+    args = parser.parse_args(
+        [
+            "--likelihood",
+            "hyperbolic",
+            "--joint",
+            "--detector-dependent-noise",
+        ]
+    )
+    with pytest.raises(
+        ValueError,
+        match="--joint cannot be combined with --detector-dependent-noise",
+    ):
+        module.hypothesis_list(args)
 
 
 def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_path):
@@ -759,7 +783,46 @@ def test_main_hyperbolic_range_writes_single_gaussian_run_without_n_suffix(
     assert "'infer_alpha': True" in hyperbolic_ini
     assert "'infer_delta': True" in hyperbolic_ini
     assert "'num_frequency_bands': 4" in hyperbolic_ini
+    assert "'joint': False" in hyperbolic_ini
     assert "gaussian_N" not in gaussian_ini
+
+
+def test_main_hyperbolic_joint_opt_in_writes_distinct_run(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+    outdir_base = tmp_path / "out"
+    webdir_base = tmp_path / "web"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "hyperbolic",
+            "--joint",
+            "--no-add-gaussian",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--outdir-base",
+            str(outdir_base),
+            "--webdir-base",
+            str(webdir_base),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_path = ini_dir / "GW231123_hyperbolic_joint_N1.ini"
+    joint_ini = ini_path.read_text(encoding="utf-8")
+    assert "'joint': True" in joint_ini
+    assert "hyperbolic_detector_independent_noise_joint_N1" in joint_ini
 
 
 def test_main_student_detector_dependent_noise_writes_detector_specific_priors(

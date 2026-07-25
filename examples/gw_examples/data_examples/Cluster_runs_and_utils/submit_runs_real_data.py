@@ -42,6 +42,24 @@ DEFAULT_CONTAINER_IMAGES_FILE = (
 )
 CATALOG_CONFIGS_DIR = "GWTC_catalog_configs"
 SPECIAL_EVENTS_CONFIGS_DIR = "Special_events_configs"
+MASS_CLASSIFICATION_FILE = "MASS_CLASSIFICATION.md"
+
+
+def load_high_mass_events() -> tuple[str, ...]:
+    path = (
+        Path(__file__).resolve().parent
+        / CATALOG_CONFIGS_DIR
+        / MASS_CLASSIFICATION_FILE
+    )
+    events = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        columns = [column.strip() for column in line.strip("|").split("|")]
+        if len(columns) == 4 and columns[-1] == "high":
+            events.append(columns[1])
+    return tuple(events)
+
+
+HIGH_MASS_EVENTS = load_high_mass_events()
 
 
 def default_accounting_user() -> str:
@@ -295,13 +313,22 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "Gaussian-parametric, or Gaussian runs and optionally submit them."
         )
     )
-    parser.add_argument(
+    event_selection = parser.add_mutually_exclusive_group()
+    event_selection.add_argument(
         "--event",
         choices=sorted(EVENT_DEFAULTS.keys()),
         default=DEFAULT_EVENT,
         help=(
             "Event defaults to use for template paths, output prefixes, and "
             "detectors. Default: GW231123."
+        ),
+    )
+    event_selection.add_argument(
+        "--high-mass-catalog",
+        action="store_true",
+        help=(
+            "Run every event classified above 50 solar masses in "
+            f"{CATALOG_CONFIGS_DIR}/{MASS_CLASSIFICATION_FILE}."
         ),
     )
     parser.add_argument(
@@ -1534,9 +1561,33 @@ def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
     )
 
 
+def run_high_mass_catalog(script_path: Path) -> None:
+    common_arguments = [
+        argument
+        for argument in sys.argv[1:]
+        if argument != "--high-mass-catalog"
+    ]
+    for index, event in enumerate(HIGH_MASS_EVENTS, start=1):
+        print(f"High-mass GWTC event {index}/{len(HIGH_MASS_EVENTS)}: {event}")
+        subprocess.run(
+            [
+                sys.executable,
+                str(script_path),
+                *common_arguments,
+                "--event",
+                event,
+            ],
+            check=True,
+        )
+
+
 def main() -> int:
-    script_dir = Path(__file__).resolve().parent
+    script_path = Path(__file__).resolve()
+    script_dir = script_path.parent
     args = build_argument_parser(script_dir).parse_args()
+    if args.high_mass_catalog:
+        run_high_mass_catalog(script_path)
+        return 0
     args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
     if args.num_frequency_bands is None:
         args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS

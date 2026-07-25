@@ -1,0 +1,35 @@
+{
+  "approximant": "IMRPhenomXPHM",
+  "calibration_detectors": [],
+  "checksum": "md5:bc508641a8109f08d26f1bdff299bec6",
+  "detectors": [
+    "L1"
+  ],
+  "duration": 128.0,
+  "embedded_config_available": true,
+  "event": "GW230529_181500",
+  "filename": "IGWN-GWTC4p0-38214bd95_724-GW230529_181500-combined_PEDataRelease.hdf5",
+  "maximum_frequency": {
+    "L1": 1792.0
+  },
+  "metadata_snapshot": null,
+  "minimum_frequency": {
+    "L1": 20.0
+  },
+  "prior": "priors/GW230529_181500.prior",
+  "psd_detectors": [],
+  "reconstructed_prior": false,
+  "record_event": "GW230529_181500",
+  "record_id": 17602505,
+  "sampling_frequency": 4096.0,
+  "selected_run": "C00:IMRPhenomXPHM:LowSpin",
+  "size": 137878464,
+  "source_configs": [
+    "source_configs/GW230529_181500/C00__IMRPhenomXPHM__LowSpin.ini"
+  ],
+  "source_selects_glitch_subtracted_channel": false,
+  "template": "templates/GW230529_181500.ini",
+  "trigger_time": 1369419318.7460938,
+  "url": "https://zenodo.org/records/17602505/files/IGWN-GWTC4p0-38214bd95_724-GW230529_181500-combined_PEDataRelease.hdf5?download=1",
+  "waveform_arguments": "None"
+}

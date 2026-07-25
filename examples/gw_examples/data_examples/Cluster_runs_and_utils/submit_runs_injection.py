@@ -33,6 +33,10 @@ if str(REPO_ROOT) not in sys.path:
 
 import bilby
 
+from container_creation.submission_container_utils import (
+    add_container_arguments,
+    resolve_container_image,
+)
 from submission_sine_gaussian_utils import (
     SINE_GAUSSIAN_HRSS_BOUNDS,
     SINE_GAUSSIAN_Q_BOUNDS,
@@ -53,6 +57,9 @@ from submission_sine_gaussian_utils import (
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_CONTAINER_IMAGES_FILE = (
+    SCRIPT_DIR / "container_creation" / "container_images.json"
+)
 
 
 def default_accounting_user() -> str:
@@ -67,7 +74,16 @@ def default_accounting_user() -> str:
 
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
-DEFAULT_BASE_SUBDIR = Path("GW231123") / "t_Student" / "Runs_injections"
+DEFAULT_BASE_SUBDIR = (
+    Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
+)
+DEFAULT_ENVIRONMENT_VARIABLES = {
+    "HDF5_USE_FILE_LOCKING": False,
+    "NUMBA_CACHE_DIR": "/tmp",
+    "OMP_NUM_THREADS": 1,
+    "OMP_PROC_BIND": False,
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
+}
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
     "disable_expert": True,
@@ -107,6 +123,8 @@ DEFAULT_INJECTION_NOISE = "student"
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
 DEFAULT_HYPERBOLIC_ALPHA = "10.0"
 DEFAULT_HYPERBOLIC_DELTA = "1.0"
+DEFAULT_REQUEST_CPUS = 28
+DEFAULT_REQUEST_MEMORY_GB = 24.0
 DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_ALPHA_MAX = 30.0
 DEFAULT_HYPERBOLIC_DELTA_MIN = 1e-6
@@ -182,8 +200,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_HOME_DIR,
         help=(
-            "Base home directory used to build the default --base-dir when "
-            "--base-dir is not provided."
+            "Base home directory containing public_html, used to build the "
+            "default --base-dir when --base-dir is not provided."
         ),
     )
     parser.add_argument(
@@ -193,7 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory where staged data, generated ini/prior files, and "
             "run/web folders are written. Defaults to "
-            "<home-dir>/GW231123/t_Student/Runs_injections."
+            "<home-dir>/public_html/GW231123/t_Student/Runs_injections."
         ),
     )
     parser.add_argument(
@@ -365,6 +383,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--maxmcmc",
+        type=positive_int,
+        default=None,
+        help=(
+            "Optional Dynesty maxmcmc value written into sampler-kwargs. "
+            "Defaults to the value in the ini template."
+        ),
+    )
+    parser.add_argument(
         "--local-posterior",
         action="store_true",
         help=(
@@ -436,6 +463,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--bilby-pipe-executable",
         default="bilby_pipe",
         help="Executable name or absolute path used to call bilby_pipe.",
+    )
+    add_container_arguments(
+        parser,
+        default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
     add_sine_gaussian_arguments(
@@ -837,6 +868,29 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             "Injected SG values file must define an 'incoherent' object keyed by detector."
         )
 
+    independent_sky_raw = raw_values.get("coherent-independent")
+    if not isinstance(independent_sky_raw, dict):
+        raise ValueError(
+            "Injected SG values file must define a 'coherent-independent' sky object."
+        )
+    independent_sky = {}
+    for key, bounds in {
+        "ra": (0.0, 2.0 * float(np.pi)),
+        "dec": (-0.5 * float(np.pi), 0.5 * float(np.pi)),
+        "psi": (0.0, float(np.pi)),
+    }.items():
+        try:
+            value = float(independent_sky_raw[key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"coherent-independent.{key} must be a finite numeric value."
+            ) from exc
+        if not np.isfinite(value) or not bounds[0] <= value <= bounds[1]:
+            raise ValueError(
+                f"coherent-independent.{key}={value} is outside {bounds}."
+            )
+        independent_sky[key] = value
+
     def parse_count(raw_count, *, context: str) -> int:
         try:
             count = int(raw_count)
@@ -923,7 +977,11 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             )
         incoherent[str(detector)] = detector_components
 
-    return dict(coherent=coherent, incoherent=incoherent)
+    return dict(
+        coherent=coherent,
+        coherent_independent=independent_sky,
+        incoherent=incoherent,
+    )
 
 
 def load_injected_sine_gaussian_component_series(
@@ -936,7 +994,7 @@ def load_injected_sine_gaussian_component_series(
         raise ValueError(f"Sine-Gaussian component count must be >= 1, got {count}.")
 
     injected_values = load_injected_sine_gaussian_values()
-    if mode == "coherent":
+    if mode in {"coherent", "coherent-independent"}:
         if detector is not None:
             raise ValueError("Coherent SG injections do not take a detector selector.")
         component_series = injected_values["coherent"].get(count)
@@ -996,8 +1054,13 @@ def flatten_sine_gaussian_component(
     component: dict[str, float],
     *,
     detector: str | None = None,
+    independent: bool = False,
 ) -> dict[str, float]:
-    prefix = f"sine_gaussian_{index}_"
+    prefix = (
+        f"independent_sine_gaussian_{index}_"
+        if independent
+        else f"sine_gaussian_{index}_"
+    )
     if detector is not None:
         prefix += f"{detector}_"
     return {
@@ -1042,6 +1105,37 @@ def add_injected_sine_gaussians(
                     component,
                 )
             )
+        return updated_parameters
+
+    if sine_gaussian_config.mode == "coherent-independent":
+        components = load_injected_sine_gaussian_component_series(
+            mode="coherent-independent",
+            count=sine_gaussian_config.total_components,
+        )
+        for index, component in enumerate(components):
+            validate_injected_sine_gaussian_component(
+                component,
+                frequency_minimum=frequency_minimum,
+                frequency_maximum=frequency_maximum,
+                context=(
+                    "coherent-independent"
+                    f"[{sine_gaussian_config.total_components}][{index}]"
+                ),
+            )
+            updated_parameters.update(
+                flatten_sine_gaussian_component(
+                    index,
+                    component,
+                    independent=True,
+                )
+            )
+        independent_sky = load_injected_sine_gaussian_values()[
+            "coherent_independent"
+        ]
+        updated_parameters.update({
+            f"independent_sine_gaussian_{key}": value
+            for key, value in independent_sky.items()
+        })
         return updated_parameters
 
     component_index = 0
@@ -1780,8 +1874,38 @@ def render_ini(
             repr(float(template_settings["duration"])),
         )
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
+    rendered = replace_line(
+        rendered,
+        "container",
+        args.container_image or "None",
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-memory",
+        str(DEFAULT_REQUEST_MEMORY_GB),
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-memory-generation",
+        str(DEFAULT_REQUEST_MEMORY_GB),
+        insert_after="request-memory",
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-cpus",
+        str(DEFAULT_REQUEST_CPUS),
+        insert_after="request-memory-generation",
+    )
+    rendered = replace_or_append_line(rendered, "transfer-files", "True")
+    rendered = replace_or_append_line(rendered, "osg", "True")
+    rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
+    rendered = replace_line(
+        rendered,
+        "environment-variables",
+        repr(DEFAULT_ENVIRONMENT_VARIABLES),
+    )
     if args.noise_only_inference:
         rendered = replace_line(rendered, "create-summary", "False")
         rendered = replace_line(rendered, "summarypages-arguments", "None")
@@ -1821,6 +1945,13 @@ def render_ini(
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(args.nlive, sine_gaussian_config)
     sampler_kwargs["naccept"] = args.naccept
+    if "npool" in sampler_kwargs:
+        sampler_kwargs["npool"] = min(
+            int(sampler_kwargs["npool"]),
+            DEFAULT_REQUEST_CPUS,
+        )
+    if getattr(args, "maxmcmc", None) is not None:
+        sampler_kwargs["maxmcmc"] = args.maxmcmc
     rendered = replace_line(
         rendered,
         "sampler-kwargs",
@@ -1904,7 +2035,6 @@ def write_run_files(
     prior_dir = ensure_dir(base_dir / "Priors")
     ini_dir = ensure_dir(base_dir / "ini_files")
     run_dir = ensure_dir(base_dir / "Runs")
-    web_dir = ensure_dir(base_dir / "web")
 
     label = build_run_label(
         bundle["staged_label_prefix"],
@@ -1932,7 +2062,7 @@ def write_run_files(
     prior_path = prior_dir / f"{label}.prior"
     ini_path = ini_dir / f"{label}.ini"
     outdir = ensure_dir(run_dir / run_directory_name)
-    webdir = ensure_dir(web_dir / run_directory_name)
+    webdir = ensure_dir(outdir / "web")
 
     prior_path.write_text(
         render_prior(
@@ -2075,6 +2205,15 @@ def submit_runs(ini_paths: list[Path], executable: str) -> None:
 
 def main() -> int:
     args = build_parser().parse_args()
+    try:
+        args.container_image = resolve_container_image(
+            use_container=args.container,
+            container_image=args.container_image,
+            default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
     args.num_frequency_bands_was_explicit = args.num_frequency_bands is not None
     if args.num_frequency_bands is None:
         args.num_frequency_bands = DEFAULT_NUM_FREQUENCY_BANDS

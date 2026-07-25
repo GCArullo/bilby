@@ -299,6 +299,12 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
     assert "distance-marginalization=False\n" in ini_text
+    assert "request-cpus=28\n" in ini_text
+    assert "request-memory=24.0\n" in ini_text
+    assert "request-memory-generation=24.0\n" in ini_text
+    assert "transfer-files=True\n" in ini_text
+    assert "osg=True\n" in ini_text
+    assert "desired-sites=None\n" in ini_text
     assert (
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
@@ -324,6 +330,37 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "sine_gaussian_0_time_offset = Uniform("
         "name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)"
     ) in prior_text
+
+
+def test_render_prior_qualifies_gw_prior_classes():
+    module = load_submit_runs_real_data_module()
+    prior_template = "\n".join(
+        [
+            "chirp_mass = UniformInComponentsChirpMass(minimum=10, maximum=20)",
+            "mass_ratio = UniformInComponentsMassRatio(minimum=0.1, maximum=1)",
+            "__NU_PRIORS__",
+        ]
+    )
+    rendered = module.render_prior(
+        prior_template,
+        1,
+        hypothesis="gaussian",
+        template_settings={
+            "minimum_frequency": 20,
+            "maximum_frequency": 1024,
+        },
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+    assert (
+        "chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(" in rendered
+    )
+    assert (
+        "mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(" in rendered
+    )
 
 
 def test_render_ini_writes_maxmcmc_override():

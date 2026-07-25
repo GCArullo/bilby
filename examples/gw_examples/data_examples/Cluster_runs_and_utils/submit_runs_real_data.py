@@ -67,6 +67,8 @@ DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_ALPHA_MAX = 30.0
 DEFAULT_HYPERBOLIC_DELTA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_DELTA_MAX = 30.0
+DEFAULT_REQUEST_CPUS = 28
+DEFAULT_REQUEST_MEMORY_GB = 24.0
 WORKING_DIRECTORY_PLACEHOLDER = "__WORKING_DIRECTORY__"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
 NOISE_ONLY_SOURCE_MODEL = "bilby.gw.source.zero_waveform"
@@ -648,10 +650,19 @@ def render_prior(
         minimum_frequency=template_settings["minimum_frequency"],
         maximum_frequency=template_settings["maximum_frequency"],
     )
-    return prior_template.replace(
+    rendered = prior_template.replace(
         "__NU_PRIORS__",
         combine_prior_blocks(heavy_tailed_prior_block, sine_gaussian_prior_block),
     )
+    for class_name in (
+        "UniformInComponentsChirpMass",
+        "UniformInComponentsMassRatio",
+    ):
+        rendered = rendered.replace(
+            f"= {class_name}(",
+            f"= bilby.gw.prior.{class_name}(",
+        )
+    return rendered
 
 
 def minimum_frequency_for_pesummary(minimum_frequency):
@@ -754,6 +765,29 @@ def replace_line(text: str, key: str, value: str) -> str:
             lines[index] = f"{key}={value}"
             return "\n".join(lines) + "\n"
     raise ValueError(f"Unable to find config key '{key}' in template")
+
+
+def replace_or_append_line(
+    text: str,
+    key: str,
+    value: str,
+    *,
+    insert_after: str | None = None,
+) -> str:
+    lines = text.splitlines()
+    prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{key}={value}"
+            return "\n".join(lines) + "\n"
+    if insert_after is not None:
+        anchor = f"{insert_after}="
+        for index, line in enumerate(lines):
+            if line.startswith(anchor):
+                lines.insert(index + 1, f"{key}={value}")
+                return "\n".join(lines) + "\n"
+    lines.append(f"{key}={value}")
+    return "\n".join(lines) + "\n"
 
 
 def disable_calibration_settings(text: str) -> str:
@@ -876,6 +910,26 @@ def render_ini(
         rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
     rendered = replace_line(rendered, "container", container_image or "None")
+    rendered = replace_or_append_line(
+        rendered,
+        "request-memory",
+        str(DEFAULT_REQUEST_MEMORY_GB),
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-memory-generation",
+        str(DEFAULT_REQUEST_MEMORY_GB),
+        insert_after="request-memory",
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-cpus",
+        str(DEFAULT_REQUEST_CPUS),
+        insert_after="request-memory-generation",
+    )
+    rendered = replace_or_append_line(rendered, "transfer-files", "True")
+    rendered = replace_or_append_line(rendered, "osg", "True")
+    rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(
@@ -905,6 +959,11 @@ def render_ini(
         int(sampler_kwargs["nlive"]),
         sine_gaussian_config,
     )
+    if "npool" in sampler_kwargs:
+        sampler_kwargs["npool"] = min(
+            int(sampler_kwargs["npool"]),
+            DEFAULT_REQUEST_CPUS,
+        )
     if maxmcmc is not None:
         sampler_kwargs["maxmcmc"] = maxmcmc
     rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))

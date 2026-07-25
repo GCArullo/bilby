@@ -56,6 +56,12 @@ Remove `--dry-run` to submit. Seven BayesWave-subtracted events and the
 linearly subtracted GW200129_065458 first require the public frames downloaded
 by `python "$GWTC3/download_glitch_data.py"`.
 
+Before a real submission, `submit_runs_real_data.py` checks every local strain,
+PSD, and calibration file referenced by the selected template. If managed
+de-glitched frames are missing, it runs the appropriate catalog downloader for
+the selected event and verifies the files before creating any DAG. Dry runs do
+not download data.
+
 ## PESummary Pages
 
 Exclude the spline-calibration nuisance parameters from every PESummary page,

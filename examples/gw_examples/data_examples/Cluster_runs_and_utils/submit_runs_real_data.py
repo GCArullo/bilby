@@ -89,6 +89,11 @@ DEFAULT_PESUMMARY_ARGUMENTS = {
     "calculate_multipole_snr": True,
     "ignore_parameters": ["recalib*"],
 }
+LOCAL_DATA_SETTINGS = (
+    "data_dict",
+    "psd_dict",
+    "spline_calibration_envelope_dict",
+)
 
 
 @dataclass(frozen=True)
@@ -786,6 +791,72 @@ def resolve_template_settings(
     }
 
 
+def required_local_data_paths(
+    template_settings: dict[str, object],
+    *,
+    working_directory: Path,
+) -> list[Path]:
+    resolved = resolve_template_settings(
+        template_settings,
+        working_directory=working_directory,
+    )
+    paths = []
+    for setting in LOCAL_DATA_SETTINGS:
+        values = resolved.get(setting)
+        if values in (None, "None"):
+            continue
+        if isinstance(values, str):
+            values = [values]
+        elif isinstance(values, dict):
+            values = values.values()
+        else:
+            raise ValueError(f"{setting} must resolve to a path or dictionary")
+        for value in values:
+            if not isinstance(value, str):
+                raise ValueError(f"{setting} paths must be strings")
+            if "://" not in value:
+                paths.append(Path(value).expanduser())
+    return sorted(set(paths))
+
+
+def preflight_local_data(
+    template_settings: dict[str, object],
+    *,
+    event: str,
+    working_directory: Path,
+) -> None:
+    required_paths = required_local_data_paths(
+        template_settings,
+        working_directory=working_directory,
+    )
+    missing = [path for path in required_paths if not path.is_file()]
+    if not missing:
+        return
+
+    downloader = working_directory / "download_glitch_data.py"
+    glitch_directory = working_directory / "glitch_data"
+    downloadable = [
+        path for path in missing if path.parent == glitch_directory
+    ]
+    if downloadable and downloader.is_file():
+        print(
+            f"Missing {len(downloadable)} local data file(s) for {event}; "
+            "running the catalog downloader."
+        )
+        subprocess.run(
+            [sys.executable, str(downloader), "--event", event],
+            check=True,
+            cwd=working_directory,
+        )
+
+    missing = [path for path in required_paths if not path.is_file()]
+    if missing:
+        formatted = "\n".join(f"  - {path}" for path in missing)
+        raise FileNotFoundError(
+            f"Missing required local data for {event}:\n{formatted}"
+        )
+
+
 def replace_line(text: str, key: str, value: str) -> str:
     lines = text.splitlines()
     prefix = f"{key}="
@@ -1279,6 +1350,12 @@ def main() -> int:
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
     template_settings = read_template_settings(ini_template)
+    if not args.dry_run:
+        preflight_local_data(
+            template_settings,
+            event=args.event,
+            working_directory=working_directory,
+        )
 
     if args.waveform_approximant is not None:
         template_approximant = template_settings["waveform_approximant"]

@@ -252,6 +252,65 @@ def test_main_creates_missing_output_bases_before_submission(monkeypatch, tmp_pa
     assert submitted == [1]
 
 
+def test_preflight_downloads_missing_catalog_data(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    glitch_directory = tmp_path / "glitch_data"
+    missing_frame = glitch_directory / "frame.gwf"
+    psd = tmp_path / "psd.dat"
+    psd.write_text("psd", encoding="utf-8")
+    downloader = tmp_path / "download_glitch_data.py"
+    downloader.write_text("", encoding="utf-8")
+    calls = []
+
+    def download(command, **kwargs):
+        calls.append((command, kwargs))
+        glitch_directory.mkdir()
+        missing_frame.write_text("frame", encoding="utf-8")
+
+    monkeypatch.setattr(module.subprocess, "run", download)
+
+    module.preflight_local_data(
+        {
+            "data_dict": {"H1": str(missing_frame)},
+            "psd_dict": {"H1": str(psd)},
+            "spline_calibration_envelope_dict": None,
+        },
+        event="GW191109_010717",
+        working_directory=tmp_path,
+    )
+
+    assert calls == [
+        (
+            [
+                sys.executable,
+                str(downloader),
+                "--event",
+                "GW191109_010717",
+            ],
+            {"check": True, "cwd": tmp_path},
+        )
+    ]
+
+
+def test_preflight_reports_local_data_still_missing(tmp_path):
+    module = load_submit_runs_real_data_module()
+    missing_psd = tmp_path / "psd.dat"
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=f"Missing required local data for GW231123:\\n  - {missing_psd}",
+    ):
+        module.preflight_local_data(
+            {
+                "data_dict": None,
+                "psd_dict": {"H1": str(missing_psd)},
+                "spline_calibration_envelope_dict": None,
+            },
+            event="GW231123",
+            working_directory=tmp_path,
+        )
+
+
 def test_existing_gaussian_companion_is_not_resubmitted(monkeypatch, tmp_path):
     module = load_submit_runs_real_data_module()
     run_base = tmp_path / "public_html" / "GW230814" / "Runs"

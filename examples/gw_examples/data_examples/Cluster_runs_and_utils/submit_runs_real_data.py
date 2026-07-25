@@ -221,6 +221,38 @@ EVENT_DEFAULTS["GW190521_030229_LVK_NRSur7dq4"] = EventDefaults(
     detectors=("H1", "L1", "V1"),
 )
 
+EVENT_DEFAULTS["GW241127_SEOB"] = EventDefaults(
+    label_prefix="GW241127_061008_SEOB",
+    run_subdir="GWTC_parametric_noise/Runs/GW241127_061008/SEOB",
+    file_prefix="GW241127_061008_SEOB",
+    ini_template=(
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
+        "GW241127_t_student_SEOB_template.ini"
+    ),
+    prior_template=(
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
+        "GW241127_SEOB_template.prior"
+    ),
+    working_directory="LVK_posteriors/GW241127_061008",
+    detectors=("H1", "L1", "V1"),
+)
+
+EVENT_DEFAULTS["GW241127_pSEOB"] = EventDefaults(
+    label_prefix="GW241127_061008_pSEOB",
+    run_subdir="GWTC_parametric_noise/Runs/GW241127_061008/pSEOB",
+    file_prefix="GW241127_061008_pSEOB",
+    ini_template=(
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
+        "GW241127_t_student_pSEOB_template.ini"
+    ),
+    prior_template=(
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
+        "GW241127_pSEOB_template.prior"
+    ),
+    working_directory="LVK_posteriors/GW241127_061008",
+    detectors=("H1", "L1", "V1"),
+)
+
 
 def outdir_label(value: str) -> str:
     label = value.strip()
@@ -229,6 +261,31 @@ def outdir_label(value: str) -> str:
     if any(separator and separator in label for separator in (os.sep, os.altsep)):
         raise argparse.ArgumentTypeError("outdir label must not contain path separators")
     return label
+
+
+def positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be positive")
+    return parsed
+
+
+def override_detector_minimum_frequency(
+    minimum_frequency,
+    value: float,
+):
+    if not isinstance(minimum_frequency, dict):
+        return value
+    overridden = dict(minimum_frequency)
+    for detector in overridden.keys() - {"waveform"}:
+        overridden[detector] = value
+    return overridden
+
+
+def minimum_frequency_suffix(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"_fmin{value:g}".replace(".", "p")
 
 
 def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
@@ -447,6 +504,16 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "When the override differs from the template default a suffix "
             "(e.g. _SEOBNRv5PHM) is appended to all labels and filenames. "
             "If omitted the template value is used unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--minimum-frequency",
+        type=positive_float,
+        default=None,
+        help=(
+            "Override the analysis lower-frequency cutoff for every detector. "
+            "The template waveform-start frequency is unchanged. A matching "
+            "_fmin suffix is added to labels, filenames, and run directories."
         ),
     )
     add_container_arguments(
@@ -1227,7 +1294,12 @@ def render_ini(
         repr(template_settings["minimum_frequency"]),
     )
     GW_SIGNAL_MODELS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
-    if template_settings["waveform_approximant"] in GW_SIGNAL_MODELS:
+    if (
+        template_settings["waveform_approximant"] in GW_SIGNAL_MODELS
+        and not template_settings["frequency_domain_source_model"].startswith(
+            "bilby_tgr.pseob."
+        )
+    ):
         # waveform generator now calls the correct waveform generation function depending on the flag.
         rendered = replace_line(
             rendered,
@@ -1501,6 +1573,14 @@ def main() -> int:
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
     template_settings = read_template_settings(ini_template)
+    if args.minimum_frequency is not None:
+        template_settings = dict(
+            template_settings,
+            minimum_frequency=override_detector_minimum_frequency(
+                template_settings["minimum_frequency"],
+                args.minimum_frequency,
+            ),
+        )
     if not args.dry_run:
         preflight_local_data(
             template_settings,
@@ -1526,6 +1606,7 @@ def main() -> int:
         )
     else:
         approximant_suffix = ""
+    approximant_suffix += minimum_frequency_suffix(args.minimum_frequency)
 
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,

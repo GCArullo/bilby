@@ -29,3 +29,4 @@ The event runbooks are:
 - `runbooks/gw231123_student.md`
 - `runbooks/gw231123_sine_gaussians.md`
 - `runbooks/gw231123_waveform_comparison.md`
+- `runbooks/gw241127_seob.md`

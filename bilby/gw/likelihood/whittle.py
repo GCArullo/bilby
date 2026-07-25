@@ -10,32 +10,36 @@ from ...core.utils import logger
 from .base import GravitationalWaveTransient
 
 
-class _WhittleNoiseOnlyLikelihood(Likelihood):
-    """Auxiliary likelihood for marginalizing Whittle PSD-level evidence."""
+class _GaussianParametricNoiseOnlyLikelihood(Likelihood):
+    """Auxiliary likelihood for marginalizing parametric PSD evidence."""
 
-    def __init__(self, whittle_likelihood):
+    def __init__(self, gaussian_parametric_likelihood):
         super().__init__()
-        self._parameters.update(whittle_likelihood._get_default_psd_parameter_dict())
-        self.whittle_likelihood = whittle_likelihood
+        self._parameters.update(
+            gaussian_parametric_likelihood._get_default_psd_parameter_dict()
+        )
+        self.gaussian_parametric_likelihood = gaussian_parametric_likelihood
 
     def log_likelihood(self, parameters=None):
         parameters = _fallback_to_parameters(self, parameters)
-        return self.whittle_likelihood._noise_log_likelihood_from_parameters(
-            parameters
+        return (
+            self.gaussian_parametric_likelihood._noise_log_likelihood_from_parameters(
+                parameters
+            )
         )
 
     def noise_log_likelihood(self):
         return 0.0
 
 
-class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
+class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
     """
     Gaussian frequency-domain likelihood with sampled PSD scale parameters.
 
     The PSD in each frequency band is multiplied by ``10**log_psd_scale``. With
     all log scales fixed to zero this reduces to the standard Gaussian
-    ``GravitationalWaveTransient``. With sampled log scales this is the Whittle
-    per-band noise-level likelihood used in HyperWave.
+    ``GravitationalWaveTransient``. The scales can be shared by all detectors
+    or sampled independently for each detector.
     """
 
     _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
@@ -49,6 +53,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         log_psd_scale=0.0,
         infer_log_psd_scale=False,
         num_psd_frequency_bands=1,
+        detector_dependent_noise=False,
         time_marginalization=False,
         distance_marginalization=False,
         phase_marginalization=False,
@@ -76,10 +81,15 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         infer_log_psd_scale : bool
             If True, treat the PSD scale as sampled. For a single band this uses
             ``log_psd_scale``; for multiple bands this uses
-            ``log_psd_scale_1``, ..., ``log_psd_scale_N``.
+            ``log_psd_scale_1``, ..., ``log_psd_scale_N``. With
+            ``detector_dependent_noise=True``, the names are detector-specific:
+            ``log_psd_scale_H1``, or ``log_psd_scale_H1_1``, ... .
         num_psd_frequency_bands : int
             Number of contiguous frequency bands spanning the active analysis
             range. Each band has its own PSD scale.
+        detector_dependent_noise : bool
+            If True, use a distinct PSD scale for each detector and frequency
+            band. If False, share each band's scale across all detectors.
         noise_evidence_nlive : int, optional
             Number of live points to use when the noise evidence requires an
             auxiliary nested-sampling run.
@@ -100,7 +110,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             or calibration_marginalization
         ):
             raise ValueError(
-                "WhittleGravitationalWaveTransient does not support "
+                "GaussianParametricGravitationalWaveTransient does not support "
                 "time, distance, phase, or calibration marginalization"
             )
 
@@ -125,6 +135,8 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         self.num_psd_frequency_bands = self._validate_num_psd_frequency_bands(
             num_psd_frequency_bands
         )
+        self.detector_dependent_noise = bool(detector_dependent_noise)
+        self._detector_names = [ifo.name for ifo in self.interferometers]
         self._fixed_log_psd_scale = self._coerce_log_psd_scale_array(log_psd_scale)
         self.infer_log_psd_scale = bool(infer_log_psd_scale)
         self._frequency_band_edges = self._create_frequency_band_edges()
@@ -145,19 +157,34 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         if self.infer_log_psd_scale:
             for key, value in zip(
                 self.log_psd_scale_parameter_keys,
-                self._fixed_log_psd_scale,
+                np.ravel(self._fixed_log_psd_scale),
             ):
                 self._parameters.setdefault(key, float(value))
 
     @property
     def log_psd_scale(self):
         values = self._get_log_psd_scale_values(self._parameters)
+        if self.detector_dependent_noise:
+            if self.num_psd_frequency_bands == 1:
+                return values[:, 0].copy()
+            return values.copy()
         if self.num_psd_frequency_bands == 1:
             return float(values[0])
         return values.copy()
 
     @property
     def log_psd_scale_parameter_keys(self):
+        if self.detector_dependent_noise:
+            if self.num_psd_frequency_bands == 1:
+                return [
+                    f"log_psd_scale_{detector_name}"
+                    for detector_name in self._detector_names
+                ]
+            return [
+                f"log_psd_scale_{detector_name}_{index}"
+                for detector_name in self._detector_names
+                for index in range(1, self.num_psd_frequency_bands + 1)
+            ]
         if self.num_psd_frequency_bands == 1:
             return ["log_psd_scale"]
         return [
@@ -179,6 +206,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             log_psd_scale=self._fixed_log_psd_scale.tolist(),
             infer_log_psd_scale=self.infer_log_psd_scale,
             num_psd_frequency_bands=self.num_psd_frequency_bands,
+            detector_dependent_noise=self.detector_dependent_noise,
             noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
@@ -249,14 +277,47 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _coerce_log_psd_scale_array(self, log_psd_scale):
         values = np.asarray(log_psd_scale, dtype=float)
+        if not self.detector_dependent_noise:
+            if values.ndim == 0:
+                values = np.repeat(values[None], self.num_psd_frequency_bands)
+            elif values.ndim == 1 and len(values) == 1:
+                values = np.repeat(values, self.num_psd_frequency_bands)
+            elif values.ndim != 1 or len(values) != self.num_psd_frequency_bands:
+                raise ValueError(
+                    "log_psd_scale must be a scalar or an array with one entry "
+                    "per PSD frequency band"
+                )
+            return values.astype(float, copy=False)
+
+        shape = (len(self._detector_names), self.num_psd_frequency_bands)
         if values.ndim == 0:
-            values = np.repeat(values[None], self.num_psd_frequency_bands)
-        elif values.ndim == 1 and len(values) == 1:
-            values = np.repeat(values, self.num_psd_frequency_bands)
-        elif values.ndim != 1 or len(values) != self.num_psd_frequency_bands:
+            values = np.full(shape, float(values))
+        elif values.ndim == 1:
+            if len(values) == 1:
+                values = np.full(shape, float(values[0]))
+            elif len(values) == self.num_psd_frequency_bands:
+                values = np.tile(values, (len(self._detector_names), 1))
+            elif (
+                len(values) == len(self._detector_names)
+                and self.num_psd_frequency_bands == 1
+            ):
+                values = values[:, None]
+            else:
+                raise ValueError(
+                    "log_psd_scale must be scalar, have one entry per frequency "
+                    "band, one entry per detector when num_psd_frequency_bands=1, "
+                    "or have shape (num_detectors, num_psd_frequency_bands)"
+                )
+        elif values.ndim == 2:
+            if values.shape != shape:
+                raise ValueError(
+                    "log_psd_scale must have shape "
+                    "(num_detectors, num_psd_frequency_bands)"
+                )
+        else:
             raise ValueError(
-                "log_psd_scale must be a scalar or an array with one entry "
-                "per PSD frequency band"
+                "log_psd_scale must be scalar, one-dimensional, or "
+                "two-dimensional when detector_dependent_noise=True"
             )
         return values.astype(float, copy=False)
 
@@ -301,6 +362,30 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         if not self.infer_log_psd_scale:
             return self._fixed_log_psd_scale
 
+        if self.detector_dependent_noise:
+            if "log_psd_scale" in parameters:
+                return self._coerce_log_psd_scale_array(
+                    parameters["log_psd_scale"]
+                )
+            return self._coerce_log_psd_scale_array(
+                [
+                    [
+                        parameters.get(
+                            self._detector_log_psd_scale_parameter_key(
+                                detector_name, band_index
+                            ),
+                            self._fixed_log_psd_scale[
+                                detector_index, band_index
+                            ],
+                        )
+                        for band_index in range(self.num_psd_frequency_bands)
+                    ]
+                    for detector_index, detector_name in enumerate(
+                        self._detector_names
+                    )
+                ]
+            )
+
         if self.num_psd_frequency_bands == 1:
             return self._coerce_log_psd_scale_array(
                 parameters.get("log_psd_scale", self._fixed_log_psd_scale[0])
@@ -322,9 +407,22 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
     def _store_log_psd_scale_values(self, log_psd_scale_values):
         for key, value in zip(
             self.log_psd_scale_parameter_keys,
-            log_psd_scale_values,
+            np.ravel(log_psd_scale_values),
         ):
             self._parameters[key] = float(value)
+
+    def _detector_log_psd_scale_parameter_key(self, detector_name, band_index):
+        if self.num_psd_frequency_bands == 1:
+            return f"log_psd_scale_{detector_name}"
+        return f"log_psd_scale_{detector_name}_{band_index + 1}"
+
+    def _get_detector_log_psd_scale_values(
+        self, log_psd_scale_values, detector_name
+    ):
+        if not self.detector_dependent_noise:
+            return log_psd_scale_values
+        detector_index = self._detector_names.index(detector_name)
+        return log_psd_scale_values[detector_index]
 
     def _resolve_likelihood_parameters(self, parameters=None):
         parameters = _fallback_to_parameters(self, parameters)
@@ -401,7 +499,9 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         for ifo in self.interferometers:
             detector_logl = self._compute_detector_log_likelihood(
                 interferometer=ifo,
-                log_psd_scale_values=log_psd_scale_values,
+                log_psd_scale_values=self._get_detector_log_psd_scale_values(
+                    log_psd_scale_values, ifo.name
+                ),
             )
             if not np.isfinite(detector_logl):
                 return np.nan_to_num(-np.inf)
@@ -421,7 +521,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             key: float(value)
             for key, value in zip(
                 self.log_psd_scale_parameter_keys,
-                log_psd_scale_values,
+                np.ravel(log_psd_scale_values),
             )
         }
 
@@ -467,7 +567,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         dimension = len(keys)
         if dimension not in (1, 2):
             raise ValueError(
-                "Whittle noise-evidence quadrature supports one or two "
+                "Gaussian-parametric noise-evidence quadrature supports one or two "
                 "sampled PSD parameters"
             )
 
@@ -535,7 +635,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             )
         if not np.isfinite(integral) or integral <= 0:
             raise RuntimeError(
-                "Whittle noise-evidence quadrature failed to return a "
+                "Gaussian-parametric noise-evidence quadrature failed to return a "
                 "positive finite integral"
             )
         return float(logl_reference + np.log(integral))
@@ -544,7 +644,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         from ...core.sampler import run_sampler
 
         return run_sampler(
-            likelihood=_WhittleNoiseOnlyLikelihood(self),
+            likelihood=_GaussianParametricNoiseOnlyLikelihood(self),
             priors=noise_priors,
             label=f"{getattr(self, 'label', 'label')}_noise",
             outdir=getattr(self, "outdir", "outdir"),
@@ -581,7 +681,9 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         for ifo in self.interferometers:
             detector_logl = self._compute_detector_log_likelihood(
                 interferometer=ifo,
-                log_psd_scale_values=log_psd_scale_values,
+                log_psd_scale_values=self._get_detector_log_psd_scale_values(
+                    log_psd_scale_values, ifo.name
+                ),
                 parameters=parameters,
                 waveform_polarizations=pols,
             )
@@ -614,7 +716,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             if len(noise_priors.non_fixed_keys) <= 2:
                 return self._noise_log_evidence_by_quadrature(noise_priors)
             logger.info(
-                "Whittle noise-evidence quadrature supports at most two "
+                "Gaussian-parametric noise-evidence quadrature supports at most two "
                 "sampled PSD parameters; falling back to nested sampling."
             )
 
@@ -637,16 +739,21 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         signal_logl = 0.0
         noise_logl = 0.0
         for ifo in self.interferometers:
+            detector_log_psd_scale_values = (
+                self._get_detector_log_psd_scale_values(
+                    log_psd_scale_values, ifo.name
+                )
+            )
             detector_signal_logl = self._compute_detector_log_likelihood(
                 interferometer=ifo,
-                log_psd_scale_values=log_psd_scale_values,
+                log_psd_scale_values=detector_log_psd_scale_values,
                 parameters=parameters,
                 waveform_polarizations=pols,
                 include_log_normalization=False,
             )
             detector_noise_logl = self._compute_detector_log_likelihood(
                 interferometer=ifo,
-                log_psd_scale_values=log_psd_scale_values,
+                log_psd_scale_values=detector_log_psd_scale_values,
                 include_log_normalization=False,
             )
             if not np.isfinite(detector_signal_logl) or not np.isfinite(
@@ -682,9 +789,17 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             parameters[f"{interferometer.name}_log_likelihood"] = (
                 self._compute_detector_log_likelihood(
                     interferometer=interferometer,
-                    log_psd_scale_values=log_psd_scale_values,
+                    log_psd_scale_values=self._get_detector_log_psd_scale_values(
+                        log_psd_scale_values, interferometer.name
+                    ),
                     parameters=parameters,
                     waveform_polarizations=pols,
                 )
             )
         return parameters.copy()
+
+
+class WhittleGravitationalWaveTransient(
+    GaussianParametricGravitationalWaveTransient
+):
+    """Backward-compatible name for the Gaussian-parametric likelihood."""

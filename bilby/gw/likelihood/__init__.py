@@ -6,7 +6,10 @@ from .roq import BilbyROQParamsRangeError, ROQGravitationalWaveTransient
 from .multiband import MBGravitationalWaveTransient
 from .relative import RelativeBinningGravitationalWaveTransient
 from .studentt import StudentTGravitationalWaveTransient
-from .whittle import WhittleGravitationalWaveTransient
+from .whittle import (
+    GaussianParametricGravitationalWaveTransient,
+    WhittleGravitationalWaveTransient,
+)
 
 from ..source import lal_binary_black_hole
 from ..waveform_generator import WaveformGenerator

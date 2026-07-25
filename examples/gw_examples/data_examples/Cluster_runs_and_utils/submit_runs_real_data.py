@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-"""Generate and optionally submit heavy-tailed bilby_pipe runs.
+"""Generate and optionally submit parametric-noise bilby_pipe runs.
 
-Generate either Student-t, Hyperbolic, or Gaussian-likelihood runs.
-Heavy-tailed runs may also generate a single-band Gaussian companion run by
-default.
+Generate Student-t, Hyperbolic, Gaussian-parametric, or Gaussian-likelihood
+runs. Parametric-noise runs may also generate a single-band Gaussian companion
+run by default.
 """
 
 from __future__ import annotations
@@ -58,12 +58,15 @@ DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
+PARAMETRIC_NOISE_LIKELIHOODS = (*HEAVY_TAILED_LIKELIHOODS, "gaussian-parametric")
 DEFAULT_HYPERBOLIC_ALPHA = 10.0
 DEFAULT_HYPERBOLIC_DELTA = 1.0
 DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_ALPHA_MAX = 30.0
 DEFAULT_HYPERBOLIC_DELTA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_DELTA_MAX = 30.0
+DEFAULT_LOG_PSD_SCALE_MIN = -1.0
+DEFAULT_LOG_PSD_SCALE_MAX = 1.0
 DEFAULT_REQUEST_CPUS = 16
 DEFAULT_REQUEST_MEMORY_GB = 24.0
 WORKING_DIRECTORY_PLACEHOLDER = "__WORKING_DIRECTORY__"
@@ -215,8 +218,8 @@ def outdir_label(value: str) -> str:
 def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate bilby_pipe ini/prior files for Student-t, Hyperbolic, or "
-            "Gaussian runs and optionally submit them."
+            "Generate bilby_pipe ini/prior files for Student-t, Hyperbolic, "
+            "Gaussian-parametric, or Gaussian runs and optionally submit them."
         )
     )
     parser.add_argument(
@@ -279,11 +282,12 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--likelihood",
-        choices=(*HEAVY_TAILED_LIKELIHOODS, "gaussian"),
+        choices=(*PARAMETRIC_NOISE_LIKELIHOODS, "gaussian"),
         default="gaussian",
         help=(
-            "Primary recovery likelihood to generate. Gaussian runs always use "
-            f"the default single frequency band ({DEFAULT_NUM_FREQUENCY_BANDS})."
+            "Primary recovery likelihood to generate. Standard Gaussian runs "
+            "always use the default single frequency band "
+            f"({DEFAULT_NUM_FREQUENCY_BANDS})."
         ),
     )
     parser.add_argument(
@@ -291,19 +295,19 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "When a heavy-tailed likelihood is selected, also generate a "
-            "single-band Gaussian companion run. Enabled by default for "
-            "Student-t and Hyperbolic runs; pass --no-add-gaussian to disable it."
+            "When a parametric-noise likelihood is selected, also generate a "
+            "single-band standard-Gaussian companion run. Enabled by default; "
+            "pass --no-add-gaussian to disable it."
         ),
     )
     parser.add_argument(
         "--noise-only-inference",
         action="store_true",
         help=(
-            "Generate a heavy-tailed run that infers only the noise "
+            "Generate a parametric-noise run that infers only the noise "
             "parameter(s). The recovery waveform source model is replaced with "
             "an identically zero waveform and the generated prior keeps only "
-            "the Student-t nu or Hyperbolic alpha/delta parameter(s)."
+            "the selected likelihood's noise parameter(s)."
         ),
     )
     parser.add_argument(
@@ -312,7 +316,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         dest="detector_dependent_noise",
         action="store_true",
         help=(
-            "Generate detector-specific noise parameters for heavy-tailed "
+            "Generate detector-specific noise parameters for parametric-noise "
             "likelihoods."
         ),
     )
@@ -444,15 +448,10 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
         "num_frequency_bands_was_explicit",
         args.num_frequency_bands is not None,
     )
-    resolved_num_frequency_bands = (
-        DEFAULT_NUM_FREQUENCY_BANDS
-        if args.num_frequency_bands is None
-        else args.num_frequency_bands
-    )
     if args.likelihood == "gaussian":
         if args.add_gaussian is True:
             raise ValueError(
-                "--add-gaussian requires --likelihood student or hyperbolic. "
+                "--add-gaussian requires a parametric-noise likelihood. "
                 "Gaussian is already the selected primary likelihood."
             )
         if explicit_num_frequency_bands:
@@ -465,7 +464,7 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
         return [args.likelihood]
     if args.add_gaussian is not False:
         return [args.likelihood, "gaussian"]
-    if args.likelihood in HEAVY_TAILED_LIKELIHOODS:
+    if args.likelihood in PARAMETRIC_NOISE_LIKELIHOODS:
         return [args.likelihood]
     raise ValueError(f"Unknown likelihood selection: {args.likelihood}")
 
@@ -474,13 +473,17 @@ def heavy_tailed_likelihood_selected(likelihood: str) -> bool:
     return likelihood in HEAVY_TAILED_LIKELIHOODS
 
 
+def parametric_noise_likelihood_selected(likelihood: str) -> bool:
+    return likelihood in PARAMETRIC_NOISE_LIKELIHOODS
+
+
 def validate_noise_only_arguments(args: argparse.Namespace) -> None:
     if not getattr(args, "noise_only_inference", False):
         return
-    if not heavy_tailed_likelihood_selected(args.likelihood):
+    if not parametric_noise_likelihood_selected(args.likelihood):
         raise ValueError(
-            "--noise-only-inference requires --likelihood student or hyperbolic because "
-            "Gaussian recovery has no sampled noise parameters."
+            "--noise-only-inference requires a parametric-noise likelihood "
+            "because standard Gaussian recovery has no sampled noise parameters."
         )
     if args.add_gaussian is True:
         raise ValueError(
@@ -667,6 +670,36 @@ def build_hyperbolic_priors(
     return "\n".join(lines)
 
 
+def build_log_psd_scale_priors(
+    band_count: int,
+    *,
+    detector_dependent_noise: bool = False,
+    detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+) -> str:
+    if detector_dependent_noise:
+        if band_count == 1:
+            parameter_keys = [
+                f"log_psd_scale_{detector}" for detector in detectors
+            ]
+        else:
+            parameter_keys = [
+                f"log_psd_scale_{detector}_{index}"
+                for detector in detectors
+                for index in range(1, band_count + 1)
+            ]
+    elif band_count == 1:
+        parameter_keys = ["log_psd_scale"]
+    else:
+        parameter_keys = [
+            f"log_psd_scale_{index}" for index in range(1, band_count + 1)
+        ]
+    return "\n".join(
+        f"{key} = Uniform(name='{key}', minimum={DEFAULT_LOG_PSD_SCALE_MIN}, "
+        f"maximum={DEFAULT_LOG_PSD_SCALE_MAX})"
+        for key in parameter_keys
+    )
+
+
 def render_prior(
     prior_template: str,
     band_count: int,
@@ -688,19 +721,25 @@ def render_prior(
         )
 
     if hypothesis == "student":
-        heavy_tailed_prior_block = build_nu_priors(
+        noise_prior_block = build_nu_priors(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
         )
     elif hypothesis == "hyperbolic":
-        heavy_tailed_prior_block = build_hyperbolic_priors(
+        noise_prior_block = build_hyperbolic_priors(
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+        )
+    elif hypothesis == "gaussian-parametric":
+        noise_prior_block = build_log_psd_scale_priors(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
         )
     elif hypothesis == "gaussian":
-        heavy_tailed_prior_block = ""
+        noise_prior_block = ""
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
     sine_gaussian_prior_block = build_sine_gaussian_prior_block(
@@ -710,7 +749,7 @@ def render_prior(
     )
     rendered = prior_template.replace(
         "__NU_PRIORS__",
-        combine_prior_blocks(heavy_tailed_prior_block, sine_gaussian_prior_block),
+        combine_prior_blocks(noise_prior_block, sine_gaussian_prior_block),
     )
     for class_name in (
         "UniformInComponentsChirpMass",
@@ -977,6 +1016,12 @@ def render_noise_only_prior(
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
         )
+    elif hypothesis == "gaussian-parametric":
+        noise_prior_block = build_log_psd_scale_priors(
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+        )
     elif hypothesis == "gaussian":
         noise_prior_block = ""
     else:
@@ -1129,6 +1174,22 @@ def render_ini(
                 "}"
             ),
         )
+    elif hypothesis == "gaussian-parametric":
+        rendered = replace_line(
+            rendered,
+            "likelihood-type",
+            "bilby.gw.likelihood.GaussianParametricGravitationalWaveTransient",
+        )
+        rendered = replace_line(
+            rendered,
+            "extra-likelihood-kwargs",
+            (
+                "{'log_psd_scale': 0.0, 'infer_log_psd_scale': True, "
+                f"'num_psd_frequency_bands': {band_count}, "
+                f"'detector_dependent_noise': {detector_dependent_noise}"
+                "}"
+            ),
+        )
     elif hypothesis == "gaussian":
         rendered = replace_line(
             rendered,
@@ -1270,6 +1331,37 @@ def prepare_run(
             f"{run_band_count}{waveform_suffix}.ini"
         ).resolve()
         run_detector_dependent_noise = detector_dependent_noise
+    elif hypothesis == "gaussian-parametric":
+        run_band_count = band_count
+        mode_suffix = (
+            "_detector_dependent_noise" if detector_dependent_noise else ""
+        )
+        run_directory_stem = explicit_run_directory_stem(
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            waveform_suffix=waveform_suffix,
+        )
+        label = explicit_run_label(
+            label_prefix=label_prefix,
+            hypothesis=hypothesis,
+            band_count=run_band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            waveform_suffix=waveform_suffix,
+        )
+        run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
+        run_outdir = f"{outdir_base}/{run_directory_name}"
+        prior_path = (
+            prior_dir
+            / f"{file_prefix}_gaussian_parametric{mode_suffix}_N"
+            f"{run_band_count}{waveform_suffix}.prior"
+        ).resolve()
+        ini_path = (
+            ini_dir
+            / f"{file_prefix}_gaussian_parametric{mode_suffix}_N"
+            f"{run_band_count}{waveform_suffix}.ini"
+        ).resolve()
+        run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "gaussian":
         run_band_count = DEFAULT_NUM_FREQUENCY_BANDS
         run_directory_stem = explicit_run_directory_stem(
@@ -1334,7 +1426,7 @@ def prepare_run(
 
     band_fragment = (
         f" N={run_band_count}"
-        if heavy_tailed_likelihood_selected(hypothesis)
+        if parametric_noise_likelihood_selected(hypothesis)
         else ""
     )
     print(
@@ -1456,7 +1548,7 @@ def main() -> int:
         for hypothesis, band_count in run_requests:
             if (
                 hypothesis == "gaussian"
-                and args.likelihood in HEAVY_TAILED_LIKELIHOODS
+                and args.likelihood in PARAMETRIC_NOISE_LIKELIHOODS
                 and not args.dry_run
             ):
                 waveform_suffix = (

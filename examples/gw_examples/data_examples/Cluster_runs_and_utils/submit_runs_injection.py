@@ -123,6 +123,8 @@ DEFAULT_INJECTION_NOISE = "student"
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
 DEFAULT_HYPERBOLIC_ALPHA = "10.0"
 DEFAULT_HYPERBOLIC_DELTA = "1.0"
+DEFAULT_REQUEST_CPUS = 28
+DEFAULT_REQUEST_MEMORY_GB = 24.0
 DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_ALPHA_MAX = 30.0
 DEFAULT_HYPERBOLIC_DELTA_MIN = 1e-6
@@ -1877,6 +1879,26 @@ def render_ini(
         "container",
         args.container_image or "None",
     )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-memory",
+        str(DEFAULT_REQUEST_MEMORY_GB),
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-memory-generation",
+        str(DEFAULT_REQUEST_MEMORY_GB),
+        insert_after="request-memory",
+    )
+    rendered = replace_or_append_line(
+        rendered,
+        "request-cpus",
+        str(DEFAULT_REQUEST_CPUS),
+        insert_after="request-memory-generation",
+    )
+    rendered = replace_or_append_line(rendered, "transfer-files", "True")
+    rendered = replace_or_append_line(rendered, "osg", "True")
+    rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(
@@ -1923,6 +1945,11 @@ def render_ini(
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(args.nlive, sine_gaussian_config)
     sampler_kwargs["naccept"] = args.naccept
+    if "npool" in sampler_kwargs:
+        sampler_kwargs["npool"] = min(
+            int(sampler_kwargs["npool"]),
+            DEFAULT_REQUEST_CPUS,
+        )
     if getattr(args, "maxmcmc", None) is not None:
         sampler_kwargs["maxmcmc"] = args.maxmcmc
     rendered = replace_line(

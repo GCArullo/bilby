@@ -13,6 +13,26 @@ GWTC5="$GWTC_CONFIGS/GWTC-5"
 
 Catalog-derived templates and priors live under `$GWTC_CONFIGS`.
 
+## High-mass catalog runs
+
+`$GWTC_CONFIGS/MASS_CLASSIFICATION.md` records the published LVK median
+source-frame total mass and high/low classification for every configured
+GWTC-2.1 through GWTC-5 event. High mass means a median strictly above
+`50 M_sun`; the equality case is assigned to low mass.
+
+Use one flag to prepare the complete high-mass catalog:
+
+```
+python "$REAL" \
+  --high-mass-catalog \
+  --likelihood hyperbolic \
+  --num-frequency-bands 1 \
+  --dry-run
+```
+
+This applies every other command-line option to each high-mass event. Remove
+`--dry-run` to submit them.
+
 ## Gaussian likelihood with inferred PSD corrections
 
 Use `gaussian-parametric` to sample one PSD correction in each of `N`

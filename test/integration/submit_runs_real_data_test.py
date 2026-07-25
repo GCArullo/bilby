@@ -46,6 +46,7 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.maxmcmc is None
     assert args.require_epnfs is False
     assert args.joint is False
+    assert args.high_mass_catalog is False
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
@@ -88,6 +89,70 @@ def test_all_catalog_manifest_events_are_available(catalog, count, examples):
         defaults = module.EVENT_DEFAULTS[event]
         assert defaults.run_subdir == f"GWTC_parametric_noise/Runs/{event}"
         assert defaults.working_directory == f"{module.CATALOG_CONFIGS_DIR}/{catalog}"
+
+
+def test_mass_classification_covers_catalog_manifests():
+    module = load_submit_runs_real_data_module()
+    classification_path = (
+        SCRIPT_PATH.parent
+        / module.CATALOG_CONFIGS_DIR
+        / module.MASS_CLASSIFICATION_FILE
+    )
+    rows = []
+    for line in classification_path.read_text(encoding="utf-8").splitlines():
+        columns = [column.strip() for column in line.strip("|").split("|")]
+        if len(columns) == 4 and columns[-1] in {"high", "low"}:
+            rows.append(columns)
+
+    manifest_events = set()
+    for catalog in ("GWTC-2.1", "GWTC-3", "GWTC-4", "GWTC-5"):
+        manifest_path = (
+            SCRIPT_PATH.parent
+            / module.CATALOG_CONFIGS_DIR
+            / catalog
+            / "manifest.json"
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_events.update(item["event"] for item in manifest["events"])
+
+    assert len(rows) == 280
+    assert {row[1] for row in rows} == manifest_events
+    assert all(
+        (float(row[2]) > 50) == (row[-1] == "high")
+        for row in rows
+    )
+    assert tuple(row[1] for row in rows if row[-1] == "high") == (
+        module.HIGH_MASS_EVENTS
+    )
+    assert len(module.HIGH_MASS_EVENTS) == 174
+
+
+def test_high_mass_catalog_flag_runs_every_documented_event(monkeypatch):
+    module = load_submit_runs_real_data_module()
+    commands = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--high-mass-catalog",
+            "--likelihood",
+            "hyperbolic",
+            "--dry-run",
+        ],
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda command, check: commands.append(command),
+    )
+
+    assert module.main() == 0
+    assert [command[-1] for command in commands] == list(
+        module.HIGH_MASS_EVENTS
+    )
+    assert all(command[-2] == "--event" for command in commands)
+    assert all("--high-mass-catalog" not in command for command in commands)
 
 
 def test_special_event_templates_and_priors_are_grouped_together():

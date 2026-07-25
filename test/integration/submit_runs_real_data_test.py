@@ -364,7 +364,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
     assert "distance-marginalization=False\n" in ini_text
-    assert "request-cpus=28\n" in ini_text
+    assert "request-cpus=16\n" in ini_text
     assert "request-memory=24.0\n" in ini_text
     assert "request-memory-generation=24.0\n" in ini_text
     assert "transfer-files=True\n" in ini_text

@@ -8,6 +8,7 @@ REAL="$UTILS/submit_runs_real_data.py"
 INI="$UTILS/Special_events_configs/templates/GW150914_t_student_igwn_template.ini"
 PRIOR="$UTILS/Special_events_configs/priors/GW150914_igwn_template.prior"
 WORKING_DIRECTORY="$UTILS/LVK_posteriors/GW150914"
+OUTPUT="$HOME/public_html/GW150914/Runs"
 ```
 
 ## Prepare the IGWN data products
@@ -36,6 +37,7 @@ python "$REAL" \
   --ini-template "$INI" \
   --prior-template "$PRIOR" \
   --working-directory "$WORKING_DIRECTORY" \
+  --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
   --range \
   --num-frequency-bands 4
@@ -49,6 +51,7 @@ python "$REAL" \
   --ini-template "$INI" \
   --prior-template "$PRIOR" \
   --working-directory "$WORKING_DIRECTORY" \
+  --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
   --num-frequency-bands 1 \
   --disable-calibration \
@@ -65,6 +68,7 @@ python "$REAL" \
   --ini-template "$INI" \
   --prior-template "$PRIOR" \
   --working-directory "$WORKING_DIRECTORY" \
+  --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
   --range \
   --num-frequency-bands 4 \

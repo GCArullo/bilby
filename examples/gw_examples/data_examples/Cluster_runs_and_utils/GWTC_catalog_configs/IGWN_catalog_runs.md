@@ -31,7 +31,7 @@ python "$REAL" \
 Remove `--dry-run` to submit. Seven glitch-subtracted events first require the
 public L1 frames downloaded by `python "$GWTC21/download_glitch_data.py"`.
 By default, each event is written below
-`/home/gregorio.carullo/public_html/<event>/Runs`.
+`/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
 O3a event directories retain the time suffix from the full record name so
 events occurring on the same date remain distinct.
 

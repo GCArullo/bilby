@@ -169,7 +169,7 @@ def load_catalog_event_defaults() -> dict[str, EventDefaults]:
             prefix = f"{event}_IGWN_C01_{approximant}"
             defaults[event] = EventDefaults(
                 label_prefix=f"{event}_{approximant}",
-                run_subdir=f"{event}/Runs",
+                run_subdir=f"GWTC_parametric_noise/Runs/{event}",
                 file_prefix=prefix,
                 ini_template=f"{CATALOG_CONFIGS_DIR}/{catalog}/{item['template']}",
                 prior_template=f"{CATALOG_CONFIGS_DIR}/{catalog}/{item['prior']}",

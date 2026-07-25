@@ -83,7 +83,7 @@ def test_all_catalog_manifest_events_are_available(catalog, count, examples):
         assert set(gw200306["psd_detectors"]) == {"H1", "L1"}
     for event in events:
         defaults = module.EVENT_DEFAULTS[event]
-        assert defaults.run_subdir == f"{event}/Runs"
+        assert defaults.run_subdir == f"GWTC_parametric_noise/Runs/{event}"
         assert defaults.working_directory == f"{module.CATALOG_CONFIGS_DIR}/{catalog}"
 
 

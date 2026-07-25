@@ -159,6 +159,12 @@ def test_special_event_templates_and_priors_are_grouped_together():
     module = load_submit_runs_real_data_module()
     special_dir = SCRIPT_PATH.parent / module.SPECIAL_EVENTS_CONFIGS_DIR
 
+    assert module.EVENT_DEFAULTS["GW241127_SEOB"].working_directory == str(
+        Path.home() / "LVK_posteriors/GW241127_061008"
+    )
+    assert module.EVENT_DEFAULTS["GW241127_pSEOB"].working_directory == str(
+        Path.home() / "LVK_posteriors/GW241127_061008"
+    )
     assert {path.name for path in (special_dir / "templates").iterdir()} == {
         "GW150914_t_student_igwn_template.ini",
         "GW190521_030229_LVK_NRSur7dq4.ini",

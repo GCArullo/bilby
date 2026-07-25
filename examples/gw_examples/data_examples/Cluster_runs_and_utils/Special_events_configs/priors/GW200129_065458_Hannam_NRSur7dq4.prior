@@ -1,3 +1,4 @@
+# This special-event prior is consumed by submit_runs_real_data.py.
 a_1 = Uniform(minimum=0, maximum=0.99, name='a_1', latex_label='$a_1$', unit=None, boundary=None)
 a_2 = Uniform(minimum=0, maximum=0.99, name='a_2', latex_label='$a_2$', unit=None, boundary=None)
 chirp_mass = UniformInComponentsChirpMass(minimum=14.5, maximum=49.0, name='chirp_mass', latex_label='$\\mathcal{M}$', unit='$M_{\\odot}$', boundary=None)

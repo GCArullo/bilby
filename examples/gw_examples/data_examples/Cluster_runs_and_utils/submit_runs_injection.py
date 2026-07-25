@@ -98,9 +98,14 @@ DEFAULT_PESUMMARY_ARGUMENTS = {
     "ignore_parameters": ["recalib*"],
 }
 INI_TEMPLATE_PATH = (
-    SCRIPT_DIR / "Initialisation_file_templates" / "GW231123_t_student_template.ini"
+    SCRIPT_DIR
+    / "Special_events_configs"
+    / "templates"
+    / "GW231123_t_student_template.ini"
 )
-PRIOR_TEMPLATE_PATH = SCRIPT_DIR / "Prior_templates" / "GW231123_template.prior"
+PRIOR_TEMPLATE_PATH = (
+    SCRIPT_DIR / "Special_events_configs" / "priors" / "GW231123_template.prior"
+)
 DEFAULT_POSTERIOR_PATH = (
     SCRIPT_DIR / "LVK_posteriors" / "GW231123" / "posterior_samples.h5"
 )

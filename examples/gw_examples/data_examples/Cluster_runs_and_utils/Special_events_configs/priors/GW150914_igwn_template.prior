@@ -1,5 +1,5 @@
 # This special-event prior is consumed by submit_runs_real_data.py.
-# The Student-t prior block below is filled in automatically.
+# The Student-t or Hyperbolic prior block below is filled in automatically.
 
 chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=21.418182160215295, maximum=41.97447913941358, unit='$M_{\{\odot\}}')
 mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.05, maximum=1.0)

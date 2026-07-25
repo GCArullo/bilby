@@ -87,6 +87,25 @@ def test_all_catalog_manifest_events_are_available(catalog, count, examples):
         assert defaults.working_directory == f"{module.CATALOG_CONFIGS_DIR}/{catalog}"
 
 
+def test_special_event_templates_and_priors_are_grouped_together():
+    module = load_submit_runs_real_data_module()
+    special_dir = SCRIPT_PATH.parent / module.SPECIAL_EVENTS_CONFIGS_DIR
+
+    assert {path.name for path in (special_dir / "templates").iterdir()} == {
+        "GW150914_t_student_igwn_template.ini",
+        "GW200129_065458_Hannam_NRSur7dq4.ini",
+        "GW230814_t_student_pSEOB_template.ini",
+        "GW231123_t_student_template.ini",
+    }
+    assert {path.name for path in (special_dir / "priors").iterdir()} == {
+        "GW150914_igwn_template.prior",
+        "GW200129_065458_Hannam_NRSur7dq4.prior",
+        "GW230814_gr_template.prior",
+        "GW230814_template.prior",
+        "GW231123_template.prior",
+    }
+
+
 def test_accounting_user_defaults_to_home_basename(monkeypatch):
     monkeypatch.setenv("HOME", "/home/name.surname")
 

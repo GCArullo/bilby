@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Non-Gaussian Runs With Calibration Uncertainty</title>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']]
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f1e8;
+      --panel: #fffdf8;
+      --ink: #1f1f1f;
+      --muted: #5b564d;
+      --line: #d8d0c3;
+      --accent: #0f5c4d;
+      --code-bg: #f0ebe2;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(15, 92, 77, 0.10), transparent 30%),
+        linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+      color: var(--ink);
+      font: 17px/1.6 Georgia, "Times New Roman", serif;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 48px 24px 72px;
+    }
+
+    h1, h2 {
+      line-height: 1.2;
+      margin: 0 0 16px;
+      font-weight: 700;
+    }
+
+    h1 {
+      font-size: 2.4rem;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin-top: 36px;
+      font-size: 1.35rem;
+    }
+
+    p {
+      margin: 0 0 16px;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 52rem;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+      margin-top: 24px;
+    }
+
+    code {
+      background: var(--code-bg);
+      border-radius: 6px;
+      padding: 0.12rem 0.35rem;
+      font-size: 0.95em;
+    }
+
+    ul {
+      margin: 0 0 16px 1.2rem;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 0.45rem;
+    }
+
+    .note {
+      border-left: 4px solid var(--accent);
+      padding-left: 14px;
+      color: var(--muted);
+    }
+
+    .refs {
+      font-size: 0.96rem;
+      color: var(--muted);
+    }
+
+    a {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Non-Gaussian Runs With Calibration Uncertainty</h1>
+    <p class="lead">
+      This page explains what it means, in bilby and bilby_pipe, to run the non-Gaussian likelihoods with
+      <code>calibration-model=CubicSpline</code>,
+      <code>calibration-correction-type=template</code>,
+      the same envelope files for H1 and L1, and
+      <code>calibration-marginalization=False</code>.
+    </p>
+
+    <section class="panel">
+      <h2>1. Common calibrated waveform model</h2>
+      <p>
+        Let \( \theta \) denote the astrophysical source parameters, and let \( \lambda_I \) denote the
+        calibration nuisance parameters for detector \( I \in \{H1, L1\} \).
+        bilby applies calibration as a multiplicative correction to the detector waveform:
+      </p>
+      \[
+      h_I(f; \theta, \lambda_I) = C_I(f; \lambda_I)\, h_I^{(0)}(f; \theta),
+      \]
+      <p>
+        where \( h_I^{(0)} \) is the usual detector response before calibration, and \( C_I \) is the
+        calibration factor.
+      </p>
+      <p>
+        The residual used by all likelihoods is therefore
+      </p>
+      \[
+      r_I(f) = d_I(f) - C_I(f; \lambda_I)\, h_I^{(0)}(f; \theta).
+      \]
+      <p>
+        So Gaussian, Student-\(t\), and hyperbolic runs all use the same calibrated signal model.
+        What changes is only how the residual \( r_I(f) \) is scored.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>2. What the cubic-spline calibration parameters are</h2>
+      <p>
+        With <code>calibration-model=CubicSpline</code>, bilby_pipe builds priors on spline-node amplitude and
+        phase offsets for each detector:
+      </p>
+      \[
+      \lambda_I =
+      \left\{
+      A^I_0, \dots, A^I_{N-1},
+      \phi^I_0, \dots, \phi^I_{N-1}
+      \right\}.
+      \]
+      <p>
+        These node values are interpolated in log-frequency to obtain smooth functions
+        \( \delta A_I(f) \) and \( \delta \phi_I(f) \).
+        The implemented calibration factor is
+      </p>
+      \[
+      C_I(f; \lambda_I)
+      =
+      \bigl(1 + \delta A_I(f)\bigr)
+      \frac{2 + i\,\delta \phi_I(f)}{2 - i\,\delta \phi_I(f)}.
+      \]
+      <p>
+        The envelope files do not force H1 and L1 to share the same sampled nuisance parameters.
+        They only mean that the two detectors use the same prior construction scheme, with separate
+        detector-labeled parameters such as \(A^{H1}_k\) and \(A^{L1}_k\).
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>3. Meaning of <code>calibration-correction-type=template</code></h2>
+      <p>
+        bilby distinguishes two conventions for calibration corrections.
+        In the template convention,
+      </p>
+      \[
+      d_I(f) = C_I(f)\, h_I^{(0)}(f; \theta) + n_I(f),
+      \]
+      <p>
+        so the calibration factor multiplies the waveform template directly.
+      </p>
+      <p>
+        In the opposite data convention one would write
+      </p>
+      \[
+      h_I(f) = \eta_I(f)\, d_I(f), \qquad \eta_I(f) = C_I(f)^{-1}.
+      \]
+      <p>
+        Therefore <code>calibration-correction-type=template</code> means the calibration envelope is interpreted
+        as a template-to-data correction, not its inverse.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>4. Meaning of <code>calibration-marginalization=False</code></h2>
+      <p>
+        This is the key point. These runs are <em>not</em> marginalizing over a pre-drawn bank of response curves.
+        Instead, the sampler explicitly samples the spline calibration nuisance parameters together with the
+        astrophysical and noise-model parameters.
+      </p>
+      <p>
+        The target posterior is
+      </p>
+      \[
+      p(\theta, \lambda_{H1}, \lambda_{L1}, \psi \mid d)
+      \propto
+      \mathcal{L}\bigl(d \mid \theta, \lambda_{H1}, \lambda_{L1}, \psi\bigr)\,
+      p(\theta)\, p(\lambda_{H1})\, p(\lambda_{L1})\, p(\psi),
+      \]
+      <p>
+        where \( \psi \) denotes the noise parameters.
+        For example:
+      </p>
+      <ul>
+        <li>\( \psi = \nu \) for the Student-\(t\) likelihood.</li>
+        <li>\( \psi = (\alpha, \delta) \) for the hyperbolic likelihood.</li>
+      </ul>
+      <p>
+        Source-only posteriors are then obtained by integrating out the calibration parameters from the samples.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>5. What calibration marginalization would have been instead</h2>
+      <p>
+        If <code>calibration-marginalization=True</code>, bilby would use a different calculation:
+        draw or load a finite set of calibration response curves \( \lambda^{(j)} \), and replace the likelihood by
+      </p>
+      \[
+      \mathcal{L}_{\mathrm{cal\,marg}}(d \mid \theta, \psi)
+      =
+      \int d\lambda\;
+      \mathcal{L}(d \mid \theta, \lambda, \psi)\, p(\lambda)
+      \approx
+      \frac{1}{N_{\mathrm{curves}}}
+      \sum_{j=1}^{N_{\mathrm{curves}}}
+      \mathcal{L}\bigl(d \mid \theta, \lambda^{(j)}, \psi\bigr).
+      \]
+      <p>
+        That is a discrete average over response curves.
+        Your runs are explicitly not doing this.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>6. What changes in the non-Gaussian runs</h2>
+      <p>
+        The non-Gaussian likelihoods inherit the same calibrated detector response machinery as the Gaussian run.
+        The only change is the functional form of the likelihood for the residual \(r_I(f)\).
+      </p>
+      <p>
+        Schematic examples are:
+      </p>
+      \[
+      \log \mathcal{L}_{\mathrm{Gauss}}
+      \sim
+      -\frac{1}{2}
+      \sum_{I,f}
+      \frac{|r_I(f)|^2}{\sigma_I^2(f)},
+      \]
+      \[
+      \log \mathcal{L}_{\mathrm{Student}\mbox{-}t}
+      \sim
+      -\frac{1}{2}
+      \sum_{I,f}
+      \bigl(\nu + 2\bigr)
+      \log\!\left(1 + \frac{|r_I(f)|^2}{\nu\,\sigma_I^2(f)}\right),
+      \]
+      <p>
+        with a different heavy-tailed form again for the hyperbolic case.
+      </p>
+      <p class="note">
+        So “non-Gaussian run with calibration” means:
+        use a heavy-tailed likelihood for the same calibrated residual, while still sampling the spline calibration
+        nuisance parameters from priors derived from the envelope files.
+      </p>
+    </section>
+
+    <section class="panel refs">
+      <h2>Code References</h2>
+      <ul>
+        <li><a href="../bilby/gw/likelihood/studentt.py">bilby/gw/likelihood/studentt.py</a></li>
+        <li><a href="../bilby/gw/likelihood/hyperbolic.py">bilby/gw/likelihood/hyperbolic.py</a></li>
+        <li><a href="../bilby/gw/likelihood/base.py">bilby/gw/likelihood/base.py</a></li>
+        <li><a href="../bilby/gw/detector/interferometer.py">bilby/gw/detector/interferometer.py</a></li>
+        <li><a href="../bilby/gw/detector/calibration.py">bilby/gw/detector/calibration.py</a></li>
+        <li><a href="../../bilby_pipe_greg/bilby_pipe/input.py">../bilby_pipe_greg/bilby_pipe/input.py</a></li>
+        <li><a href="../../bilby_pipe_greg/bilby_pipe/data_generation.py">../bilby_pipe_greg/bilby_pipe/data_generation.py</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

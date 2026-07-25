@@ -28,7 +28,8 @@ RECORD_ID = 6513631
 ROOT = Path(__file__).resolve().parent
 BASE_TEMPLATE = (
     ROOT.parents[1]
-    / "Initialisation_file_templates"
+    / "Special_events_configs"
+    / "templates"
     / "GW150914_t_student_igwn_template.ini"
 )
 EVENT_PATTERN = re.compile(r"v2-(GW\d{6}(?:_\d{6})?)_PEDataRelease_mixed_nocosmo\.h5$")

@@ -41,6 +41,7 @@ DEFAULT_CONTAINER_IMAGES_FILE = (
     Path(__file__).resolve().parent / "container_creation" / "container_images.json"
 )
 CATALOG_CONFIGS_DIR = "GWTC_catalog_configs"
+SPECIAL_EVENTS_CONFIGS_DIR = "Special_events_configs"
 
 
 def default_accounting_user() -> str:
@@ -111,8 +112,14 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         label_prefix="GW150914_IMRPhenomXPHM",
         run_subdir="GWTC_parametric_noise/Runs/GW150914",
         file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
-        ini_template="Initialisation_file_templates/GW150914_t_student_igwn_template.ini",
-        prior_template="Prior_templates/GW150914_igwn_template.prior",
+        ini_template=(
+            f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
+            "GW150914_t_student_igwn_template.ini"
+        ),
+        prior_template=(
+            f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
+            "GW150914_igwn_template.prior"
+        ),
         working_directory="LVK_posteriors/GW150914",
         detectors=("H1", "L1"),
     ),
@@ -120,8 +127,14 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         label_prefix="GW231123",
         run_subdir="GW231123/t_Student/Runs",
         file_prefix="GW231123",
-        ini_template="Initialisation_file_templates/GW231123_t_student_template.ini",
-        prior_template="Prior_templates/GW231123_template.prior",
+        ini_template=(
+            f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
+            "GW231123_t_student_template.ini"
+        ),
+        prior_template=(
+            f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
+            "GW231123_template.prior"
+        ),
         working_directory="LVK_posteriors/GW231123",
         detectors=("H1", "L1"),
     ),
@@ -129,8 +142,14 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         label_prefix="GW230814_pSEOB",
         run_subdir="GW230814/t_Student_pSEOB/Runs",
         file_prefix="GW230814",
-        ini_template="Initialisation_file_templates/GW230814_t_student_pSEOB_template.ini",
-        prior_template="Prior_templates/GW230814_template.prior",
+        ini_template=(
+            f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
+            "GW230814_t_student_pSEOB_template.ini"
+        ),
+        prior_template=(
+            f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
+            "GW230814_template.prior"
+        ),
         working_directory="LVK_posteriors/GW230814",
         detectors=("L1",),
     ),
@@ -172,11 +191,11 @@ EVENT_DEFAULTS["GW200129_065458_Hannam"] = EventDefaults(
     run_subdir="GWTC_parametric_noise/Runs/GW200129_065458_Hannam",
     file_prefix="GW200129_065458_Hannam_NRSur7dq4",
     ini_template=(
-        f"{CATALOG_CONFIGS_DIR}/GWTC-3/templates/"
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
         "GW200129_065458_Hannam_NRSur7dq4.ini"
     ),
     prior_template=(
-        f"{CATALOG_CONFIGS_DIR}/GWTC-3/priors/"
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
         "GW200129_065458_Hannam_NRSur7dq4.prior"
     ),
     working_directory=f"{CATALOG_CONFIGS_DIR}/GWTC-3",

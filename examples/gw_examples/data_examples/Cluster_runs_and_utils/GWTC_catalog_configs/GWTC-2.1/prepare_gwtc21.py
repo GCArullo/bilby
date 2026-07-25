@@ -453,6 +453,10 @@ def make_template(
     calibration_detectors: list[str],
 ) -> str:
     text = BASE_TEMPLATE.read_text(encoding="utf-8")
+    text = text.replace(
+        "# This special-event template is consumed by submit_runs_real_data.py.",
+        "# This file is a template consumed by submit_runs_real_data.py.",
+    )
     detectors = settings["detectors"]
     run_dir = sanitized_run_name(run_name)
     data_root = f"__WORKING_DIRECTORY__/data/{event}/{run_dir}"

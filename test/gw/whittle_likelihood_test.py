@@ -41,11 +41,13 @@ class TestWhittleGWTransient(unittest.TestCase):
             interferometers=self.interferometers,
             waveform_generator=self.waveform_generator,
         )
-        whittle_likelihood = bilby.gw.likelihood.WhittleGravitationalWaveTransient(
-            interferometers=self.interferometers,
-            waveform_generator=self.waveform_generator,
-            log_psd_scale=0.0,
-            infer_log_psd_scale=False,
+        whittle_likelihood = (
+            bilby.gw.likelihood.GaussianParametricGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                log_psd_scale=0.0,
+                infer_log_psd_scale=False,
+            )
         )
 
         self.assertAlmostEqual(
@@ -112,6 +114,67 @@ class TestWhittleGWTransient(unittest.TestCase):
             likelihood.noise_parameter_keys,
             ["log_psd_scale_1", "log_psd_scale_2"],
         )
+        self.assertAlmostEqual(likelihood.log_likelihood(parameters), manual, 7)
+
+    def test_detector_dependent_psd_scales_match_manual_likelihood(self):
+        likelihood = (
+            bilby.gw.likelihood.GaussianParametricGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                infer_log_psd_scale=True,
+                num_psd_frequency_bands=2,
+                detector_dependent_noise=True,
+            )
+        )
+        parameters = self.parameters.copy()
+        parameters.update(
+            log_psd_scale_H1_1=np.log10(2.0),
+            log_psd_scale_H1_2=np.log10(0.5),
+            log_psd_scale_L1_1=np.log10(3.0),
+            log_psd_scale_L1_2=np.log10(0.25),
+        )
+
+        resolved_parameters = likelihood._resolve_likelihood_parameters(parameters)
+        waveform_polarizations = likelihood.waveform_generator.frequency_domain_strain(
+            resolved_parameters
+        )
+        manual = 0.0
+        for interferometer in self.interferometers:
+            mask = interferometer.frequency_mask
+            frequencies = interferometer.frequency_array[mask]
+            scale2 = (
+                interferometer.power_spectral_density_array[mask]
+                * likelihood.waveform_generator.duration
+                / 4.0
+            )
+            h_f = interferometer.get_detector_response(
+                waveform_polarizations,
+                resolved_parameters,
+            )
+            residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+            abs2 = residual.real ** 2 + residual.imag ** 2
+            for band_index, band_mask in enumerate(
+                likelihood._get_frequency_band_masks(frequencies), start=1
+            ):
+                log_psd_scale = parameters[
+                    f"log_psd_scale_{interferometer.name}_{band_index}"
+                ]
+                band_scale2 = scale2[band_mask] * 10.0 ** log_psd_scale
+                manual += np.sum(
+                    -np.log(2.0 * np.pi * band_scale2)
+                    - abs2[band_mask] / (2.0 * band_scale2)
+                )
+
+        self.assertEqual(
+            likelihood.noise_parameter_keys,
+            [
+                "log_psd_scale_H1_1",
+                "log_psd_scale_H1_2",
+                "log_psd_scale_L1_1",
+                "log_psd_scale_L1_2",
+            ],
+        )
+        self.assertTrue(likelihood.meta_data["detector_dependent_noise"])
         self.assertAlmostEqual(likelihood.log_likelihood(parameters), manual, 7)
 
     def test_noise_log_evidence_integrates_sampled_psd_scale(self):

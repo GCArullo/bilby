@@ -241,7 +241,10 @@ def test_default_output_bases_are_under_public_event_directory(tmp_path):
     )
 
 
-@pytest.mark.parametrize("likelihood", ["student", "hyperbolic", "gaussian"])
+@pytest.mark.parametrize(
+    "likelihood",
+    ["student", "hyperbolic", "gaussian-parametric", "gaussian"],
+)
 def test_all_likelihoods_share_the_event_run_directory(
     monkeypatch,
     tmp_path,
@@ -264,7 +267,7 @@ def test_all_likelihoods_share_the_event_run_directory(
         "--home-dir",
         str(tmp_path),
     ]
-    if likelihood != "gaussian":
+    if likelihood in module.PARAMETRIC_NOISE_LIKELIHOODS:
         arguments.append("--no-add-gaussian")
     monkeypatch.setattr(sys, "argv", arguments)
 
@@ -444,7 +447,23 @@ def test_hyperbolic_likelihood_can_disable_default_gaussian():
     assert module.hypothesis_list(args) == ["hyperbolic"]
 
 
-def test_noise_only_inference_requires_student_likelihood():
+def test_gaussian_parametric_runs_with_gaussian_companion_by_default():
+    module = load_submit_runs_real_data_module()
+    parser = module.build_argument_parser(SCRIPT_PATH.parent)
+
+    args = parser.parse_args(
+        [
+            "--likelihood",
+            "gaussian-parametric",
+            "--num-frequency-bands",
+            "4",
+        ]
+    )
+
+    assert module.hypothesis_list(args) == ["gaussian-parametric", "gaussian"]
+
+
+def test_noise_only_inference_requires_parametric_noise_likelihood():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)
 
@@ -452,7 +471,7 @@ def test_noise_only_inference_requires_student_likelihood():
 
     with pytest.raises(
         ValueError,
-        match="--noise-only-inference requires --likelihood student or hyperbolic",
+        match="--noise-only-inference requires a parametric-noise likelihood",
     ):
         module.hypothesis_list(args)
 
@@ -470,7 +489,7 @@ def test_gaussian_likelihood_rejects_explicit_num_frequency_bands():
         module.hypothesis_list(args)
 
 
-def test_add_gaussian_requires_student_likelihood():
+def test_add_gaussian_requires_parametric_noise_likelihood():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)
 
@@ -478,7 +497,7 @@ def test_add_gaussian_requires_student_likelihood():
 
     with pytest.raises(
         ValueError,
-        match="--add-gaussian requires --likelihood student or hyperbolic",
+        match="--add-gaussian requires a parametric-noise likelihood",
     ):
         module.hypothesis_list(args)
 
@@ -689,7 +708,10 @@ def test_render_ini_writes_maxmcmc_override():
     assert sampler_kwargs["maxmcmc"] == 10000
 
 
-@pytest.mark.parametrize("likelihood", ["gaussian", "student", "hyperbolic"])
+@pytest.mark.parametrize(
+    "likelihood",
+    ["gaussian", "student", "hyperbolic", "gaussian-parametric"],
+)
 def test_main_creates_summarypages_without_recalib_parameters_for_all_likelihoods(
     monkeypatch, tmp_path, likelihood
 ):
@@ -715,7 +737,7 @@ def test_main_creates_summarypages_without_recalib_parameters_for_all_likelihood
         "--webdir-base",
         str(webdir_base),
     ]
-    if likelihood in module.HEAVY_TAILED_LIKELIHOODS:
+    if likelihood in module.PARAMETRIC_NOISE_LIKELIHOODS:
         argv.append("--no-add-gaussian")
     monkeypatch.setattr(
         sys,
@@ -1055,6 +1077,125 @@ def test_main_hyperbolic_detector_dependent_noise_writes_detector_specific_prior
     assert (
         "delta_L1_2 = Uniform(name='delta_L1_2', minimum=1e-06, maximum=30.0)"
         in hyperbolic_prior
+    )
+
+
+def test_main_gaussian_parametric_range_writes_shared_psd_scale_priors(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "gaussian-parametric",
+            "--range",
+            "--num-frequency-bands",
+            "2",
+            "--no-add-gaussian",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    assert sorted(path.name for path in ini_dir.glob("*.ini")) == [
+        "GW231123_gaussian_parametric_N1.ini",
+        "GW231123_gaussian_parametric_N2.ini",
+    ]
+    ini_text = (
+        ini_dir / "GW231123_gaussian_parametric_N2.ini"
+    ).read_text(encoding="utf-8")
+    prior_text = (
+        prior_dir / "GW231123_gaussian_parametric_N2.prior"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "likelihood-type="
+        "bilby.gw.likelihood.GaussianParametricGravitationalWaveTransient\n"
+        in ini_text
+    )
+    assert "'num_psd_frequency_bands': 2" in ini_text
+    assert "'detector_dependent_noise': False" in ini_text
+    assert (
+        "log_psd_scale_1 = Uniform(name='log_psd_scale_1', "
+        "minimum=-1.0, maximum=1.0)"
+        in prior_text
+    )
+    assert (
+        "log_psd_scale_2 = Uniform(name='log_psd_scale_2', "
+        "minimum=-1.0, maximum=1.0)"
+        in prior_text
+    )
+    assert "log_psd_scale_H1" not in prior_text
+
+
+def test_main_gaussian_parametric_detector_dependent_noise_writes_priors(
+    monkeypatch, tmp_path
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "gaussian-parametric",
+            "--num-frequency-bands",
+            "2",
+            "--detector-dependent-noise",
+            "--no-add-gaussian",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_path = (
+        ini_dir
+        / "GW231123_gaussian_parametric_detector_dependent_noise_N2.ini"
+    )
+    prior_path = (
+        prior_dir
+        / "GW231123_gaussian_parametric_detector_dependent_noise_N2.prior"
+    )
+    ini_text = ini_path.read_text(encoding="utf-8")
+    prior_text = prior_path.read_text(encoding="utf-8")
+
+    assert "'detector_dependent_noise': True" in ini_text
+    assert (
+        "log_psd_scale_H1_1 = Uniform(name='log_psd_scale_H1_1', "
+        "minimum=-1.0, maximum=1.0)"
+        in prior_text
+    )
+    assert (
+        "log_psd_scale_L1_2 = Uniform(name='log_psd_scale_L1_2', "
+        "minimum=-1.0, maximum=1.0)"
+        in prior_text
     )
 
 

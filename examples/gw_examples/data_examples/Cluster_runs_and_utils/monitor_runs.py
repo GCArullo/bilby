@@ -127,53 +127,32 @@ def latest_ads(ads: list[dict], root: Path) -> dict[str, dict]:
     return selected
 
 
+def active_roots(ads: list[dict]) -> list[Path]:
+    roots = {
+        Path(ad["Iwd"]).resolve()
+        for ad in ads
+        if ad.get("Iwd")
+    }
+    return sorted(
+        root
+        for root in roots
+        if any(root.glob("*/submit/*_analysis_*_par*.submit"))
+    )
+
+
 def paint(state: str, text: str, enabled: bool) -> str:
     if not enabled:
         return text
     return f"{COLOUR[state]}{text}{RESET}"
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Show the state and latest dZ of bilby_pipe analysis jobs."
-    )
-    parser.add_argument(
-        "run_directory",
-        nargs="?",
-        default=".",
-        type=Path,
-        help="directory containing the run subdirectories (default: current directory)",
-    )
-    parser.add_argument("--no-color", action="store_true")
-    args = parser.parse_args()
-
-    root = args.run_directory.expanduser().resolve()
+def print_snapshot(
+    root: Path,
+    queued: list[dict],
+    history: list[dict],
+    colour: bool,
+) -> None:
     submit_files = sorted(root.glob("*/submit/*_analysis_*_par*.submit"))
-    if not submit_files:
-        parser.error(f"no analysis submit files found below {root}")
-
-    attributes = (
-        "ClusterId,ProcId,JobStatus,HoldReason,ExitCode,ExitBySignal,"
-        "ExitSignal,Iwd,Args,Out,Err"
-    )
-    try:
-        queued = condor_json(
-            ["condor_q", "-json", "-attributes", attributes]
-        )
-        history = condor_json(
-            [
-                "condor_history",
-                "-limit",
-                "10000",
-                "-json",
-                "-attributes",
-                attributes,
-            ]
-        )
-    except (OSError, RuntimeError, json.JSONDecodeError) as error:
-        print(f"monitor_runs.py: unable to query HTCondor: {error}", file=sys.stderr)
-        return 1
-
     queue_by_label = latest_ads(queued, root)
     history_by_label = latest_ads(history, root)
     rows = []
@@ -208,7 +187,6 @@ def main() -> int:
                 detail = "waiting for DAG dependencies"
         rows.append((run_dir.name, job, state, detail))
 
-    colour = sys.stdout.isatty() and not args.no_color
     counts = Counter(row[2] for row in rows)
     summary_order = ("RUNNING", "IDLE", "HELD", "FAILED", "DONE", "WAITING")
     summary = "  ".join(
@@ -226,6 +204,56 @@ def main() -> int:
         marker = paint(state, f"{SYMBOL[state]} {state:<7}", colour)
         print(f"{run_name:<{name_width}}  {job:<4}  {marker}  {detail}")
     print()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Show the state and latest dZ of bilby_pipe analysis jobs."
+    )
+    parser.add_argument(
+        "run_directory",
+        nargs="?",
+        type=Path,
+        help="specific run root to inspect (default: discover active roots from Condor)",
+    )
+    parser.add_argument("--no-color", action="store_true")
+    args = parser.parse_args()
+
+    attributes = (
+        "ClusterId,ProcId,JobStatus,HoldReason,ExitCode,ExitBySignal,"
+        "ExitSignal,RemoveReason,Iwd,Args,Out,Err"
+    )
+    try:
+        queued = condor_json(
+            ["condor_q", "-json", "-attributes", attributes]
+        )
+        history = condor_json(
+            [
+                "condor_history",
+                "-limit",
+                "10000",
+                "-json",
+                "-attributes",
+                attributes,
+            ]
+        )
+    except (OSError, RuntimeError, json.JSONDecodeError) as error:
+        print(f"monitor_runs.py: unable to query HTCondor: {error}", file=sys.stderr)
+        return 1
+
+    if args.run_directory:
+        roots = [args.run_directory.expanduser().resolve()]
+        if not any(roots[0].glob("*/submit/*_analysis_*_par*.submit")):
+            parser.error(f"no analysis submit files found below {roots[0]}")
+    else:
+        roots = active_roots(queued)
+        if not roots:
+            print("No active bilby_pipe run directories found in your Condor queue.")
+            return 0
+
+    colour = sys.stdout.isatty() and not args.no_color
+    for root in roots:
+        print_snapshot(root, queued, history, colour)
     return 0
 
 

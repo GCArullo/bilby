@@ -1,8 +1,8 @@
 # GWTC-2.1 run templates
 
-This directory contains runnable Student-t/Hyperbolic/Gaussian templates for
-all 54 events in the [GWTC-2.1 parameter-estimation release][pe-release],
-including GW150914.
+This directory contains runnable Student-t, Hyperbolic, Gaussian-parametric,
+and standard Gaussian templates for all 54 events in the
+[GWTC-2.1 parameter-estimation release][pe-release], including GW150914.
 
 - `templates/`: one `submit_runs_real_data.py` ini template per event.
 - `priors/`: the corresponding prior templates.

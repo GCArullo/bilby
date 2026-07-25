@@ -298,7 +298,8 @@ def test_gw241127_minimum_frequency_override_is_collision_safe(
             "--event",
             "GW241127_pSEOB",
             "--likelihood",
-            "gaussian",
+            "gaussian-parametric",
+            "--no-add-gaussian",
             "--minimum-frequency",
             str(minimum_frequency),
             "--no-container",
@@ -317,14 +318,18 @@ def test_gw241127_minimum_frequency_override_is_collision_safe(
     ini_path = next(ini_dir.glob("*.ini"))
     ini_text = ini_path.read_text(encoding="utf-8")
 
-    assert ini_path.name == f"GW241127_061008_pSEOB_gaussian_{suffix}.ini"
+    assert (
+        ini_path.name
+        == f"GW241127_061008_pSEOB_gaussian_parametric_N1_{suffix}.ini"
+    )
     assert (
         f"minimum-frequency={{'H1': {minimum_frequency}.0, "
         f"'L1': {minimum_frequency}.0, 'V1': {minimum_frequency}.0, "
         "'waveform': 13.33}\n"
     ) in ini_text
+    assert "distance-marginalization=False\n" in ini_text
     assert (
-        f"/pSEOB/gaussian_detector_independent_noise_N1_{suffix}\n"
+        f"/pSEOB/gaussian-parametric_detector_independent_noise_N1_{suffix}\n"
         in ini_text
     )
 

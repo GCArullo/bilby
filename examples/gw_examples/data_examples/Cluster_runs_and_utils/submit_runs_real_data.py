@@ -1290,6 +1290,10 @@ def render_ini(
             "likelihood-type",
             "bilby.gw.likelihood.GaussianParametricGravitationalWaveTransient",
         )
+        rendered = replace_line(rendered, "distance-marginalization", "False")
+        rendered = replace_line(rendered, "phase-marginalization", "False")
+        rendered = replace_line(rendered, "time-marginalization", "False")
+        rendered = replace_line(rendered, "calibration-marginalization", "False")
         rendered = replace_line(
             rendered,
             "extra-likelihood-kwargs",

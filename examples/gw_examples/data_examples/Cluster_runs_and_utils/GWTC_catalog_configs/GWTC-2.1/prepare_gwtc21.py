@@ -27,7 +27,7 @@ import numpy as np
 RECORD_ID = 6513631
 ROOT = Path(__file__).resolve().parent
 BASE_TEMPLATE = (
-    ROOT.parent
+    ROOT.parents[1]
     / "Initialisation_file_templates"
     / "GW150914_t_student_igwn_template.ini"
 )

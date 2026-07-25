@@ -40,6 +40,7 @@ DEFAULT_EVENT = "GW231123"
 DEFAULT_CONTAINER_IMAGES_FILE = (
     Path(__file__).resolve().parent / "container_creation" / "container_images.json"
 )
+CATALOG_CONFIGS_DIR = "GWTC_catalog_configs"
 
 
 def default_accounting_user() -> str:
@@ -139,7 +140,12 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
 def load_catalog_event_defaults() -> dict[str, EventDefaults]:
     defaults = {}
     for catalog in ("GWTC-2.1", "GWTC-3"):
-        manifest_path = Path(__file__).resolve().parent / catalog / "manifest.json"
+        manifest_path = (
+            Path(__file__).resolve().parent
+            / CATALOG_CONFIGS_DIR
+            / catalog
+            / "manifest.json"
+        )
         if not manifest_path.is_file():
             continue
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -151,15 +157,31 @@ def load_catalog_event_defaults() -> dict[str, EventDefaults]:
                 label_prefix=f"{event}_{approximant}",
                 run_subdir=f"GWTC_parametric_noise/Runs/{event}",
                 file_prefix=prefix,
-                ini_template=f"{catalog}/{item['template']}",
-                prior_template=f"{catalog}/{item['prior']}",
-                working_directory=catalog,
+                ini_template=f"{CATALOG_CONFIGS_DIR}/{catalog}/{item['template']}",
+                prior_template=f"{CATALOG_CONFIGS_DIR}/{catalog}/{item['prior']}",
+                working_directory=f"{CATALOG_CONFIGS_DIR}/{catalog}",
                 detectors=tuple(item["detectors"]),
             )
     return defaults
 
 
 EVENT_DEFAULTS.update(load_catalog_event_defaults())
+
+EVENT_DEFAULTS["GW200129_065458_Hannam"] = EventDefaults(
+    label_prefix="GW200129_065458_Hannam_NRSur7dq4",
+    run_subdir="GWTC_parametric_noise/Runs/GW200129_065458_Hannam",
+    file_prefix="GW200129_065458_Hannam_NRSur7dq4",
+    ini_template=(
+        f"{CATALOG_CONFIGS_DIR}/GWTC-3/templates/"
+        "GW200129_065458_Hannam_NRSur7dq4.ini"
+    ),
+    prior_template=(
+        f"{CATALOG_CONFIGS_DIR}/GWTC-3/priors/"
+        "GW200129_065458_Hannam_NRSur7dq4.prior"
+    ),
+    working_directory=f"{CATALOG_CONFIGS_DIR}/GWTC-3",
+    detectors=("H1", "L1", "V1"),
+)
 
 
 def outdir_label(value: str) -> str:

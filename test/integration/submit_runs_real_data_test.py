@@ -57,7 +57,9 @@ def test_num_frequency_bands_defaults_to_one():
 )
 def test_all_catalog_manifest_events_are_available(catalog, count, examples):
     module = load_submit_runs_real_data_module()
-    manifest_path = SCRIPT_PATH.parent / catalog / "manifest.json"
+    manifest_path = (
+        SCRIPT_PATH.parent / module.CATALOG_CONFIGS_DIR / catalog / "manifest.json"
+    )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     events = {item["event"] for item in manifest["events"]}
 
@@ -82,7 +84,7 @@ def test_all_catalog_manifest_events_are_available(catalog, count, examples):
     for event in events:
         defaults = module.EVENT_DEFAULTS[event]
         assert defaults.run_subdir == f"GWTC_parametric_noise/Runs/{event}"
-        assert defaults.working_directory == catalog
+        assert defaults.working_directory == f"{module.CATALOG_CONFIGS_DIR}/{catalog}"
 
 
 def test_accounting_user_defaults_to_home_basename(monkeypatch):
@@ -94,6 +96,50 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
 
     assert module.DEFAULT_ACCOUNTING_USER == "name.surname"
     assert args.accounting_user == "name.surname"
+
+
+def test_gw200129_hannam_profile_generates_nrsur_reproduction(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW200129_065458_Hannam",
+            "--likelihood",
+            "gaussian",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
+
+    assert "waveform-approximant=NRSur7dq4\n" in ini_text
+    assert (
+        "mode-array=[[2, -2], [2, -1], [2, 0], [2, 1], [2, 2], "
+        "[3, -3], [3, -2], [3, -1], [3, 0], [3, 1], [3, 2], [3, 3]]\n"
+    ) in ini_text
+    assert (
+        "additional-transfer-paths="
+        "[/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5]\n"
+    ) in ini_text
+    assert "minimum=14.5, maximum=49.0" in prior_text
+    assert "total_mass = Constraint(minimum=68, maximum=500" in prior_text
+    assert "mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(" in prior_text
+    assert "minimum=0.25, maximum=1.0" in prior_text
 
 
 def test_default_output_bases_are_under_public_event_directory(tmp_path):

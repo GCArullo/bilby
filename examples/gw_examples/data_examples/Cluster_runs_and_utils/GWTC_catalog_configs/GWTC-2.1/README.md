@@ -58,7 +58,7 @@ Seven templates select the public L1
 associated frames before running any of them:
 
 ```bash
-python GWTC-2.1/download_glitch_data.py
+python GWTC_catalog_configs/GWTC-2.1/download_glitch_data.py
 ```
 
 This downloads and verifies seven files totaling 10.68 GB. Use one or more

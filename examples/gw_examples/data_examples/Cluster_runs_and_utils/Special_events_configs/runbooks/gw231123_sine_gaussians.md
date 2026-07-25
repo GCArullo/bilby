@@ -22,7 +22,7 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
 SG_JSON="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs/runbooks/injected_sine_gaussian_values.json"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
-BASE="$HOME/public_html/GW231123/t_Student/Runs_injections_gw231123_sine_gaussians"
+BASE="$HOME/public_html/GW231123/Runs/injections_gw231123_sine_gaussians"
 MAXMCMC=5000
 ```
 
@@ -35,8 +35,8 @@ node environment.
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
 set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written
-below `$HOME/public_html/GW231123` by default, with each summary in
-`Runs/<run-name>/web`.
+below `$HOME/public_html/GW231123/Runs` by default, with each summary in
+`<run-name>/web`.
 
 The generated recovery configs use `nlive=2000` for the baseline CBC run,
 `nlive=2500` for one recovered SG, and `nlive=3000` for two or more recovered

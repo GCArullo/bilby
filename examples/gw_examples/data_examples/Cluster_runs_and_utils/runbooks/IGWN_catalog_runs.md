@@ -4,8 +4,9 @@
 BASE_DIR="$(git rev-parse --show-toplevel)"
 EXTRACT="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/Scripts/extract_gw150914_c01_products.py"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
-GWTC21="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC-2.1"
-GWTC3="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC-3"
+GWTC_CONFIGS="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC_catalog_configs"
+GWTC21="$GWTC_CONFIGS/GWTC-2.1"
+GWTC3="$GWTC_CONFIGS/GWTC-3"
 ```
 
 ## GWTC-2.1 Catalog Runs
@@ -52,6 +53,32 @@ python "$REAL" \
 Remove `--dry-run` to submit. Seven BayesWave-subtracted events and the
 linearly subtracted GW200129_065458 first require the public frames downloaded
 by `python "$GWTC3/download_glitch_data.py"`.
+
+### GW200129 Hannam NRSur7dq4 reproduction
+
+The dedicated `GW200129_065458_Hannam` event profile uses the linearly
+subtracted Livingston frame and the GWTC-3 PSD and calibration products. It
+sets `NRSur7dq4`, restricts the waveform to the multipoles with
+`2 <= ell <= 3`, and applies the Hannam et al. detector-frame prior cuts:
+`14.5 <= chirp_mass/M_sun <= 49`, `mass_ratio >= 1/4`, and
+`total_mass/M_sun >= 68`.
+
+The template transfers the surrogate data file from
+`/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5`. Confirm that this shared path is
+readable from the submit host before submission.
+
+Generate the Gaussian reproduction configuration without submitting it:
+
+```
+python "$REAL" \
+  --event GW200129_065458_Hannam \
+  --likelihood gaussian \
+  --dry-run
+```
+
+Remove `--dry-run` to submit. The same event profile can be used with
+`--likelihood student` or `--likelihood hyperbolic` to retain the Hannam
+signal model and prior while changing the noise likelihood.
 
 The extractor only needs to be run once per checkout. It writes the calibration
 and PSD products expected by the GW150914 IGWN template into

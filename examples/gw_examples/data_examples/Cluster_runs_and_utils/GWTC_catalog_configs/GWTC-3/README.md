@@ -49,7 +49,7 @@ subtracted L1 strain. Download the associated public frames from the
 templates:
 
 ```bash
-python GWTC-3/download_glitch_data.py
+python GWTC_catalog_configs/GWTC-3/download_glitch_data.py
 ```
 
 This downloads and verifies ten files totaling 12.84 GB. Use one or more

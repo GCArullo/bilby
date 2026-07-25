@@ -27,6 +27,10 @@ Both use the H1/L1 setup and generate a single-band Gaussian companion run.
 Run directories are created below
 `$HOME/public_html/GW150914/Runs`.
 
+Hyperbolic runs are factorized across detectors by default. Add `--joint` to
+use one joint network Hyperbolic density instead; joint mode is incompatible
+with `--detector-dependent-noise`.
+
 ## Detector-independent Hyperbolic runs
 
 Bands 1 through 4:
@@ -73,6 +77,20 @@ python "$REAL" \
   --range \
   --num-frequency-bands 4 \
   --detector-dependent-noise
+```
+
+## Joint detector-independent Hyperbolic run
+
+```
+python "$REAL" \
+  --event GW150914 \
+  --ini-template "$INI" \
+  --prior-template "$PRIOR" \
+  --working-directory "$WORKING_DIRECTORY" \
+  --outdir-base "$OUTPUT" \
+  --likelihood hyperbolic \
+  --num-frequency-bands 1 \
+  --joint
 ```
 
 The launcher submits by default. Add `--dry-run` to any command to write the

@@ -312,6 +312,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--joint",
+        action="store_true",
+        help=(
+            "Use a joint network Hyperbolic likelihood. By default, Hyperbolic "
+            "detector likelihoods are factorized, including when their noise "
+            "parameters are shared."
+        ),
+    )
+    parser.add_argument(
         "--detectors",
         nargs="+",
         default=None,
@@ -477,6 +486,14 @@ def validate_noise_only_arguments(args: argparse.Namespace) -> None:
 
 def validate_likelihood_arguments(args: argparse.Namespace) -> None:
     validate_noise_only_arguments(args)
+    if not getattr(args, "joint", False):
+        return
+    if args.likelihood != "hyperbolic":
+        raise ValueError("--joint requires --likelihood hyperbolic")
+    if args.detector_dependent_noise:
+        raise ValueError(
+            "--joint cannot be combined with --detector-dependent-noise"
+        )
 
 
 def build_run_requests(
@@ -535,10 +552,13 @@ def explicit_run_directory_stem(
     band_count: int,
     detector_dependent_noise: bool,
     waveform_suffix: str,
+    joint: bool = False,
 ) -> str:
+    joint_suffix = "_joint" if joint else ""
     return (
         f"{hypothesis}_"
-        f"{noise_dependency_directory_token(detector_dependent_noise)}_"
+        f"{noise_dependency_directory_token(detector_dependent_noise)}"
+        f"{joint_suffix}_"
         f"N{band_count}{waveform_suffix}"
     )
 
@@ -550,12 +570,14 @@ def explicit_run_label(
     band_count: int,
     detector_dependent_noise: bool,
     waveform_suffix: str,
+    joint: bool = False,
 ) -> str:
     run_directory_stem = explicit_run_directory_stem(
         hypothesis=hypothesis,
         band_count=band_count,
         detector_dependent_noise=detector_dependent_noise,
         waveform_suffix=waveform_suffix,
+        joint=joint,
     )
     return f"{label_prefix}_{run_directory_stem}"
 
@@ -920,6 +942,7 @@ def render_ini(
     sine_gaussian_config,
     noise_only_inference: bool = False,
     disable_calibration: bool = False,
+    joint: bool = False,
 ) -> str:
     resolved_template_settings = resolve_template_settings(
         template_settings,
@@ -1027,7 +1050,8 @@ def render_ini(
                 f"{DEFAULT_HYPERBOLIC_ALPHA}, 'delta': {DEFAULT_HYPERBOLIC_DELTA}, "
                 "'infer_alpha': True, 'infer_delta': True, "
                 f"'num_frequency_bands': {band_count}, "
-                f"'detector_dependent_noise': {detector_dependent_noise}"
+                f"'detector_dependent_noise': {detector_dependent_noise}, "
+                f"'joint': {joint}"
                 "}"
             ),
         )
@@ -1100,6 +1124,7 @@ def prepare_run(
     noise_only_inference: bool,
     disable_calibration: bool,
     approximant_suffix: str = "",
+    joint: bool = False,
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
     if hypothesis == "student":
@@ -1131,12 +1156,16 @@ def prepare_run(
         run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "hyperbolic":
         run_band_count = band_count
-        mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
+        mode_suffix = (
+            "_detector_dependent_noise" if detector_dependent_noise else ""
+        )
+        joint_suffix = "_joint" if joint else ""
         run_directory_stem = explicit_run_directory_stem(
             hypothesis=hypothesis,
             band_count=run_band_count,
             detector_dependent_noise=detector_dependent_noise,
             waveform_suffix=waveform_suffix,
+            joint=joint,
         )
         label = explicit_run_label(
             label_prefix=label_prefix,
@@ -1144,17 +1173,20 @@ def prepare_run(
             band_count=run_band_count,
             detector_dependent_noise=detector_dependent_noise,
             waveform_suffix=waveform_suffix,
+            joint=joint,
         )
         run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
         run_outdir = f"{outdir_base}/{run_directory_name}"
         run_webdir = f"{webdir_base}/{run_directory_name}"
         prior_path = (
             prior_dir
-            / f"{file_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}.prior"
+            / f"{file_prefix}_hyperbolic{mode_suffix}{joint_suffix}_N"
+            f"{run_band_count}{waveform_suffix}.prior"
         ).resolve()
         ini_path = (
             ini_dir
-            / f"{file_prefix}_hyperbolic{mode_suffix}_N{run_band_count}{waveform_suffix}.ini"
+            / f"{file_prefix}_hyperbolic{mode_suffix}{joint_suffix}_N"
+            f"{run_band_count}{waveform_suffix}.ini"
         ).resolve()
         run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "gaussian":
@@ -1214,6 +1246,7 @@ def prepare_run(
             sine_gaussian_config=sine_gaussian_config,
             noise_only_inference=noise_only_inference,
             disable_calibration=disable_calibration,
+            joint=joint,
         ),
         encoding="utf-8",
     )
@@ -1381,6 +1414,7 @@ def main() -> int:
                 noise_only_inference=args.noise_only_inference,
                 disable_calibration=args.disable_calibration,
                 approximant_suffix=approximant_suffix,
+                joint=args.joint,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

@@ -56,6 +56,8 @@ python GWTC_catalog_configs/GWTC-3/download_glitch_data.py
 
 This downloads and verifies ten files totaling 12.84 GB. Use one or more
 `--event GW200115_042309` arguments to download only selected frames.
+For normal non-dry-run launches, `submit_runs_real_data.py` performs this check
+and event-filtered download automatically before creating any DAG.
 
 [pe-release]: https://zenodo.org/records/8177023
 [glitch-release]: https://zenodo.org/records/5546680

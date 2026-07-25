@@ -148,7 +148,7 @@ def parse_ini_dict_string(raw_value: str) -> dict[str, object]:
     normalized = normalized.replace("=", ":")
     normalized = normalized.replace(" ", "")
     normalized = re.sub(
-        r'([A-Za-z/\.0-9\-\+][^\[\],:"}]*)',
+        r'([A-Za-z_/\.0-9\-\+][^\[\],:"}]*)',
         r'"\g<1>"',
         normalized,
     )
@@ -209,6 +209,14 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
             # Some templates still contain unresolved placeholders at parse time.
             pass
 
+    data_dict = parsed.get("data-dict")
+    if isinstance(data_dict, str):
+        try:
+            data_dict = parse_ini_dict_string(data_dict)
+        except (ValueError, SyntaxError):
+            # Some templates still contain unresolved placeholders at parse time.
+            pass
+
     return dict(
         detectors=tuple(parsed["detectors"]),
         reference_frame=parsed.get("reference-frame", "sky"),
@@ -223,6 +231,7 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
         waveform_approximant=str(parsed["waveform-approximant"]),
         sampler_kwargs=sampler_kwargs,
         sampling_seed=parsed.get("sampling-seed"),
+        data_dict=data_dict,
         spline_calibration_envelope_dict=calibration_envelopes,
         psd_dict=psd_dict,
         frequency_domain_source_model=str(parsed["frequency-domain-source-model"]),

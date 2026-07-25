@@ -195,6 +195,74 @@ class TestStudentTGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(calculated, float(manual), 7)
 
+    def test_joint_log_likelihood_matches_direct_calculation(self):
+        interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
+        interferometers.set_strain_data_from_power_spectral_densities(
+            sampling_frequency=self.sampling_frequency, duration=self.duration
+        )
+        nu = 8.0
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=nu,
+            joint=True,
+        )
+        likelihood.parameters = self.parameters.copy()
+
+        pols = self.waveform_generator.frequency_domain_strain(self.parameters)
+        signal_quadratic_form = 0.0
+        noise_quadratic_form = 0.0
+        log_scale2 = 0.0
+        for interferometer in interferometers:
+            mask = interferometer.frequency_mask
+            h_f = interferometer.get_detector_response(pols, self.parameters)
+            scale2 = (
+                interferometer.power_spectral_density_array[mask]
+                * self.duration
+                / 4.0
+            )
+            signal_residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+            noise_residual = interferometer.frequency_domain_strain[mask]
+            signal_quadratic_form += (
+                signal_residual.real ** 2 + signal_residual.imag ** 2
+            ) / scale2
+            noise_quadratic_form += (
+                noise_residual.real ** 2 + noise_residual.imag ** 2
+            ) / scale2
+            log_scale2 += np.log(scale2)
+
+        dimension = 4
+        constant = (
+            gammaln((nu + dimension) / 2.0)
+            - gammaln(nu / 2.0)
+            - 0.5 * dimension * np.log(nu * np.pi)
+            - log_scale2
+        )
+        manual_signal = np.sum(
+            constant
+            - 0.5
+            * (nu + dimension)
+            * np.log1p(signal_quadratic_form / nu)
+        )
+        manual_noise = np.sum(
+            constant
+            - 0.5
+            * (nu + dimension)
+            * np.log1p(noise_quadratic_form / nu)
+        )
+
+        self.assertAlmostEqual(
+            likelihood.log_likelihood(), float(manual_signal), 7
+        )
+        self.assertAlmostEqual(
+            likelihood.noise_log_likelihood(), float(manual_noise), 7
+        )
+        self.assertAlmostEqual(
+            likelihood.log_likelihood_ratio(),
+            float(manual_signal - manual_noise),
+            7,
+        )
+
     def test_initialization_does_not_query_deprecated_parameters_property(self):
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
@@ -321,6 +389,7 @@ class TestStudentTGWTransient(unittest.TestCase):
         self.assertTrue(likelihood.meta_data["infer_nu"])
         self.assertFalse(likelihood.meta_data["detector_dependent_noise"])
         self.assertFalse(likelihood.meta_data["detector_dependent_nu"])
+        self.assertFalse(likelihood.meta_data["joint"])
         self.assertEqual(likelihood.meta_data["num_frequency_bands"], 2)
         self.assertEqual(likelihood.meta_data["noise_evidence_method"], "quadrature")
 
@@ -572,6 +641,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             interferometers=interferometers,
             waveform_generator=self.waveform_generator,
             nu=8.0,
+            joint=True,
             priors=None,
             time_marginalization=False,
             distance_marginalization=False,
@@ -599,6 +669,7 @@ class TestStudentTGWTransient(unittest.TestCase):
         )
         self.assertEqual(likelihood._reference_frame_str, "L1H1")
         self.assertEqual(likelihood.time_reference, "L1")
+        self.assertTrue(likelihood.joint)
 
         parameters = self.parameters.copy()
         parameters["zenith"] = 1.0

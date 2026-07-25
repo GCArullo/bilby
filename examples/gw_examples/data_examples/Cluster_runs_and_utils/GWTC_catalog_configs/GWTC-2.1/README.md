@@ -48,8 +48,8 @@ Omit `--dry-run` to submit. The GWTC-1 events use their standard short names,
 for example `--event GW150914`; the O3a events use the full record name.
 Default run directories are created under
 `/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
-Hyperbolic runs are factorized across detectors by default. Pass `--joint`
-to opt into the joint network Hyperbolic likelihood.
+Student-t and Hyperbolic runs are factorized across detectors by default.
+Pass `--joint` to opt into the corresponding joint network likelihood.
 The O3a directory name retains the record's time suffix because the catalog
 contains distinct events occurring on the same date.
 

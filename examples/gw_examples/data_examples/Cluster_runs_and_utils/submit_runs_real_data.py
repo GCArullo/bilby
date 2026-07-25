@@ -320,7 +320,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         "--joint",
         action="store_true",
         help=(
-            "Use a joint network Hyperbolic likelihood. By default, Hyperbolic "
+            "Use a joint network Student-t or Hyperbolic likelihood. By default, "
             "detector likelihoods are factorized, including when their noise "
             "parameters are shared."
         ),
@@ -493,8 +493,10 @@ def validate_likelihood_arguments(args: argparse.Namespace) -> None:
     validate_noise_only_arguments(args)
     if not getattr(args, "joint", False):
         return
-    if args.likelihood != "hyperbolic":
-        raise ValueError("--joint requires --likelihood hyperbolic")
+    if not heavy_tailed_likelihood_selected(args.likelihood):
+        raise ValueError(
+            "--joint requires --likelihood student or hyperbolic"
+        )
     if args.detector_dependent_noise:
         raise ValueError(
             "--joint cannot be combined with --detector-dependent-noise"
@@ -1103,7 +1105,8 @@ def render_ini(
             (
                 "{'nu': 8.0, 'infer_nu': True, "
                 f"'num_frequency_bands': {band_count}, "
-                f"'detector_dependent_noise': {detector_dependent_noise}"
+                f"'detector_dependent_noise': {detector_dependent_noise}, "
+                f"'joint': {joint}"
                 "}"
             ),
         )
@@ -1200,12 +1203,16 @@ def prepare_run(
     waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
     if hypothesis == "student":
         run_band_count = band_count
-        mode_suffix = "_detector_dependent_noise" if detector_dependent_noise else ""
+        mode_suffix = (
+            "_detector_dependent_noise" if detector_dependent_noise else ""
+        )
+        joint_suffix = "_joint" if joint else ""
         run_directory_stem = explicit_run_directory_stem(
             hypothesis=hypothesis,
             band_count=run_band_count,
             detector_dependent_noise=detector_dependent_noise,
             waveform_suffix=waveform_suffix,
+            joint=joint,
         )
         label = explicit_run_label(
             label_prefix=label_prefix,
@@ -1213,16 +1220,19 @@ def prepare_run(
             band_count=run_band_count,
             detector_dependent_noise=detector_dependent_noise,
             waveform_suffix=waveform_suffix,
+            joint=joint,
         )
         run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
         run_outdir = f"{outdir_base}/{run_directory_name}"
         prior_path = (
             prior_dir
-            / f"{file_prefix}{mode_suffix}_N{run_band_count}{waveform_suffix}.prior"
+            / f"{file_prefix}{mode_suffix}{joint_suffix}_N"
+            f"{run_band_count}{waveform_suffix}.prior"
         ).resolve()
         ini_path = (
             ini_dir
-            / f"{file_prefix}_t_student{mode_suffix}_N{run_band_count}{waveform_suffix}.ini"
+            / f"{file_prefix}_t_student{mode_suffix}{joint_suffix}_N"
+            f"{run_band_count}{waveform_suffix}.ini"
         ).resolve()
         run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "hyperbolic":

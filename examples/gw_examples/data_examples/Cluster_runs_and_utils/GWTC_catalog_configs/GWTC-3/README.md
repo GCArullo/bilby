@@ -40,8 +40,8 @@ python submit_runs_real_data.py \
 
 Omit `--dry-run` to submit. Default run directories are created under
 `/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
-Hyperbolic runs are factorized across detectors by default. Pass `--joint`
-to opt into the joint network Hyperbolic likelihood.
+Student-t and Hyperbolic runs are factorized across detectors by default.
+Pass `--joint` to opt into the corresponding joint network likelihood.
 
 ## De-glitched events
 

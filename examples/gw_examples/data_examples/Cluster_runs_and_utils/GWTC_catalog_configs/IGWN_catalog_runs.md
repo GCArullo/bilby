@@ -7,6 +7,8 @@ REAL="$UTILS/submit_runs_real_data.py"
 GWTC_CONFIGS="$UTILS/GWTC_catalog_configs"
 GWTC21="$GWTC_CONFIGS/GWTC-2.1"
 GWTC3="$GWTC_CONFIGS/GWTC-3"
+GWTC4="$GWTC_CONFIGS/GWTC-4"
+GWTC5="$GWTC_CONFIGS/GWTC-5"
 ```
 
 Catalog-derived templates and priors live under `$GWTC_CONFIGS`.
@@ -55,6 +57,27 @@ python "$REAL" \
 Remove `--dry-run` to submit. Seven BayesWave-subtracted events and the
 linearly subtracted GW200129_065458 first require the public frames downloaded
 by `python "$GWTC3/download_glitch_data.py"`.
+
+## GWTC-4 and GWTC-5 Catalog Runs
+
+`$GWTC4` and `$GWTC5` contain the O4a and O4b templates respectively. They
+select the released `C00:IMRPhenomXPHM-SpinTaylor` analysis, preserve its
+waveform flags, and use the GWTC-2.1/3 nocosmo luminosity-distance prior with
+the released event-specific bounds. GW230529_181500 is the single exception:
+the release has no SpinTaylor run, so its template uses
+`C00:IMRPhenomXPHM:LowSpin`.
+GW240925_005809 retains XPHM-SpinTaylor but stores it under `C01` in the
+release, so its generated template selects that group explicitly.
+
+For example:
+
+```
+python "$REAL" \
+  --event GW240413_022019 \
+  --likelihood hyperbolic \
+  --num-frequency-bands 1 \
+  --dry-run
+```
 
 Before a real submission, `submit_runs_real_data.py` checks every local strain,
 PSD, and calibration file referenced by the selected template. If managed

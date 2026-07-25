@@ -158,7 +158,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
 
 def load_catalog_event_defaults() -> dict[str, EventDefaults]:
     defaults = {}
-    for catalog in ("GWTC-2.1", "GWTC-3"):
+    for catalog in ("GWTC-2.1", "GWTC-3", "GWTC-4", "GWTC-5"):
         manifest_path = (
             Path(__file__).resolve().parent
             / CATALOG_CONFIGS_DIR
@@ -199,6 +199,22 @@ EVENT_DEFAULTS["GW200129_065458_Hannam"] = EventDefaults(
         "GW200129_065458_Hannam_NRSur7dq4.prior"
     ),
     working_directory=f"{CATALOG_CONFIGS_DIR}/GWTC-3",
+    detectors=("H1", "L1", "V1"),
+)
+
+EVENT_DEFAULTS["GW190521_030229_LVK_NRSur7dq4"] = EventDefaults(
+    label_prefix="GW190521_030229_LVK_NRSur7dq4",
+    run_subdir="GWTC_parametric_noise/Runs/GW190521_030229",
+    file_prefix="GW190521_030229_LVK_NRSur7dq4",
+    ini_template=(
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
+        "GW190521_030229_LVK_NRSur7dq4.ini"
+    ),
+    prior_template=(
+        f"{SPECIAL_EVENTS_CONFIGS_DIR}/priors/"
+        "GW190521_030229_LVK_NRSur7dq4.prior"
+    ),
+    working_directory=SPECIAL_EVENTS_CONFIGS_DIR,
     detectors=("H1", "L1", "V1"),
 )
 

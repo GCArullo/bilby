@@ -5,6 +5,7 @@ BASE_DIR="$(git rev-parse --show-toplevel)"
 EXTRACT="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/Scripts/extract_gw150914_c01_products.py"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
 GWTC21="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC-2.1"
+GWTC3="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC-3"
 ```
 
 ## GWTC-2.1 Catalog Runs
@@ -30,6 +31,27 @@ By default, each event is written below
 `/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
 O3a event directories retain the time suffix from the full record name so
 events occurring on the same date remain distinct.
+
+## GWTC-3 Catalog Runs
+
+`$GWTC3` contains templates, priors, embedded source configs, PSDs, and
+calibration envelopes for all 36 event files in the GWTC-3 O3b PE release.
+The preparation and de-glitched-frame download details are in
+`$GWTC3/README.md`.
+
+For example:
+
+```
+python "$REAL" \
+  --event GW200129_065458 \
+  --likelihood hyperbolic \
+  --num-frequency-bands 1 \
+  --dry-run
+```
+
+Remove `--dry-run` to submit. Seven BayesWave-subtracted events and the
+linearly subtracted GW200129_065458 first require the public frames downloaded
+by `python "$GWTC3/download_glitch_data.py"`.
 
 The extractor only needs to be run once per checkout. It writes the calibration
 and PSD products expected by the GW150914 IGWN template into

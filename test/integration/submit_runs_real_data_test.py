@@ -48,20 +48,41 @@ def test_num_frequency_bands_defaults_to_one():
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
-def test_all_gwtc21_manifest_events_are_available():
+@pytest.mark.parametrize(
+    ("catalog", "count", "examples"),
+    [
+        ("GWTC-2.1", 54, {"GW150914", "GW190425_081805", "GW190930_133541"}),
+        ("GWTC-3", 36, {"GW191103_012549", "GW200115_042309", "GW200322_091133"}),
+    ],
+)
+def test_all_catalog_manifest_events_are_available(catalog, count, examples):
     module = load_submit_runs_real_data_module()
-    manifest_path = SCRIPT_PATH.parent / "GWTC-2.1" / "manifest.json"
+    manifest_path = SCRIPT_PATH.parent / catalog / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     events = {item["event"] for item in manifest["events"]}
 
-    assert len(events) == 54
-    assert {"GW150914", "GW190425_081805", "GW190930_133541"} <= events
+    assert len(events) == count
+    assert examples <= events
     assert events <= module.EVENT_DEFAULTS.keys()
-    for event in events:
-        assert (
-            module.EVENT_DEFAULTS[event].run_subdir
-            == f"GWTC_parametric_noise/Runs/{event}"
+    if catalog == "GWTC-3":
+        assert all(
+            item["filename"].endswith("_mixed_nocosmo.h5")
+            for item in manifest["events"]
         )
+        low_spin = {
+            item["event"]
+            for item in manifest["events"]
+            if item["selected_run"] == "C01:IMRPhenomXPHM:LowSpin"
+        }
+        assert low_spin == {"GW191219_163120", "GW200115_042309"}
+        gw200306 = next(
+            item for item in manifest["events"] if item["event"] == "GW200306_093714"
+        )
+        assert set(gw200306["psd_detectors"]) == {"H1", "L1"}
+    for event in events:
+        defaults = module.EVENT_DEFAULTS[event]
+        assert defaults.run_subdir == f"GWTC_parametric_noise/Runs/{event}"
+        assert defaults.working_directory == catalog
 
 
 def test_accounting_user_defaults_to_home_basename(monkeypatch):

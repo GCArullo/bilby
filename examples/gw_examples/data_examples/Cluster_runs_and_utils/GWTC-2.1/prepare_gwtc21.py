@@ -266,10 +266,14 @@ def extract_products(
     run: h5py.Group,
     output_dir: Path,
     maximum_frequency: dict[str, float],
+    detectors: list[str],
 ) -> None:
+    selected_detectors = set(detectors)
     if "psds" in run:
         psd_dir = output_dir / "psds"
         for detector, dataset in run["psds"].items():
+            if detector not in selected_detectors:
+                continue
             psd_dir.mkdir(parents=True, exist_ok=True)
             values = np.asarray(dataset[:], dtype=float)
             values = values[values[:, 0] <= maximum_frequency[detector]]
@@ -282,6 +286,8 @@ def extract_products(
     if "calibration_envelope" in run:
         calibration_dir = output_dir / "calibration"
         for detector, dataset in run["calibration_envelope"].items():
+            if detector not in selected_detectors:
+                continue
             calibration_dir.mkdir(parents=True, exist_ok=True)
             np.savetxt(
                 calibration_dir / f"{detector}.txt",
@@ -415,8 +421,12 @@ def get_settings(
         approximant = run.name.rsplit(":", 1)[-1]
     if isinstance(approximant, list):
         approximant = approximant[0]
-    reference_frame = first(config, "reference-frame", default="sky")
-    time_reference = first(config, "time-reference", default="geocent")
+    reference_frame = first(
+        config, "reference-frame", "reference_frame", default="sky"
+    )
+    time_reference = first(
+        config, "time-reference", "time_reference", default="geocent"
+    )
     return {
         "detectors": detectors,
         "trigger_time": trigger_time,
@@ -643,7 +653,21 @@ def prepare_event(
         output_dir = ROOT / "data" / event / sanitized_run_name(selected_run)
         psd_detectors, calibration_detectors = product_detectors(run)
         settings = get_settings(run, record_event, psd_detectors, calibration_detectors)
-        extract_products(run, output_dir, settings["maximum_frequency"])
+        selected_detectors = set(settings["detectors"])
+        psd_detectors = [
+            detector for detector in psd_detectors if detector in selected_detectors
+        ]
+        calibration_detectors = [
+            detector
+            for detector in calibration_detectors
+            if detector in selected_detectors
+        ]
+        extract_products(
+            run,
+            output_dir,
+            settings["maximum_frequency"],
+            settings["detectors"],
+        )
         prior, reconstructed_prior = make_prior(run, record_event)
         template = make_template(
             event,
@@ -665,7 +689,10 @@ def prepare_event(
         source_text = " ".join(
             value_text(value) for value in (*raw_config.values(), *metadata.values())
         )
-        special_channel = "T1700406_v4" in source_text
+        special_channel = any(
+            channel in source_text
+            for channel in ("T1700406_v4", "P1800169_v4")
+        )
         result = {
             **item,
             "event": event,

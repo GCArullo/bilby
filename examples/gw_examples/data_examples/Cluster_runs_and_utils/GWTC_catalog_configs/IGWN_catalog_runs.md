@@ -2,8 +2,9 @@
 
 ```
 BASE_DIR="$(git rev-parse --show-toplevel)"
-REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
-GWTC_CONFIGS="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC_catalog_configs"
+UTILS="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils"
+REAL="$UTILS/submit_runs_real_data.py"
+GWTC_CONFIGS="$UTILS/GWTC_catalog_configs"
 GWTC21="$GWTC_CONFIGS/GWTC-2.1"
 GWTC3="$GWTC_CONFIGS/GWTC-3"
 ```

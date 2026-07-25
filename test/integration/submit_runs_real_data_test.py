@@ -83,7 +83,7 @@ def test_all_catalog_manifest_events_are_available(catalog, count, examples):
         assert set(gw200306["psd_detectors"]) == {"H1", "L1"}
     for event in events:
         defaults = module.EVENT_DEFAULTS[event]
-        assert defaults.run_subdir == f"GWTC_parametric_noise/Runs/{event}"
+        assert defaults.run_subdir == f"{event}/Runs"
         assert defaults.working_directory == f"{module.CATALOG_CONFIGS_DIR}/{catalog}"
 
 
@@ -159,6 +159,10 @@ def test_gw200129_hannam_profile_generates_nrsur_reproduction(monkeypatch, tmp_p
     assert "total_mass = Constraint(minimum=68, maximum=500" in prior_text
     assert "mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(" in prior_text
     assert "minimum=0.25, maximum=1.0" in prior_text
+    assert (
+        f"outdir={tmp_path}/public_html/GW200129_065458_Hannam/Runs/"
+        "gaussian_detector_independent_noise_N1\n"
+    ) in ini_text
 
 
 def test_default_output_bases_are_under_public_event_directory(tmp_path):
@@ -166,10 +170,10 @@ def test_default_output_bases_are_under_public_event_directory(tmp_path):
 
     outdir_base, webdir_base = module.default_output_bases(
         tmp_path,
-        "GW231123/t_Student/Runs",
+        "GW231123/Runs",
     )
 
-    event_dir = tmp_path / "public_html" / "GW231123" / "t_Student"
+    event_dir = tmp_path / "public_html" / "GW231123"
     assert Path(outdir_base) == event_dir / "Runs"
     assert Path(webdir_base) == event_dir / "Runs"
     assert Path(webdir_base) / "run-name" / "web" == (
@@ -177,17 +181,38 @@ def test_default_output_bases_are_under_public_event_directory(tmp_path):
     )
 
 
-def test_likelihood_run_subdir_uses_requested_model_likelihood():
+@pytest.mark.parametrize("likelihood", ["student", "hyperbolic", "gaussian"])
+def test_all_likelihoods_share_the_event_run_directory(
+    monkeypatch,
+    tmp_path,
+    likelihood,
+):
     module = load_submit_runs_real_data_module()
-    run_subdir = "GW230814/t_Student_pSEOB/Runs"
+    expected = tmp_path / "public_html" / "GW230814" / "Runs"
+    ini_dir = tmp_path / "ini"
+    arguments = [
+        str(SCRIPT_PATH),
+        "--event",
+        "GW230814",
+        "--likelihood",
+        likelihood,
+        "--dry-run",
+        "--ini-dir",
+        str(ini_dir),
+        "--prior-dir",
+        str(tmp_path / "prior"),
+        "--home-dir",
+        str(tmp_path),
+    ]
+    if likelihood != "gaussian":
+        arguments.append("--no-add-gaussian")
+    monkeypatch.setattr(sys, "argv", arguments)
 
-    assert module.likelihood_run_subdir(run_subdir, "student") == run_subdir
-    assert module.likelihood_run_subdir(run_subdir, "hyperbolic") == (
-        "GW230814/hyperbolic_pSEOB/Runs"
-    )
-    assert module.likelihood_run_subdir(run_subdir, "gaussian") == (
-        "GW230814/gaussian_pSEOB/Runs"
-    )
+    assert module.main() == 0
+    for ini_path in ini_dir.glob("*.ini"):
+        ini_text = ini_path.read_text(encoding="utf-8")
+        assert f"outdir={expected}/" in ini_text
+        assert f"webdir={expected}/" in ini_text
 
 
 def test_main_creates_missing_output_bases_before_submission(monkeypatch, tmp_path):
@@ -225,6 +250,41 @@ def test_main_creates_missing_output_bases_before_submission(monkeypatch, tmp_pa
     assert outdir_base.is_dir()
     assert webdir_base.is_dir()
     assert submitted == [1]
+
+
+def test_existing_gaussian_companion_is_not_resubmitted(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    run_base = tmp_path / "public_html" / "GW230814" / "Runs"
+    gaussian_run = run_base / "gaussian_detector_independent_noise_N1"
+    gaussian_run.mkdir(parents=True)
+    submitted = []
+
+    monkeypatch.setattr(
+        module,
+        "submit_run",
+        lambda ini_path, **kwargs: submitted.append(ini_path),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW230814",
+            "--likelihood",
+            "hyperbolic",
+            "--home-dir",
+            str(tmp_path),
+            "--ini-dir",
+            str(tmp_path / "ini"),
+            "--prior-dir",
+            str(tmp_path / "prior"),
+        ],
+    )
+
+    assert module.main() == 0
+    assert len(submitted) == 1
+    assert "hyperbolic" in submitted[0].name
 
 
 def test_student_likelihood_runs_student_and_gaussian_by_default():
@@ -380,9 +440,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
     )
     outdir = Path(ini_settings["outdir"])
-    assert outdir.parent == (
-        tmp_path / "public_html" / "GW231123" / "gaussian" / "Runs"
-    )
+    assert outdir.parent == tmp_path / "public_html" / "GW231123" / "Runs"
     assert Path(ini_settings["webdir"]) == outdir / "web"
 
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")

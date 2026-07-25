@@ -75,7 +75,7 @@ def default_accounting_user() -> str:
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_BASE_SUBDIR = (
-    Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
+    Path("public_html") / "GW231123" / "Runs" / "injections"
 )
 DEFAULT_ENVIRONMENT_VARIABLES = {
     "HDF5_USE_FILE_LOCKING": False,
@@ -219,7 +219,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory where staged data, generated ini/prior files, and "
             "run/web folders are written. Defaults to "
-            "<home-dir>/public_html/GW231123/t_Student/Runs_injections."
+            "<home-dir>/public_html/GW231123/Runs/injections."
         ),
     )
     parser.add_argument(

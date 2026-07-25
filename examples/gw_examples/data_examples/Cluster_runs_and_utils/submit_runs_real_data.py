@@ -58,11 +58,6 @@ DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
-LIKELIHOOD_OUTPUT_NAMES = {
-    "student": "t_Student",
-    "hyperbolic": "hyperbolic",
-    "gaussian": "gaussian",
-}
 DEFAULT_HYPERBOLIC_ALPHA = 10.0
 DEFAULT_HYPERBOLIC_DELTA = 1.0
 DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
@@ -110,7 +105,7 @@ class EventDefaults:
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
     "GW150914": EventDefaults(
         label_prefix="GW150914_IMRPhenomXPHM",
-        run_subdir="GWTC_parametric_noise/Runs/GW150914",
+        run_subdir="GW150914/Runs",
         file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
         ini_template=(
             f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
@@ -125,7 +120,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
     ),
     "GW231123": EventDefaults(
         label_prefix="GW231123",
-        run_subdir="GW231123/t_Student/Runs",
+        run_subdir="GW231123/Runs",
         file_prefix="GW231123",
         ini_template=(
             f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
@@ -140,7 +135,7 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
     ),
     "GW230814": EventDefaults(
         label_prefix="GW230814_pSEOB",
-        run_subdir="GW230814/t_Student_pSEOB/Runs",
+        run_subdir="GW230814/Runs",
         file_prefix="GW230814",
         ini_template=(
             f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
@@ -174,7 +169,7 @@ def load_catalog_event_defaults() -> dict[str, EventDefaults]:
             prefix = f"{event}_IGWN_C01_{approximant}"
             defaults[event] = EventDefaults(
                 label_prefix=f"{event}_{approximant}",
-                run_subdir=f"GWTC_parametric_noise/Runs/{event}",
+                run_subdir=f"{event}/Runs",
                 file_prefix=prefix,
                 ini_template=f"{CATALOG_CONFIGS_DIR}/{catalog}/{item['template']}",
                 prior_template=f"{CATALOG_CONFIGS_DIR}/{catalog}/{item['prior']}",
@@ -188,7 +183,7 @@ EVENT_DEFAULTS.update(load_catalog_event_defaults())
 
 EVENT_DEFAULTS["GW200129_065458_Hannam"] = EventDefaults(
     label_prefix="GW200129_065458_Hannam_NRSur7dq4",
-    run_subdir="GWTC_parametric_noise/Runs/GW200129_065458_Hannam",
+    run_subdir="GW200129_065458_Hannam/Runs",
     file_prefix="GW200129_065458_Hannam_NRSur7dq4",
     ini_template=(
         f"{SPECIAL_EVENTS_CONFIGS_DIR}/templates/"
@@ -520,13 +515,6 @@ def default_output_bases(home_dir: Path, run_subdir: str) -> tuple[str, str]:
     outdir_base = resolved_home / "public_html" / run_subdir
     webdir_base = outdir_base
     return str(outdir_base), str(webdir_base)
-
-
-def likelihood_run_subdir(run_subdir: str, likelihood: str) -> str:
-    return run_subdir.replace(
-        "t_Student",
-        LIKELIHOOD_OUTPUT_NAMES[likelihood],
-    )
 
 
 def build_run_directory_name(name: str, outdir_label: str | None) -> str:
@@ -1276,7 +1264,7 @@ def main() -> int:
     label_prefix = args.label_prefix or defaults.label_prefix
     default_outdir_base, _ = default_output_bases(
         args.home_dir,
-        likelihood_run_subdir(defaults.run_subdir, args.likelihood),
+        defaults.run_subdir,
     )
     outdir_base = args.outdir_base or default_outdir_base
     webdir_base = args.webdir_base or outdir_base
@@ -1346,6 +1334,29 @@ def main() -> int:
 
     for sine_gaussian_config in sine_gaussian_configs:
         for hypothesis, band_count in run_requests:
+            if (
+                hypothesis == "gaussian"
+                and args.likelihood in HEAVY_TAILED_LIKELIHOODS
+                and not args.dry_run
+            ):
+                waveform_suffix = (
+                    sine_gaussian_config.label_suffix + approximant_suffix
+                )
+                run_directory = Path(outdir_base) / build_run_directory_name(
+                    explicit_run_directory_stem(
+                        hypothesis=hypothesis,
+                        band_count=DEFAULT_NUM_FREQUENCY_BANDS,
+                        detector_dependent_noise=False,
+                        waveform_suffix=waveform_suffix,
+                    ),
+                    args.outdir_label,
+                )
+                if run_directory.exists():
+                    print(
+                        "Skipping Gaussian companion because its output "
+                        f"directory already exists: {run_directory}"
+                    )
+                    continue
             ini_path = prepare_run(
                 hypothesis=hypothesis,
                 band_count=band_count,

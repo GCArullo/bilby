@@ -21,6 +21,8 @@ The profile sets `NRSur7dq4`, restricts the waveform to all multipoles with
 `2 <= ell <= 3`, and applies the Hannam et al. detector-frame prior cuts:
 `14.5 <= chirp_mass/M_sun <= 49`, `mass_ratio >= 1/4`, and
 `total_mass/M_sun >= 68`.
+All likelihoods are written below
+`$HOME/public_html/GW200129_065458_Hannam/Runs`.
 
 ## Required files
 

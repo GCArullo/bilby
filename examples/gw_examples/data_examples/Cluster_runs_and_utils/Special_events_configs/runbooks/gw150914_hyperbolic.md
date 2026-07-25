@@ -24,7 +24,7 @@ The commands below explicitly select the special-event template, prior, and
 working directory because GW150914 is also present in the GWTC-2.1 catalog.
 Both use the H1/L1 setup and generate a single-band Gaussian companion run.
 Run directories are created below
-`$HOME/public_html/GWTC_parametric_noise/Runs/GW150914`.
+`$HOME/public_html/GW150914/Runs`.
 
 ## Detector-independent Hyperbolic runs
 

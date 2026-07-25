@@ -65,7 +65,7 @@ def test_default_base_subdir_is_under_public_event_directory():
     module = load_submit_runs_injection_module()
 
     assert module.DEFAULT_BASE_SUBDIR == (
-        Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
+        Path("public_html") / "GW231123" / "Runs" / "injections"
     )
 
 

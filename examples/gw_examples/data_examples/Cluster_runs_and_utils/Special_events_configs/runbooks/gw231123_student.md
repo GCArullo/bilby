@@ -5,7 +5,7 @@ BASE_DIR="$(git rev-parse --show-toplevel)"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
-BASE="$HOME/public_html/GW231123/t_Student/Runs_injections_runbook_gw231123_student"
+BASE="$HOME/public_html/GW231123/Runs/injections_runbook_gw231123_student"
 MAXMCMC=5000
 ```
 
@@ -18,8 +18,8 @@ node environment.
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
 set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written
-below `$HOME/public_html/GW231123` by default, with each summary in
-`Runs/<run-name>/web`.
+below `$HOME/public_html/GW231123/Runs` by default, with each summary in
+`<run-name>/web`.
 
 ## Real Runs
 

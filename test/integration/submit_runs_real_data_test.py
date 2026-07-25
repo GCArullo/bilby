@@ -100,6 +100,8 @@ def test_special_event_templates_and_priors_are_grouped_together():
         "GW200129_065458_Hannam_NRSur7dq4.ini",
         "GW230814_t_student_pSEOB_template.ini",
         "GW231123_t_student_template.ini",
+        "GW241127_t_student_SEOB_template.ini",
+        "GW241127_t_student_pSEOB_template.ini",
     }
     assert {path.name for path in (special_dir / "priors").iterdir()} == {
         "GW150914_igwn_template.prior",
@@ -108,10 +110,152 @@ def test_special_event_templates_and_priors_are_grouped_together():
         "GW230814_gr_template.prior",
         "GW230814_template.prior",
         "GW231123_template.prior",
+        "GW241127_SEOB_template.prior",
+        "GW241127_pSEOB_template.prior",
     }
     assert {path.name for path in (special_dir / "source_configs").iterdir()} == {
         "GW190521_030229_LVK_NRSur7dq4.ini",
     }
+
+
+@pytest.mark.parametrize(
+    ("event", "source_model", "deviation_prior", "model_directory"),
+    [
+        (
+            "GW241127_SEOB",
+            "bilby.gw.source.gwsignal_binary_black_hole",
+            None,
+            "SEOB",
+        ),
+        (
+            "GW241127_pSEOB",
+            "bilby_tgr.pseob.source.gwsignal_binary_black_hole",
+            "domega220 = Uniform(name='domega220', minimum=-0.8, maximum=2.0)",
+            "pSEOB",
+        ),
+    ],
+)
+def test_gw241127_seob_profiles_generate_released_setup(
+    monkeypatch,
+    tmp_path,
+    event,
+    source_model,
+    deviation_prior,
+    model_directory,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            event,
+            "--likelihood",
+            "gaussian",
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
+
+    assert "detectors=['H1', 'L1', 'V1']\n" in ini_text
+    assert "trigger-time=1416723026.229858\n" in ini_text
+    assert "waveform-approximant=SEOBNRv5PHM\n" in ini_text
+    assert f"frequency-domain-source-model={source_model}\n" in ini_text
+    assert (
+        "minimum-frequency={'H1': 20, 'L1': 30, 'V1': 20, 'waveform': 13.33}\n"
+        in ini_text
+    )
+    assert "maximum-frequency={'H1': 448, 'L1': 448, 'V1': 448}\n" in ini_text
+    for setting in (
+        "data-dict",
+        "psd-dict",
+        "spline-calibration-envelope-dict",
+    ):
+        assert "'L1': '" in next(
+            line for line in ini_text.splitlines()
+            if line.startswith(f"{setting}=")
+        )
+    assert (
+        f"outdir={tmp_path}/public_html/GWTC_parametric_noise/Runs/"
+        f"GW241127_061008/{model_directory}/"
+        "gaussian_detector_independent_noise_N1\n"
+    ) in ini_text
+    if deviation_prior is None:
+        assert "domega220" not in prior_text
+        assert "dtau220" not in prior_text
+    else:
+        assert deviation_prior in prior_text
+        assert (
+            "dtau220 = Uniform(name='dtau220', minimum=-0.8, maximum=2.0)"
+            in prior_text
+        )
+
+
+@pytest.mark.parametrize(
+    ("minimum_frequency", "suffix"),
+    [(20, "fmin20"), (30, "fmin30")],
+)
+def test_gw241127_minimum_frequency_override_is_collision_safe(
+    monkeypatch,
+    tmp_path,
+    minimum_frequency,
+    suffix,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW241127_pSEOB",
+            "--likelihood",
+            "gaussian",
+            "--minimum-frequency",
+            str(minimum_frequency),
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(tmp_path / "prior"),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_path = next(ini_dir.glob("*.ini"))
+    ini_text = ini_path.read_text(encoding="utf-8")
+
+    assert ini_path.name == f"GW241127_061008_pSEOB_gaussian_{suffix}.ini"
+    assert (
+        f"minimum-frequency={{'H1': {minimum_frequency}.0, "
+        f"'L1': {minimum_frequency}.0, 'V1': {minimum_frequency}.0, "
+        "'waveform': 13.33}\n"
+    ) in ini_text
+    assert (
+        f"/pSEOB/gaussian_detector_independent_noise_N1_{suffix}\n"
+        in ini_text
+    )
 
 
 def test_gw190521_lvk_nrsur_profile_generates_released_setup(

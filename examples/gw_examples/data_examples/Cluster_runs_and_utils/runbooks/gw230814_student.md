@@ -3,7 +3,7 @@
 ```
 BASE_DIR="$(git rev-parse --show-toplevel)"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
-GR_PRIOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Prior_templates/GW230814_gr_template.prior"
+GR_PRIOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs/priors/GW230814_gr_template.prior"
 MAXMCMC=5000
 ```
 

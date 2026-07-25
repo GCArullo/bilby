@@ -5,9 +5,14 @@ BASE_DIR="$(git rev-parse --show-toplevel)"
 EXTRACT="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/Scripts/extract_gw150914_c01_products.py"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
 GWTC_CONFIGS="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC_catalog_configs"
+SPECIAL_CONFIGS="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs"
 GWTC21="$GWTC_CONFIGS/GWTC-2.1"
 GWTC3="$GWTC_CONFIGS/GWTC-3"
 ```
+
+Catalog-derived templates and priors live under `$GWTC_CONFIGS`. Bespoke
+event configurations, including the GW200129 Hannam reproduction, live under
+`$SPECIAL_CONFIGS`.
 
 ## GWTC-2.1 Catalog Runs
 
@@ -62,6 +67,9 @@ sets `NRSur7dq4`, restricts the waveform to the multipoles with
 `2 <= ell <= 3`, and applies the Hannam et al. detector-frame prior cuts:
 `14.5 <= chirp_mass/M_sun <= 49`, `mass_ratio >= 1/4`, and
 `total_mass/M_sun >= 68`.
+
+Its template and prior are stored in `$SPECIAL_CONFIGS`; the required data
+products remain in `$GWTC3`.
 
 The template transfers the surrogate data file from
 `/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5`. Confirm that this shared path is

@@ -1,0 +1,157 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+
+\title{Gaussian Limit of the Hyperbolic Gravitational-Wave Likelihood}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Setup}
+
+For one detector and one frequency bin, define the complex residual
+\begin{equation}
+  r_k = d_k - h_k,
+\end{equation}
+and write the Bilby per-bin scale as
+\begin{equation}
+  s_k^2 = \frac{S_n(f_k)\,T}{4},
+\end{equation}
+where $S_n(f_k)$ is the one-sided noise power spectral density and $T$ is the data duration.
+
+The hyperbolic likelihood used in the implementation treats the real and imaginary parts of
+$r_k$ as a two-dimensional real vector. Define the standardized residual
+\begin{equation}
+  x_k = \frac{r_k}{\sqrt{s_k^2}},
+  \qquad
+  q_k = |x_k|^2 = \frac{|r_k|^2}{s_k^2}.
+\end{equation}
+
+The per-bin symmetric hyperbolic density is
+\begin{equation}
+  p(x_k \mid \alpha, \delta)
+  =
+  \frac{\alpha}{2\pi \delta\, K_1(\alpha\delta)}
+  K_0\!\left(\alpha \sqrt{\delta^2 + q_k}\right),
+\end{equation}
+with shape parameters $\alpha > 0$ and $\delta > 0$, and $K_\nu$ the modified Bessel function
+of the second kind.
+
+\section*{Asymptotic Limit}
+
+Take the limit
+\begin{equation}
+  \alpha, \delta \to \infty,
+  \qquad
+  \lambda = \frac{\alpha}{\delta}
+  \quad \text{fixed}.
+\end{equation}
+
+Use the large-argument asymptotic expansion
+\begin{equation}
+  K_\nu(z) \sim \sqrt{\frac{\pi}{2z}} e^{-z}
+  \qquad (z \to \infty).
+\end{equation}
+
+Applying this to both Bessel functions gives
+\begin{align}
+  p(x_k \mid \alpha, \delta)
+  &\sim
+  \frac{\alpha}{2\pi\delta}
+  \frac{\sqrt{\frac{\pi}{2\alpha\sqrt{\delta^2 + q_k}}}
+        e^{-\alpha\sqrt{\delta^2 + q_k}}}
+       {\sqrt{\frac{\pi}{2\alpha\delta}} e^{-\alpha\delta}} \\
+  &=
+  \frac{\alpha}{2\pi\delta}
+  \sqrt{\frac{\delta}{\sqrt{\delta^2 + q_k}}}
+  \exp\!\left[-\alpha\left(\sqrt{\delta^2 + q_k} - \delta\right)\right].
+\end{align}
+
+Now expand the square root:
+\begin{equation}
+  \sqrt{\delta^2 + q_k}
+  =
+  \delta \sqrt{1 + \frac{q_k}{\delta^2}}
+  =
+  \delta + \frac{q_k}{2\delta} + O(\delta^{-3}).
+\end{equation}
+
+Therefore
+\begin{equation}
+  \alpha \left(\sqrt{\delta^2 + q_k} - \delta\right)
+  =
+  \frac{\alpha}{2\delta} q_k + O(\delta^{-2})
+  \to
+  \frac{\lambda q_k}{2},
+\end{equation}
+and also
+\begin{equation}
+  \sqrt{\frac{\delta}{\sqrt{\delta^2 + q_k}}} \to 1.
+\end{equation}
+
+Hence the limiting density is
+\begin{equation}
+  p(x_k \mid \alpha, \delta)
+  \to
+  \frac{\lambda}{2\pi}
+  \exp\!\left(-\frac{\lambda q_k}{2}\right).
+\end{equation}
+
+This is the density of a two-dimensional zero-mean Gaussian with precision $\lambda$.
+
+\section*{Limit in Terms of the Residual $r_k$}
+
+Since $q_k = |r_k|^2 / s_k^2$, the density in the original residual variable is
+\begin{equation}
+  p(r_k)
+  \to
+  \frac{\lambda}{2\pi s_k^2}
+  \exp\!\left(-\frac{\lambda |r_k|^2}{2 s_k^2}\right).
+\end{equation}
+
+Equivalently, the per-bin log-likelihood becomes
+\begin{equation}
+  \log p(r_k)
+  \to
+  \log \lambda - \log(2\pi s_k^2) - \frac{\lambda |r_k|^2}{2 s_k^2}.
+\end{equation}
+
+For the special case $\alpha = \delta \to \infty$, one has $\lambda = 1$, so
+\begin{equation}
+  \log p(r_k)
+  \to
+  -\log(2\pi s_k^2) - \frac{|r_k|^2}{2 s_k^2}.
+\end{equation}
+
+Substituting the Bilby scale
+\begin{equation}
+  s_k^2 = \frac{S_n(f_k)\,T}{4},
+\end{equation}
+gives
+\begin{equation}
+  \log p(r_k)
+  \to
+  -\log\!\left(\frac{\pi S_n(f_k)\,T}{2}\right)
+  - \frac{2|r_k|^2}{T\,S_n(f_k)}.
+\end{equation}
+
+This is exactly the standard complex Gaussian per-bin likelihood used by Bilby. Summing over
+independent frequency bins and detectors reproduces the usual Gaussian/Whittle gravitational-wave
+likelihood, up to the same additive normalization constants already present in the Gaussian model.
+
+\section*{Conclusion}
+
+The symmetric hyperbolic likelihood has a Gaussian limit only when
+\begin{equation}
+  \alpha, \delta \to \infty
+  \quad \text{with} \quad
+  \lambda = \frac{\alpha}{\delta}
+  \quad \text{fixed}.
+\end{equation}
+The limiting Gaussian precision is $\lambda$. In particular, choosing $\alpha = \delta$ and
+taking both to infinity yields the standard Bilby Gaussian likelihood.
+
+\end{document}

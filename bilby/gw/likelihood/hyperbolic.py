@@ -34,9 +34,10 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
     A heavy-tailed likelihood based on the hyperbolic distribution in Eq. 8-9 of
     arXiv:2602.22074.
 
-    Each active network frequency bin is represented by a real residual vector whose
-    dimension is twice the number of detectors contributing to that bin. If detector
-    masks differ, the effective dimension varies by frequency bin.
+    By default, each detector contributes an independent two-dimensional hyperbolic
+    density per active frequency bin. If ``joint=True``, detector residuals at the
+    same frequency are instead combined into one real residual vector whose dimension
+    is twice the number of contributing detectors.
     """
 
     _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
@@ -53,6 +54,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         infer_delta=False,
         num_frequency_bands=1,
         detector_dependent_noise=False,
+        joint=False,
         time_marginalization=False,
         distance_marginalization=False,
         phase_marginalization=False,
@@ -101,6 +103,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             If True, allow distinct hyperbolic `alpha` and `delta` values for each
             interferometer (and for each frequency band if `num_frequency_bands > 1`).
             If False, the same hyperbolic shape parameters are shared by all detectors.
+        joint : bool
+            If True, combine detector residuals into one network hyperbolic density
+            per frequency bin. If False, the default, multiply independent
+            per-detector densities, including when the shape parameters are shared.
+            Joint densities require `detector_dependent_noise=False`.
         noise_evidence_nlive : int, optional
             Number of live points to use when the noise evidence requires an
             auxiliary nested-sampling run. If not provided, use the internal
@@ -140,6 +147,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
         self.num_frequency_bands = self._validate_num_frequency_bands(num_frequency_bands)
         self.detector_dependent_noise = bool(detector_dependent_noise)
+        self.joint = bool(joint)
+        if self.joint and self.detector_dependent_noise:
+            raise ValueError(
+                "joint=True requires detector_dependent_noise=False"
+            )
         self._detector_names = [ifo.name for ifo in self.interferometers]
         self._fixed_alpha = self._coerce_parameter_array(alpha, "alpha")
         self._fixed_delta = self._coerce_parameter_array(delta, "delta")
@@ -311,6 +323,21 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 ):
                     if np.any(band_mask):
                         coordinates.append((interferometer.name, band_index, 2))
+        elif not self.joint:
+            active_frequencies = np.unique(
+                np.concatenate(
+                    [
+                        interferometer.frequency_array[interferometer.frequency_mask]
+                        for interferometer in self.interferometers
+                        if np.any(interferometer.frequency_mask)
+                    ]
+                )
+            )
+            for band_index, band_mask in enumerate(
+                self._get_frequency_band_masks(active_frequencies)
+            ):
+                if np.any(band_mask):
+                    coordinates.append((None, band_index, 2))
         else:
             active_frequencies = [
                 interferometer.frequency_array[interferometer.frequency_mask]
@@ -404,6 +431,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             infer_alpha=self.infer_alpha,
             infer_delta=self.infer_delta,
             detector_dependent_noise=self.detector_dependent_noise,
+            joint=self.joint,
             num_frequency_bands=self.num_frequency_bands,
             noise_evidence_method=self.noise_evidence_method,
         )
@@ -901,14 +929,14 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
 
-        if self.detector_dependent_noise:
-            logl = self._sum_detector_log_likelihoods(
+        if self.joint:
+            logl = self._compute_network_log_likelihood(
                 interferometers=self.interferometers,
                 alpha_values=alpha_values,
                 delta_values=delta_values,
             )
         else:
-            logl = self._compute_network_log_likelihood(
+            logl = self._sum_detector_log_likelihoods(
                 interferometers=self.interferometers,
                 alpha_values=alpha_values,
                 delta_values=delta_values,
@@ -1091,8 +1119,8 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        if self.detector_dependent_noise:
-            logl = self._sum_detector_log_likelihoods(
+        if self.joint:
+            logl = self._compute_network_log_likelihood(
                 interferometers=self.interferometers,
                 alpha_values=alpha_values,
                 delta_values=delta_values,
@@ -1100,7 +1128,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 waveform_polarizations=pols,
             )
         else:
-            logl = self._compute_network_log_likelihood(
+            logl = self._sum_detector_log_likelihoods(
                 interferometers=self.interferometers,
                 alpha_values=alpha_values,
                 delta_values=delta_values,
@@ -1154,22 +1182,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        if self.detector_dependent_noise:
-            signal_logl = self._sum_detector_log_likelihoods(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-                include_log_scale2=False,
-            )
-            noise_logl = self._sum_detector_log_likelihoods(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                include_log_scale2=False,
-            )
-        else:
+        if self.joint:
             signal_logl = self._compute_network_log_likelihood(
                 interferometers=self.interferometers,
                 alpha_values=alpha_values,
@@ -1179,6 +1192,21 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 include_log_scale2=False,
             )
             noise_logl = self._compute_network_log_likelihood(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                include_log_scale2=False,
+            )
+        else:
+            signal_logl = self._sum_detector_log_likelihoods(
+                interferometers=self.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+                include_log_scale2=False,
+            )
+            noise_logl = self._sum_detector_log_likelihoods(
                 interferometers=self.interferometers,
                 alpha_values=alpha_values,
                 delta_values=delta_values,

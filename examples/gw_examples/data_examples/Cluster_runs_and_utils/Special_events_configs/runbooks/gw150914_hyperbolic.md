@@ -1,4 +1,4 @@
-# GW150914 Special-Event Hyperbolic Runs
+# GW150914 Hyperbolic and Gaussian-Parametric Runs
 
 ```
 BASE_DIR="$(git rev-parse --show-toplevel)"
@@ -91,6 +91,42 @@ python "$REAL" \
   --likelihood hyperbolic \
   --num-frequency-bands 1 \
   --joint
+```
+
+## Gaussian likelihood with inferred PSD corrections
+
+The Gaussian-parametric likelihood multiplies the PSD in each frequency band
+by `10**log_psd_scale`. The launcher assigns each sampled `log_psd_scale`
+parameter a `Uniform(-1, 1)` prior, corresponding to a PSD scale between
+`0.1` and `10`.
+
+Shared H1/L1 corrections for bands 1 through 4:
+
+```
+python "$REAL" \
+  --event GW150914 \
+  --ini-template "$INI" \
+  --prior-template "$PRIOR" \
+  --working-directory "$WORKING_DIRECTORY" \
+  --outdir-base "$OUTPUT" \
+  --likelihood gaussian-parametric \
+  --range \
+  --num-frequency-bands 4
+```
+
+Independent corrections for each detector and band:
+
+```
+python "$REAL" \
+  --event GW150914 \
+  --ini-template "$INI" \
+  --prior-template "$PRIOR" \
+  --working-directory "$WORKING_DIRECTORY" \
+  --outdir-base "$OUTPUT" \
+  --likelihood gaussian-parametric \
+  --range \
+  --num-frequency-bands 4 \
+  --detector-dependent-noise
 ```
 
 The launcher submits by default. Add `--dry-run` to any command to write the

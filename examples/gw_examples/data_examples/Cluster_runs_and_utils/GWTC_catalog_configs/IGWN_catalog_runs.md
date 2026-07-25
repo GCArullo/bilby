@@ -11,6 +11,26 @@ GWTC3="$GWTC_CONFIGS/GWTC-3"
 
 Catalog-derived templates and priors live under `$GWTC_CONFIGS`.
 
+## Gaussian likelihood with inferred PSD corrections
+
+Use `gaussian-parametric` to sample one PSD correction in each of `N`
+frequency bands. Corrections are shared between detectors by default:
+
+```
+python "$REAL" \
+  --event GW200129_065458 \
+  --likelihood gaussian-parametric \
+  --num-frequency-bands 4 \
+  --dry-run
+```
+
+Add `--detector-dependent-noise` for separate H1/L1 corrections. Add
+`--range` to prepare every band count from 1 through `N`. The generated
+priors use `log_psd_scale ~ Uniform(-1, 1)`, so each PSD multiplier
+`10**log_psd_scale` ranges from `0.1` to `10`. Remove `--dry-run` to submit.
+A standard Gaussian companion is included by default; pass
+`--no-add-gaussian` to omit it.
+
 ## GWTC-2.1 Catalog Runs
 
 `$GWTC21` contains templates, priors, embedded source configs, PSDs, and
@@ -65,8 +85,8 @@ not download data.
 ## PESummary Pages
 
 Exclude the spline-calibration nuisance parameters from every PESummary page,
-for Gaussian, Student-t, and Hyperbolic likelihoods. The real-data launcher
-sets this automatically for per-run pages:
+for Gaussian, Gaussian-parametric, Student-t, and Hyperbolic likelihoods. The
+real-data launcher sets this automatically for per-run pages:
 
 ```
 ignore_parameters = ["recalib*"]

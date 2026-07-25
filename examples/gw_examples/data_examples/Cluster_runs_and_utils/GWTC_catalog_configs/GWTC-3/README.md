@@ -1,8 +1,9 @@
 # GWTC-3 run templates
 
-This directory contains runnable Student-t/Hyperbolic/Gaussian templates for
-the 36 events in the [GWTC-3 parameter-estimation release][pe-release]: the 35
-O3b candidates with `p_astro > 0.5`, plus GW200105_162426.
+This directory contains runnable Student-t, Hyperbolic, Gaussian-parametric,
+and standard Gaussian templates for the 36 events in the
+[GWTC-3 parameter-estimation release][pe-release]: the 35 O3b candidates with
+`p_astro > 0.5`, plus GW200105_162426.
 
 - `templates/`: one `submit_runs_real_data.py` ini template per event.
 - `priors/`: the corresponding prior templates.

@@ -1,0 +1,40 @@
+{
+  "approximant": "IMRPhenomXPHM",
+  "calibration_detectors": [
+    "H1"
+  ],
+  "checksum": "md5:c65fef60813c7db1f2dbef2331888cc0",
+  "detectors": [
+    "H1"
+  ],
+  "duration": 4.0,
+  "embedded_config_available": true,
+  "event": "GW230911_195324",
+  "filename": "IGWN-GWTC4p0-38214bd95_724-GW230911_195324-combined_PEDataRelease.hdf5",
+  "maximum_frequency": {
+    "H1": 896.0
+  },
+  "metadata_snapshot": null,
+  "minimum_frequency": {
+    "H1": 28.38,
+    "waveform": 28.38
+  },
+  "prior": "priors/GW230911_195324.prior",
+  "psd_detectors": [
+    "H1"
+  ],
+  "reconstructed_prior": false,
+  "record_event": "GW230911_195324",
+  "record_id": 17602505,
+  "sampling_frequency": 2048.0,
+  "selected_run": "C00:IMRPhenomXPHM-SpinTaylor",
+  "size": 105569292,
+  "source_configs": [
+    "source_configs/GW230911_195324/C00__IMRPhenomXPHM-SpinTaylor.ini"
+  ],
+  "source_selects_glitch_subtracted_channel": false,
+  "template": "templates/GW230911_195324.ini",
+  "trigger_time": 1378497222.201289,
+  "url": "https://zenodo.org/records/17602505/files/IGWN-GWTC4p0-38214bd95_724-GW230911_195324-combined_PEDataRelease.hdf5?download=1",
+  "waveform_arguments": "{'PhenomXHMReleaseVersion': 122022, 'PhenomXPFinalSpinMod': 2, 'PhenomXPrecVersion': 320}"
+}

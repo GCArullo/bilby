@@ -444,12 +444,15 @@ def test_hyperbolic_accepts_detector_dependent_noise():
     assert module.hypothesis_list(args) == ["hyperbolic", "gaussian"]
 
 
-def test_joint_requires_detector_independent_hyperbolic_likelihood():
+def test_joint_requires_detector_independent_heavy_tailed_likelihood():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)
 
-    args = parser.parse_args(["--likelihood", "student", "--joint"])
-    with pytest.raises(ValueError, match="--joint requires --likelihood hyperbolic"):
+    args = parser.parse_args(["--likelihood", "gaussian", "--joint"])
+    with pytest.raises(
+        ValueError,
+        match="--joint requires --likelihood student or hyperbolic",
+    ):
         module.hypothesis_list(args)
 
     args = parser.parse_args(
@@ -783,6 +786,8 @@ def test_main_student_range_writes_single_gaussian_run_without_n_suffix(
     ]
 
     gaussian_ini = gaussian_ini_paths[0].read_text(encoding="utf-8")
+    student_ini = student_ini_paths[-1].read_text(encoding="utf-8")
+    assert "'joint': False" in student_ini
     assert "gaussian_N" not in gaussian_ini
 
 
@@ -846,7 +851,16 @@ def test_main_hyperbolic_range_writes_single_gaussian_run_without_n_suffix(
     assert "gaussian_N" not in gaussian_ini
 
 
-def test_main_hyperbolic_joint_opt_in_writes_distinct_run(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("likelihood", "filename"),
+    [
+        ("student", "GW231123_t_student_joint_N1.ini"),
+        ("hyperbolic", "GW231123_hyperbolic_joint_N1.ini"),
+    ],
+)
+def test_main_joint_opt_in_writes_distinct_run(
+    monkeypatch, tmp_path, likelihood, filename
+):
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
     prior_dir = tmp_path / "prior"
@@ -861,7 +875,7 @@ def test_main_hyperbolic_joint_opt_in_writes_distinct_run(monkeypatch, tmp_path)
             "--event",
             "GW231123",
             "--likelihood",
-            "hyperbolic",
+            likelihood,
             "--joint",
             "--no-add-gaussian",
             "--dry-run",
@@ -878,10 +892,13 @@ def test_main_hyperbolic_joint_opt_in_writes_distinct_run(monkeypatch, tmp_path)
 
     assert module.main() == 0
 
-    ini_path = ini_dir / "GW231123_hyperbolic_joint_N1.ini"
+    ini_path = ini_dir / filename
     joint_ini = ini_path.read_text(encoding="utf-8")
     assert "'joint': True" in joint_ini
-    assert "hyperbolic_detector_independent_noise_joint_N1" in joint_ini
+    assert (
+        f"{likelihood}_detector_independent_noise_joint_N1"
+        in joint_ini
+    )
 
 
 def test_main_student_detector_dependent_noise_writes_detector_specific_priors(

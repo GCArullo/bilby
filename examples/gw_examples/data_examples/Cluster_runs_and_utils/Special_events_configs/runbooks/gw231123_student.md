@@ -29,6 +29,12 @@ Det-independent `nu`, up to 4 frequency bands:
 python "$REAL" --event GW231123 --likelihood student --range --num-frequency-bands 4 --maxmcmc "$MAXMCMC"
 ```
 
+Joint det-independent `nu`, up to 4 frequency bands:
+
+```
+python "$REAL" --event GW231123 --likelihood student --range --num-frequency-bands 4 --joint --maxmcmc "$MAXMCMC"
+```
+
 Det-dependent `nu`, up to 4 frequency bands:
 
 ```

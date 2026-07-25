@@ -30,8 +30,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     """
     A simple heavy-tailed replacement for the standard Gaussian (Whittle) likelihood.
 
-    Model: per-frequency-bin complex Student-t for the residual r_k = d_k - h_k, with
-    scale set by the one-sided PSD S_n(f).
+    By default, each detector contributes an independent two-dimensional Student-t
+    density per active frequency bin. If ``joint=True``, detector residuals at the
+    same frequency are combined into one real residual vector whose dimension is
+    twice the number of contributing detectors.
     """
 
     _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
@@ -47,6 +49,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         num_frequency_bands=1,
         detector_dependent_nu=False,
         detector_dependent_noise=None,
+        joint=False,
         time_marginalization=False,
         distance_marginalization=False,
         phase_marginalization=False,
@@ -87,6 +90,11 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             If True, allow a distinct `nu` value for each interferometer (and for each
             frequency band if `num_frequency_bands > 1`). If False, the same `nu`
             values are shared by all detectors.
+        joint : bool
+            If True, combine detector residuals into one network Student-t density
+            per frequency bin. If False, the default, multiply independent
+            per-detector densities, including when `nu` is shared. Joint densities
+            require `detector_dependent_noise=False`.
         noise_evidence_nlive : int, optional
             Number of live points to use when the noise evidence requires an
             auxiliary nested-sampling run. If not provided, use the internal
@@ -130,6 +138,11 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             detector_dependent_nu=detector_dependent_nu,
         )
         self.detector_dependent_nu = self.detector_dependent_noise
+        self.joint                 = bool(joint)
+        if self.joint and self.detector_dependent_noise:
+            raise ValueError(
+                "joint=True requires detector_dependent_noise=False"
+            )
         self._detector_names       = [ifo.name for ifo in self.interferometers]
         self._fixed_nu             = self._coerce_nu_array(nu)
         self.infer_nu              = bool(infer_nu)
@@ -206,7 +219,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         return list(self.nu_parameter_keys)
 
     @staticmethod
-    def _gaussian_limit_statistics(nu):
+    def _gaussian_limit_statistics(nu, dimension=2):
         if nu > 2.0:
             variance_scale = nu / (nu - 2.0)
             std_scale = np.sqrt(variance_scale)
@@ -214,7 +227,6 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             variance_scale = np.inf
             std_scale = np.inf
 
-        dimension = 2
         log_likelihood_ratio = (
             -0.5 * (nu + dimension) * np.log1p(dimension / nu)
             + 0.5 * dimension
@@ -231,6 +243,25 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         """Print the closest Gaussian limit available within the nu priors."""
         fixed_nus = dict(zip(self.nu_parameter_keys, np.ravel(self._fixed_nu)))
         rows = []
+        dimensions_by_band = [
+            np.array([2], dtype=int)
+            for _ in range(self.num_frequency_bands)
+        ]
+        if self.joint:
+            active_frequencies = [
+                interferometer.frequency_array[interferometer.frequency_mask]
+                for interferometer in self.interferometers
+                if np.any(interferometer.frequency_mask)
+            ]
+            network_frequencies, active_counts = np.unique(
+                np.concatenate(active_frequencies), return_counts=True
+            )
+            dimensions_by_band = [
+                np.unique(2 * active_counts[band_mask])
+                for band_mask in self._get_frequency_band_masks_from_frequencies(
+                    network_frequencies
+                )
+            ]
 
         for parameter_index, key in enumerate(self.nu_parameter_keys):
             if self.infer_nu:
@@ -251,25 +282,35 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             if self.num_frequency_bands > 1:
                 coordinate = f"{coordinate} band {band_index + 1}"
 
-            rows.append((coordinate, nu, source, self._gaussian_limit_statistics(nu)))
+            for dimension in dimensions_by_band[band_index]:
+                rows.append(
+                    (
+                        coordinate,
+                        int(dimension),
+                        nu,
+                        source,
+                        self._gaussian_limit_statistics(nu, int(dimension)),
+                    )
+                )
 
         closest_row = min(
-            rows, key=lambda row: abs(row[3]["relative_variance_error"])
+            rows, key=lambda row: abs(row[4]["relative_variance_error"])
         )
-        worst_row = max(rows, key=lambda row: abs(row[3]["relative_variance_error"]))
+        worst_row = max(rows, key=lambda row: abs(row[4]["relative_variance_error"]))
         rows_to_print = [("closest available limit", closest_row)]
         if worst_row is not closest_row:
             rows_to_print.append(("worst available limit", worst_row))
 
         print("\n* Student-t Gaussian-limit diagnostic (per complex frequency bin):")
         for label, row in rows_to_print:
-            coordinate, nu, source, stats = row
+            coordinate, dimension, nu, source, stats = row
             print(
-                "  {} ({}, d=2): nu = {:.6g} ({}), variance scale = {:.6g} "
+                "  {} ({}, d={}): nu = {:.6g} ({}), variance scale = {:.6g} "
                 "({:+.3%}), std scale = {:.6g} ({:+.3%}), "
                 "logL_student-logL_gauss at q=d = {:.6g}.".format(
                     label,
                     coordinate,
+                    dimension,
                     nu,
                     source,
                     stats["variance_scale"],
@@ -289,6 +330,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             infer_nu=self.infer_nu,
             detector_dependent_noise=self.detector_dependent_noise,
             detector_dependent_nu=self.detector_dependent_nu,
+            joint=self.joint,
             num_frequency_bands=self.num_frequency_bands,
             noise_evidence_method=self.noise_evidence_method,
         )
@@ -416,7 +458,21 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _create_frequency_band_edges(self):
 
-        frequencies = self.interferometers[0].frequency_array[self.interferometers[0].frequency_mask]
+        if self.joint:
+            active_frequencies = [
+                interferometer.frequency_array[interferometer.frequency_mask]
+                for interferometer in self.interferometers
+                if np.any(interferometer.frequency_mask)
+            ]
+            if len(active_frequencies) == 0:
+                raise ValueError(
+                    "No active frequencies available to construct Student-t bands"
+                )
+            frequencies = np.unique(np.concatenate(active_frequencies))
+        else:
+            frequencies = self.interferometers[0].frequency_array[
+                self.interferometers[0].frequency_mask
+            ]
 
         if len(frequencies) == 0: raise ValueError("No active frequencies available to construct Student-t bands")
         
@@ -476,6 +532,11 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
     def _get_frequency_band_masks(self, interferometer):
 
         frequencies = interferometer.frequency_array[interferometer.frequency_mask]
+        return self._get_frequency_band_masks_from_frequencies(frequencies)
+
+    def _get_frequency_band_masks_from_frequencies(self, frequencies):
+
+        frequencies = np.asarray(frequencies, dtype=float)
         band_masks = []
         for index, (lower, upper) in enumerate(
             zip(self._frequency_band_edges[:-1], self._frequency_band_edges[1:])
@@ -485,6 +546,32 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             band_masks.append(band_mask)
 
         return band_masks
+
+    @staticmethod
+    def _map_frequencies_to_network_grid(network_frequencies, frequencies):
+
+        frequencies = np.asarray(frequencies, dtype=float)
+        if len(frequencies) == 0:
+            return np.array([], dtype=int)
+
+        indices = np.searchsorted(network_frequencies, frequencies)
+        if np.any(indices >= len(network_frequencies)):
+            return None
+
+        frequency_tolerance = 0.0
+        if len(network_frequencies) > 1:
+            frequency_tolerance = np.min(np.diff(network_frequencies)) * 1e-12
+        if not np.all(
+            np.isclose(
+                network_frequencies[indices],
+                frequencies,
+                rtol=0.0,
+                atol=frequency_tolerance,
+            )
+        ):
+            return None
+
+        return indices
 
     def _resolve_likelihood_parameters(self, parameters=None):
 
@@ -568,11 +655,162 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         return float(logl)
 
+    @staticmethod
+    def _compute_joint_bin_log_terms(quadratic_forms, dimensions, nu):
+
+        quadratic_forms = np.asarray(quadratic_forms, dtype=float)
+        dimensions       = np.asarray(dimensions, dtype=int)
+        if quadratic_forms.shape != dimensions.shape:
+            return None
+        if len(quadratic_forms) == 0:
+            return np.array([], dtype=float)
+        if nu <= 0 or not np.isfinite(nu):
+            return None
+        if np.any(quadratic_forms < 0) or not np.all(np.isfinite(quadratic_forms)):
+            return None
+        if np.any(dimensions < 2) or np.any(dimensions % 2 != 0):
+            return None
+
+        log_terms = np.empty(len(quadratic_forms), dtype=float)
+        for dimension in np.unique(dimensions):
+            half_dimension = dimension // 2
+            log_gamma_ratio = np.sum(
+                np.log(0.5 * nu + np.arange(half_dimension))
+            )
+            constant = (
+                log_gamma_ratio
+                - half_dimension * np.log(nu * np.pi)
+            )
+            dimension_mask = dimensions == dimension
+            log_terms[dimension_mask] = (
+                constant
+                - 0.5
+                * (nu + dimension)
+                * np.log1p(quadratic_forms[dimension_mask] / nu)
+            )
+
+        return log_terms
+
+    def _get_network_frequency_bin_data(
+        self,
+        interferometers,
+        parameters=None,
+        waveform_polarizations=None,
+    ):
+
+        detector_frequency_data = []
+        active_frequencies = []
+        for interferometer in interferometers:
+            mask = interferometer.frequency_mask
+            frequencies = interferometer.frequency_array[mask]
+            if len(frequencies) == 0:
+                continue
+
+            scale2 = self._compute_scale2(
+                interferometer.power_spectral_density_array[mask]
+            )
+            if np.any(scale2 <= 0) or not np.all(np.isfinite(scale2)):
+                return None
+
+            if waveform_polarizations is None:
+                residual = interferometer.frequency_domain_strain[mask]
+            else:
+                h_f = interferometer.get_detector_response(
+                    waveform_polarizations, parameters
+                )
+                residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+
+            quadratic_contribution = (
+                residual.real ** 2 + residual.imag ** 2
+            ) / scale2
+            if not np.all(np.isfinite(quadratic_contribution)):
+                return None
+
+            detector_frequency_data.append(
+                (frequencies, quadratic_contribution, np.log(scale2))
+            )
+            active_frequencies.append(frequencies)
+
+        if len(active_frequencies) == 0:
+            empty_float = np.array([], dtype=float)
+            empty_int   = np.array([], dtype=int)
+            return empty_float, empty_float, empty_int, empty_float
+
+        network_frequencies = np.unique(np.concatenate(active_frequencies))
+        quadratic_forms     = np.zeros(len(network_frequencies), dtype=float)
+        log_scale2_terms    = np.zeros(len(network_frequencies), dtype=float)
+        active_counts       = np.zeros(len(network_frequencies), dtype=int)
+
+        for frequencies, quadratic_contribution, log_scale2 in detector_frequency_data:
+            indices = self._map_frequencies_to_network_grid(
+                network_frequencies, frequencies
+            )
+            if indices is None:
+                return None
+            quadratic_forms[indices]  += quadratic_contribution
+            log_scale2_terms[indices] += log_scale2
+            active_counts[indices]    += 1
+
+        active_mask = active_counts > 0
+        return (
+            network_frequencies[active_mask],
+            quadratic_forms[active_mask],
+            2 * active_counts[active_mask],
+            log_scale2_terms[active_mask],
+        )
+
+    def _compute_network_log_likelihood(
+        self,
+        nu_values,
+        parameters=None,
+        waveform_polarizations=None,
+        include_log_scale2=True,
+    ):
+
+        frequency_bin_data = self._get_network_frequency_bin_data(
+            interferometers=self.interferometers,
+            parameters=parameters,
+            waveform_polarizations=waveform_polarizations,
+        )
+        if frequency_bin_data is None:
+            return -np.inf
+
+        frequencies, quadratic_forms, dimensions, log_scale2_terms = (
+            frequency_bin_data
+        )
+        if len(frequencies) == 0:
+            return 0.0
+
+        band_masks = self._get_frequency_band_masks_from_frequencies(frequencies)
+        logl = 0.0
+        for nu, band_mask in zip(nu_values, band_masks):
+            if not np.any(band_mask):
+                continue
+
+            band_log_terms = self._compute_joint_bin_log_terms(
+                quadratic_forms=quadratic_forms[band_mask],
+                dimensions=dimensions[band_mask],
+                nu=nu,
+            )
+            if band_log_terms is None or not np.all(np.isfinite(band_log_terms)):
+                return -np.inf
+            if include_log_scale2:
+                band_log_terms = band_log_terms - log_scale2_terms[band_mask]
+            logl += np.sum(band_log_terms)
+
+        return float(logl)
+
     def _noise_log_likelihood_from_parameters(self, parameters):
 
         nu_values = self._get_active_nu_values(parameters, update_state=False)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
+
+        if self.joint:
+            logl = self._compute_network_log_likelihood(nu_values=nu_values)
+            if not np.isfinite(logl):
+                return np.nan_to_num(-np.inf)
+            return float(logl)
 
         logl = 0.0
         for ifo in self.interferometers:
@@ -751,6 +989,16 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
+        if self.joint:
+            logl = self._compute_network_log_likelihood(
+                nu_values=nu_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+            )
+            if not np.isfinite(logl):
+                return np.nan_to_num(-np.inf)
+            return float(logl)
+
         logl = 0.0
         for ifo in self.interferometers:
             detector_logl = self._compute_detector_log_likelihood(
@@ -807,6 +1055,21 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         pols = self.waveform_generator.frequency_domain_strain(parameters)
         if pols is None:
             return np.nan_to_num(-np.inf)
+
+        if self.joint:
+            signal_logl = self._compute_network_log_likelihood(
+                nu_values=nu_values,
+                parameters=parameters,
+                waveform_polarizations=pols,
+                include_log_scale2=False,
+            )
+            noise_logl = self._compute_network_log_likelihood(
+                nu_values=nu_values,
+                include_log_scale2=False,
+            )
+            if not np.isfinite(signal_logl) or not np.isfinite(noise_logl):
+                return np.nan_to_num(-np.inf)
+            return float(signal_logl - noise_logl)
 
         signal_logl = 0.0
         noise_logl = 0.0

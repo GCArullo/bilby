@@ -1035,6 +1035,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             waveform_generator=self.waveform_generator,
             alpha=alpha,
             delta=delta,
+            joint=True,
         )
         likelihood.parameters = self.parameters.copy()
 
@@ -1076,6 +1077,72 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
+
+    def test_detector_independent_likelihood_is_factorized_by_default(self):
+        interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
+        interferometers.set_strain_data_from_power_spectral_densities(
+            sampling_frequency=self.sampling_frequency, duration=self.duration
+        )
+        alpha = 10.0
+        delta = 1.5
+        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=alpha,
+            delta=delta,
+        )
+        likelihood.parameters = self.parameters.copy()
+
+        calculated = likelihood.log_likelihood()
+
+        pols = self.waveform_generator.frequency_domain_strain(self.parameters)
+        manual = 0.0
+        manual_noise = 0.0
+        for interferometer in interferometers:
+            mask = interferometer.frequency_mask
+            h_f = interferometer.get_detector_response(pols, self.parameters)
+            residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
+            scale2 = (
+                interferometer.power_spectral_density_array[mask]
+                * self.duration
+                / 4.0
+            )
+            quadratic_forms = (
+                residual.real ** 2 + residual.imag ** 2
+            ) / scale2
+            manual += np.sum(
+                self._manual_log_density(
+                    quadratic_forms=quadratic_forms,
+                    dimensions=np.full(len(quadratic_forms), 2, dtype=int),
+                    alpha=alpha,
+                    delta=delta,
+                )
+                - np.log(scale2)
+            )
+            noise_quadratic_forms = (
+                interferometer.frequency_domain_strain[mask].real ** 2
+                + interferometer.frequency_domain_strain[mask].imag ** 2
+            ) / scale2
+            manual_noise += np.sum(
+                self._manual_log_density(
+                    quadratic_forms=noise_quadratic_forms,
+                    dimensions=np.full(len(noise_quadratic_forms), 2, dtype=int),
+                    alpha=alpha,
+                    delta=delta,
+                )
+                - np.log(scale2)
+            )
+
+        self.assertFalse(likelihood.joint)
+        self.assertAlmostEqual(calculated, float(manual), 7)
+        self.assertAlmostEqual(
+            likelihood.noise_log_likelihood(), float(manual_noise), 7
+        )
+        self.assertAlmostEqual(
+            likelihood.log_likelihood_ratio(),
+            float(manual - manual_noise),
+            7,
+        )
 
     def test_infer_alpha_uses_parameter_dict(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
@@ -1203,6 +1270,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         self.assertTrue(likelihood.meta_data["infer_alpha"])
         self.assertTrue(likelihood.meta_data["infer_delta"])
         self.assertFalse(likelihood.meta_data["detector_dependent_noise"])
+        self.assertFalse(likelihood.meta_data["joint"])
         self.assertEqual(likelihood.meta_data["num_frequency_bands"], 2)
         self.assertEqual(likelihood.meta_data["noise_evidence_method"], "quadrature")
 

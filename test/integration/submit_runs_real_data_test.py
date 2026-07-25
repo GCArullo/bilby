@@ -54,6 +54,8 @@ def test_num_frequency_bands_defaults_to_one():
     [
         ("GWTC-2.1", 54, {"GW150914", "GW190425_081805", "GW190930_133541"}),
         ("GWTC-3", 36, {"GW191103_012549", "GW200115_042309", "GW200322_091133"}),
+        ("GWTC-4", 86, {"GW230529_181500", "GW231028_153006", "GW240109_050431"}),
+        ("GWTC-5", 104, {"GW240413_022019", "GW240925_005809", "GW250119_190238"}),
     ],
 )
 def test_all_catalog_manifest_events_are_available(catalog, count, examples):
@@ -94,17 +96,74 @@ def test_special_event_templates_and_priors_are_grouped_together():
 
     assert {path.name for path in (special_dir / "templates").iterdir()} == {
         "GW150914_t_student_igwn_template.ini",
+        "GW190521_030229_LVK_NRSur7dq4.ini",
         "GW200129_065458_Hannam_NRSur7dq4.ini",
         "GW230814_t_student_pSEOB_template.ini",
         "GW231123_t_student_template.ini",
     }
     assert {path.name for path in (special_dir / "priors").iterdir()} == {
         "GW150914_igwn_template.prior",
+        "GW190521_030229_LVK_NRSur7dq4.prior",
         "GW200129_065458_Hannam_NRSur7dq4.prior",
         "GW230814_gr_template.prior",
         "GW230814_template.prior",
         "GW231123_template.prior",
     }
+    assert {path.name for path in (special_dir / "source_configs").iterdir()} == {
+        "GW190521_030229_LVK_NRSur7dq4.ini",
+    }
+
+
+def test_gw190521_lvk_nrsur_profile_generates_released_setup(
+    monkeypatch,
+    tmp_path,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW190521_030229_LVK_NRSur7dq4",
+            "--likelihood",
+            "gaussian",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
+
+    assert "waveform-approximant=NRSur7dq4\n" in ini_text
+    assert "duration=8.0\n" in ini_text
+    assert "sampling-frequency=1024.0\n" in ini_text
+    assert "reference-frequency=11.0\n" in ini_text
+    assert (
+        "minimum-frequency={'H1': 11.0, 'L1': 11.0, 'V1': 11.0, 'waveform': 11.0}\n"
+    ) in ini_text
+    assert (
+        "additional-transfer-paths="
+        "[/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5]\n"
+    ) in ini_text
+    assert "minimum=70.0, maximum=150.0" in prior_text
+    assert "minimum=0.17, maximum=1.0" in prior_text
+    assert "total_mass = Constraint(name='total_mass', minimum=200.0" in prior_text
+    assert (
+        f"outdir={tmp_path}/public_html/GWTC_parametric_noise/Runs/"
+        "GW190521_030229/gaussian_detector_independent_noise_N1\n"
+    ) in ini_text
 
 
 def test_accounting_user_defaults_to_home_basename(monkeypatch):

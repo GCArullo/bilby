@@ -25,6 +25,8 @@ import numpy as np
 
 
 RECORD_ID = 6513631
+REMOTE_BLOCK_SIZE = 1024 * 1024
+SOURCE_CONFIG_SCOPE = "all"
 ROOT = Path(__file__).resolve().parent
 BASE_TEMPLATE = (
     ROOT.parents[1]
@@ -251,6 +253,14 @@ def detector_setting(value, detectors: list[str], default: float):
     parsed = parse_literal(value)
     if isinstance(parsed, dict):
         return {str(key): float(item) for key, item in parsed.items()}
+    if isinstance(value, str) and value.strip().startswith("{"):
+        pairs = re.findall(
+            r"([A-Za-z0-9_]+)\s*:\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)"
+            r"(?:[eE][+-]?\d+)?)",
+            value,
+        )
+        if pairs:
+            return {key: float(item) for key, item in pairs}
     scalar = number(parsed, default)
     return {detector: scalar for detector in detectors}
 
@@ -428,6 +438,11 @@ def get_settings(
     time_reference = first(
         config, "time-reference", "time_reference", default="geocent"
     )
+    waveform_arguments = first(
+        config,
+        "waveform-arguments-dict",
+        default=metadata.get("waveform_arguments_dict"),
+    )
     return {
         "detectors": detectors,
         "trigger_time": trigger_time,
@@ -439,6 +454,7 @@ def get_settings(
         "minimum_frequency": minimum,
         "maximum_frequency": maximum,
         "approximant": str(approximant),
+        "waveform_arguments": waveform_arguments,
         "reference_frame": str(reference_frame),
         "time_reference": str(time_reference),
     }
@@ -500,6 +516,11 @@ def make_template(
         "minimum-frequency": mapping_text(settings["minimum_frequency"]),
         "reference-frequency": settings["reference_frequency"],
         "waveform-approximant": settings["approximant"],
+        "waveform-arguments-dict": (
+            settings["waveform_arguments"]
+            if settings["waveform_arguments"] not in (None, "None", "")
+            else "None"
+        ),
         "default-prior": "BNSPriorDict"
         if record_event == "GW190425_081805"
         else "BBHPriorDict",
@@ -622,13 +643,21 @@ def prepare_event(
                 "Remote extraction requires fsspec and aiohttp"
             ) from error
         handle = fsspec.open(
-            str(item["url"]), mode="rb", block_size=1024 * 1024, cache_type="blockcache"
+            str(item["url"]),
+            mode="rb",
+            block_size=REMOTE_BLOCK_SIZE,
+            cache_type="blockcache",
         ).open()
 
     with handle, h5py.File(handle, "r") as h5_file:
+        selected_run = select_run(h5_file, record_event)
         source_dir = ROOT / "source_configs" / event
         source_files = []
-        for run_name in sorted(key for key in h5_file if key.startswith("C01:")):
+        for run_name in sorted(
+            key for key in h5_file if re.match(r"C\d{2}:", key)
+        ):
+            if SOURCE_CONFIG_SCOPE == "selected" and run_name != selected_run:
+                continue
             config_group = h5_file[run_name].get("config_file")
             if config_group is None or not list(config_group):
                 continue
@@ -636,7 +665,6 @@ def prepare_event(
             write_source_config(config_group, path)
             source_files.append(str(path.relative_to(ROOT)))
 
-        selected_run = select_run(h5_file, record_event)
         run = h5_file[selected_run]
         metadata_snapshot = None
         if not source_files and "meta_data/other/command_line_args" in run:
@@ -703,6 +731,7 @@ def prepare_event(
             "event": event,
             "selected_run": selected_run,
             "approximant": settings["approximant"],
+            "waveform_arguments": settings["waveform_arguments"],
             "detectors": settings["detectors"],
             "minimum_frequency": settings["minimum_frequency"],
             "maximum_frequency": settings["maximum_frequency"],

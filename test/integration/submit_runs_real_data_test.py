@@ -338,8 +338,8 @@ def test_gw241127_minimum_frequency_override_is_collision_safe(
     "event",
     ["GW230814", "GW241127_SEOB", "GW241127_pSEOB"],
 )
-@pytest.mark.parametrize("likelihood", ["student", "hyperbolic"])
-def test_special_event_submission_disables_incompatible_distance_marginalization(
+@pytest.mark.parametrize("likelihood", ["gaussian", "student", "hyperbolic"])
+def test_special_event_submission_disables_distance_marginalization(
     monkeypatch,
     tmp_path,
     event,
@@ -923,6 +923,7 @@ def test_render_ini_writes_maxmcmc_override():
             "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
             "likelihood-type=old",
             "extra-likelihood-kwargs=old",
+            "distance-marginalization=True",
             "waveform-approximant=old",
             "minimum-frequency=20",
             "",

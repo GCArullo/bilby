@@ -1248,8 +1248,7 @@ def render_ini(
         sampler_kwargs["maxmcmc"] = maxmcmc
     rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))
 
-    if hypothesis in HEAVY_TAILED_LIKELIHOODS:
-        rendered = replace_line(rendered, "distance-marginalization", "False")
+    rendered = replace_line(rendered, "distance-marginalization", "False")
 
     if hypothesis == "student":
         rendered = replace_line(

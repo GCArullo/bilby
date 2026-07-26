@@ -124,6 +124,18 @@ class TestStudentTGWTransient(unittest.TestCase):
             frequency_domain_source_model=bilby.gw.source.lal_binary_black_hole,
         )
 
+    def test_distance_marginalization_is_rejected(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "StudentTGravitationalWaveTransient does not support "
+            "distance marginalization",
+        ):
+            bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                distance_marginalization=True,
+            )
+
     def test_log_likelihood_matches_direct_calculation(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
@@ -991,6 +1003,18 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             sampling_frequency=self.sampling_frequency,
             frequency_domain_source_model=bilby.gw.source.lal_binary_black_hole,
         )
+
+    def test_distance_marginalization_is_rejected(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "HyperbolicGravitationalWaveTransient does not support "
+            "distance marginalization",
+        ):
+            bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                distance_marginalization=True,
+            )
 
     @classmethod
     def _manual_log_density(cls, quadratic_forms, dimensions, alpha, delta):

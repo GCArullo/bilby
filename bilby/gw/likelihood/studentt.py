@@ -109,9 +109,16 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             sampled, this falls back to the nested-sampling helper run.
             ``"nested"`` keeps the auxiliary dynesty calculation.
         kwargs :
-            Passed to GravitationalWaveTransient. (Note: time/distance/phase marginalization in
-            the base class assumes Gaussian structure; leave those False unless you re-derive them.)
+            Passed to GravitationalWaveTransient. Distance marginalization is
+            not supported. Time and phase marginalization in the base class
+            assume Gaussian structure.
         """
+        if distance_marginalization:
+            raise ValueError(
+                "StudentTGravitationalWaveTransient does not support "
+                "distance marginalization"
+            )
+
         # Keep the base-likelihood kwargs explicit so tools such as bilby_pipe
         # can discover and forward them when this class is selected by dotted path.
         super().__init__(

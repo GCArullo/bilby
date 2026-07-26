@@ -334,6 +334,46 @@ def test_gw241127_minimum_frequency_override_is_collision_safe(
     )
 
 
+@pytest.mark.parametrize(
+    "event",
+    ["GW230814", "GW241127_SEOB", "GW241127_pSEOB"],
+)
+@pytest.mark.parametrize("likelihood", ["student", "hyperbolic"])
+def test_special_event_submission_disables_incompatible_distance_marginalization(
+    monkeypatch,
+    tmp_path,
+    event,
+    likelihood,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            event,
+            "--likelihood",
+            likelihood,
+            "--no-add-gaussian",
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(tmp_path / "prior"),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    assert "distance-marginalization=False\n" in ini_text
+
+
 def test_gw190521_lvk_nrsur_profile_generates_released_setup(
     monkeypatch,
     tmp_path,

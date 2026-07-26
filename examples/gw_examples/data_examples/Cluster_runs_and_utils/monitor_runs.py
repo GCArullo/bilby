@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import subprocess
 import sys
 from collections import Counter
@@ -66,6 +67,34 @@ def analysis_label(ad: dict) -> str | None:
     return match.group(1) if match else None
 
 
+def analysis_root(ad: dict) -> Path | None:
+    arguments = ad.get("Args") or ""
+    try:
+        tokens = shlex.split(arguments)
+    except ValueError:
+        tokens = []
+    for index, token in enumerate(tokens):
+        if token == "--outdir" and index + 1 < len(tokens):
+            outdir = Path(tokens[index + 1]).expanduser()
+            if not outdir.is_absolute():
+                iwd = ad.get("Iwd")
+                if not iwd:
+                    break
+                outdir = Path(iwd) / outdir
+            return outdir.resolve().parent
+        if token.startswith("--outdir="):
+            outdir = Path(token.split("=", maxsplit=1)[1]).expanduser()
+            if not outdir.is_absolute():
+                iwd = ad.get("Iwd")
+                if not iwd:
+                    break
+                outdir = Path(iwd) / outdir
+            return outdir.resolve().parent
+
+    iwd = ad.get("Iwd")
+    return Path(iwd).resolve() if iwd else None
+
+
 def tail_text(path: Path, size: int = 2_000_000) -> str:
     try:
         with path.open("rb") as stream:
@@ -111,7 +140,7 @@ def fatal_error(run_dir: Path, label: str, ad: dict) -> str:
 def latest_ads(ads: list[dict], root: Path) -> dict[str, dict]:
     selected = {}
     for ad in ads:
-        if Path(ad.get("Iwd") or "").resolve() != root:
+        if analysis_root(ad) != root:
             continue
         label = analysis_label(ad)
         if not label:
@@ -129,9 +158,10 @@ def latest_ads(ads: list[dict], root: Path) -> dict[str, dict]:
 
 def active_roots(ads: list[dict]) -> list[Path]:
     roots = {
-        Path(ad["Iwd"]).resolve()
+        root
         for ad in ads
-        if ad.get("Iwd")
+        if analysis_label(ad)
+        if (root := analysis_root(ad)) is not None
     }
     return sorted(
         root

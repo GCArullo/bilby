@@ -104,6 +104,7 @@ def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
             "accounting-user=old",
             "queue=None",
             "create-summary=False",
+            "environment-variables={}",
             "summarypages-arguments=None",
             "duration=8.0",
             "data-dict=None",
@@ -323,7 +324,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             "--dry-run",
             "--base-dir",
             str(base_dir),
-            "--require-epnfs",
         ],
     )
 
@@ -341,8 +341,14 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in gaussian_ini
     assert "distance-marginalization=False\n" in gaussian_ini
-    assert "generation-function=None\n" in gaussian_ini
-    assert "queue=EPNFS\n" in gaussian_ini
+    assert (
+        "generation-function="
+        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
+    ) in gaussian_ini
+    assert "queue=None\n" in gaussian_ini
+    assert "transfer-files=True\n" in gaussian_ini
+    assert "osg=True\n" in gaussian_ini
+    assert "desired-sites=None\n" in gaussian_ini
 
     ini_settings = dict(
         line.split("=", maxsplit=1)

@@ -488,6 +488,21 @@ def replace_line(text: str, key: str, value: str) -> str:
     raise ValueError(f"Unable to find config key '{key}' in template")
 
 
+def replace_or_append_line(
+    text: str,
+    key: str,
+    value: str,
+) -> str:
+    lines = text.splitlines()
+    prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.startswith(prefix):
+            lines[index] = f"{key}={value}"
+            return "\n".join(lines) + "\n"
+    lines.append(f"{key}={value}")
+    return "\n".join(lines) + "\n"
+
+
 def render_ini(
     ini_template: str,
     *,
@@ -519,7 +534,14 @@ def render_ini(
     for placeholder, value in replacements.items():
         rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
-    rendered = replace_line(rendered, "container", container_image or "None")
+    rendered = replace_or_append_line(
+        rendered,
+        "container",
+        container_image or "None",
+    )
+    rendered = replace_or_append_line(rendered, "transfer-files", "True")
+    rendered = replace_or_append_line(rendered, "osg", "True")
+    rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(rendered, "create-summary", "True")

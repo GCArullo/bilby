@@ -1541,11 +1541,14 @@ def render_ini(
             repr(float(template_settings["duration"])),
         )
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
-    rendered = replace_line(
+    rendered = replace_or_append_line(
         rendered,
         "container",
-        args.container_image or "None",
+        getattr(args, "container_image", None) or "None",
     )
+    rendered = replace_or_append_line(rendered, "transfer-files", "True")
+    rendered = replace_or_append_line(rendered, "osg", "True")
+    rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if args.require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
     rendered = replace_line(rendered, "create-summary", "True")

@@ -153,7 +153,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(prior_dir),
             "--home-dir",
             str(tmp_path),
-            "--require-epnfs",
         ],
     )
 
@@ -168,8 +167,14 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
     assert "distance-marginalization=False\n" in ini_text
-    assert "generation-function=None\n" in ini_text
-    assert "queue=EPNFS\n" in ini_text
+    assert (
+        "generation-function="
+        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
+    ) in ini_text
+    assert "queue=None\n" in ini_text
+    assert "transfer-files=True\n" in ini_text
+    assert "osg=True\n" in ini_text
+    assert "desired-sites=None\n" in ini_text
 
     ini_settings = dict(
         line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
@@ -204,6 +209,8 @@ def test_render_ini_writes_maxmcmc_override():
             "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
             "likelihood-type=old",
             "extra-likelihood-kwargs=old",
+            "waveform-approximant=old",
+            "minimum-frequency=20",
             "",
         ]
     )
@@ -228,6 +235,7 @@ def test_render_ini_writes_maxmcmc_override():
         detector_dependent_nu=False,
         working_directory=Path("working"),
         accounting_user="acct",
+        container_image=None,
         require_epnfs=False,
         maxmcmc=10000,
         template_settings=template_settings,

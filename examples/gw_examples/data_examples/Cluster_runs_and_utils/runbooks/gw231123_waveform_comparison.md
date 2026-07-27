@@ -10,10 +10,15 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 ```
 
 Condor jobs use the Bilby container by default. Before the first submission,
-run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-selects the current Git branch from `container_images.json`. Use
+run `make publish` on CIT, or `make publish CIT=false` elsewhere, in
+`Cluster_runs_and_utils/container_creation`; the launcher selects the current
+Git branch from `container_images.json`. Use
 `--container-image URL` to override it or `--no-container` to use the existing
 node environment.
+
+Generated configs use the worldwide IGWN pool (`transfer-files=True`,
+`osg=True`, `desired-sites=None`). Do not pass `--require-epnfs` unless the run
+must be restricted to CIT.
 
 Add `--dry-run` to write files without submitting. Run and web outputs are
 written below `$HOME/public_html/GW231123` by default, with each summary in

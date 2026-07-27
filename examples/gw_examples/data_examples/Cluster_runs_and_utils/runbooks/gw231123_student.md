@@ -10,10 +10,15 @@ MAXMCMC=5000
 ```
 
 Condor jobs use the Bilby container by default. Before the first submission,
-run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-selects the current Git branch from `container_images.json`. Use
+run `make publish` on CIT, or `make publish CIT=false` elsewhere, in
+`Cluster_runs_and_utils/container_creation`; the launcher selects the current
+Git branch from `container_images.json`. Use
 `--container-image URL` to override it or `--no-container` to use the existing
 node environment.
+
+Generated configs use the worldwide IGWN pool (`transfer-files=True`,
+`osg=True`, `desired-sites=None`). Do not pass `--require-epnfs` unless the run
+must be restricted to CIT.
 
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below

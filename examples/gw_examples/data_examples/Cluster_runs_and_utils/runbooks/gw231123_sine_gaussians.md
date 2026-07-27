@@ -19,6 +19,7 @@ SG sky position.
 BASE_DIR="$(git rev-parse --show-toplevel)"
 REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_real_data.py"
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
+MONITOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/monitor_runs.py"
 SG_JSON="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/runbooks/injected_sine_gaussian_values.json"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
 BASE="$HOME/public_html/GW231123/t_Student/Runs_injections_gw231123_sine_gaussians"
@@ -26,10 +27,18 @@ MAXMCMC=5000
 ```
 
 Condor jobs use the Bilby container by default. Before the first submission,
-run `make publish` in `Cluster_runs_and_utils/container_creation`; the launcher
-selects the current Git branch from `container_images.json`. Use
+run `make publish` on CIT, or `make publish CIT=false` elsewhere, in
+`Cluster_runs_and_utils/container_creation`; the launcher selects the current
+Git branch from `container_images.json`. The OSDF URL remains readable from
+worldwide IGWN execution sites even though its namespace contains `/cit/`.
+Use
 `--container-image URL` to override it or `--no-container` to use the existing
 node environment.
+
+Generated configs enable file transfer and the worldwide IGWN pool with
+`transfer-files=True`, `osg=True`, and `desired-sites=None`. Do not pass
+`--require-epnfs` for worldwide execution; that option deliberately restricts
+jobs to CIT nodes exposing EPNFS.
 
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
@@ -41,6 +50,18 @@ The generated recovery configs use `nlive=2000` for the baseline CBC run,
 `nlive=2500` for one recovered SG, and `nlive=3000` for two or more recovered
 SGs in total. This includes `coherent-independent` runs and incoherent
 `H1=1 L1=1`.
+
+Monitor all active Bilby run roots discovered in your Condor queue:
+
+```
+python "$MONITOR"
+```
+
+Pass a run root to inspect only that workflow, for example:
+
+```
+python "$MONITOR" "$HOME/public_html/GW231123/t_Student/Runs"
+```
 
 ## Real Runs
 

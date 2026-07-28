@@ -69,6 +69,26 @@ def test_default_base_subdir_is_under_public_event_directory():
     )
 
 
+def test_submit_runs_preflights_local_inputs(monkeypatch, tmp_path):
+    module = load_submit_runs_injection_module()
+    ini_dir = tmp_path / "ini_files"
+    ini_dir.mkdir()
+    ini_path = ini_dir / "run.ini"
+    ini_path.write_text(
+        f"additional-transfer-paths=[{tmp_path / 'missing_staged_data'}]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module.shutil, "which", lambda executable: executable)
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("bilby_pipe should not be called"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="missing_staged_data"):
+        module.submit_runs([ini_path], "bilby_pipe")
+
+
 def test_zero_gaussian_injection_noise_is_available():
     module = load_submit_runs_injection_module()
     parser = module.build_parser()

@@ -30,6 +30,7 @@ from submission_sine_gaussian_utils import (
     read_template_settings,
     require_supported_sine_gaussian_source_model,
     resolve_sine_gaussian_configurations,
+    validate_submission_local_paths,
 )
 
 
@@ -719,6 +720,10 @@ def prepare_run(
 
 
 def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
+    validate_submission_local_paths(
+        ini_path.read_text(encoding="utf-8"),
+        base_directory=submit_directory,
+    )
     subprocess.run(
         ["bilby_pipe", str(ini_path), "--submit"],
         check=True,

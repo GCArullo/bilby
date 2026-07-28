@@ -4,7 +4,9 @@ import argparse
 import ast
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 
 NLIVE_ONE_SINE_GAUSSIAN_UPLIFT = 500
@@ -148,7 +150,7 @@ def parse_ini_dict_string(raw_value: str) -> dict[str, object]:
     normalized = normalized.replace("=", ":")
     normalized = normalized.replace(" ", "")
     normalized = re.sub(
-        r'([A-Za-z/\.0-9\-\+][^\[\],:"}]*)',
+        r'([A-Za-z_/\.0-9\-\+][^\[\],:"}]*)',
         r'"\g<1>"',
         normalized,
     )
@@ -157,6 +159,117 @@ def parse_ini_dict_string(raw_value: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise ValueError(f"Unable to parse ini dict: {raw_value}")
     return parsed
+
+
+def _ini_setting(ini_text: str, key: str) -> str | None:
+    for line in ini_text.splitlines():
+        stripped = line.strip()
+        if "=" not in stripped:
+            continue
+        candidate, value = stripped.split("=", 1)
+        if candidate.strip() == key:
+            return value.strip()
+    return None
+
+
+def _path_values(raw_value: str) -> list[str]:
+    parsed = parse_template_value(raw_value)
+    stripped = raw_value.strip()
+    if isinstance(parsed, str) and stripped.startswith("{"):
+        inner = stripped[1:-1].strip()
+        parsed = (
+            []
+            if not inner
+            else [
+                parse_template_value(item.split(":", 1)[1])
+                for item in inner.split(",")
+                if item.strip()
+            ]
+        )
+    elif (
+        isinstance(parsed, str)
+        and stripped.startswith("[")
+        and stripped.endswith("]")
+    ):
+        inner = stripped[1:-1].strip()
+        parsed = (
+            []
+            if not inner
+            else [parse_template_value(item) for item in inner.split(",")]
+        )
+
+    if parsed is None:
+        return []
+    if isinstance(parsed, str):
+        return [parsed]
+    if isinstance(parsed, dict):
+        values = parsed.values()
+    elif isinstance(parsed, (list, tuple)):
+        values = parsed
+    else:
+        raise ValueError(f"Local input paths must be strings, found {parsed!r}")
+
+    paths = []
+    for value in values:
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"Local input paths must be strings, found {value!r}")
+        paths.append(value)
+    return paths
+
+
+def validate_submission_local_paths(
+    ini_text: str,
+    *,
+    base_directory: Path,
+) -> None:
+    settings = (
+        ("data-dict", False),
+        ("psd-dict", False),
+        ("spline-calibration-envelope-dict", False),
+        ("additional-transfer-paths", True),
+    )
+    missing = []
+    for setting, allow_directory in settings:
+        raw_value = _ini_setting(ini_text, setting)
+        if raw_value is None:
+            continue
+        for value in _path_values(raw_value):
+            url = urlparse(value)
+            if url.scheme and url.scheme != "file":
+                continue
+            if url.scheme == "file":
+                value = url.path
+            path = Path(value).expanduser()
+            if not path.is_absolute():
+                path = base_directory / path
+            path = path.resolve()
+            valid = path.exists() if allow_directory else path.is_file()
+            if not valid:
+                missing.append((setting, path))
+
+    if missing:
+        formatted = "\n".join(
+            f"  - {setting}: {path}" for setting, path in missing
+        )
+        raise FileNotFoundError(
+            "Missing local input paths required for grid submission:\n"
+            f"{formatted}"
+        )
+
+
+def validate_sine_gaussian_distance_marginalization(
+    ini_text: str,
+    config: SineGaussianConfiguration,
+) -> None:
+    if not config.enabled:
+        return
+    value = _ini_setting(ini_text, "distance-marginalization")
+    if value is None or parse_template_value(value) is not False:
+        raise ValueError(
+            "CBC+sine-Gaussian configs require distance-marginalization=False"
+        )
 
 
 def read_template_settings(ini_template: str) -> dict[str, object]:
@@ -407,6 +520,7 @@ def apply_sine_gaussian_waveform_settings(
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters",
     )
     updated = replace_line(updated, "distance-marginalization", "False")
+    validate_sine_gaussian_distance_marginalization(updated, config)
     return updated
 
 

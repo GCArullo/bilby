@@ -20,6 +20,9 @@ Generated configs use the worldwide IGWN pool (`transfer-files=True`,
 `osg=True`, `desired-sites=None`). Do not pass `--require-epnfs` unless the run
 must be restricted to CIT.
 
+Submission stops before `bilby_pipe` if a local frame/data file, PSD,
+calibration envelope, or additional transfer path is missing.
+
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
 set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written

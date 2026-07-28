@@ -2,6 +2,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 UTILS_PATH = (
@@ -91,8 +93,77 @@ def test_sine_gaussian_submission_settings_disable_distance_and_generation():
         "conversion-function="
         "bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters\n"
     ) in rendered
-    assert "generation-function=None\n" in rendered
+    assert (
+        "generation-function="
+        "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
+    ) in rendered
     assert "distance-marginalization=False\n" in rendered
+
+
+def test_sine_gaussian_distance_validation_rejects_enabled_marginalization():
+    module = load_submission_sine_gaussian_utils_module()
+    config = module.SineGaussianConfiguration(total_components=1, mode="coherent")
+
+    with pytest.raises(
+        ValueError,
+        match="require distance-marginalization=False",
+    ):
+        module.validate_sine_gaussian_distance_marginalization(
+            "distance-marginalization=True\n",
+            config,
+        )
+
+
+def test_submission_preflight_accepts_local_and_remote_inputs(tmp_path):
+    module = load_submission_sine_gaussian_utils_module()
+    frame = tmp_path / "frame_data.gwf"
+    psd = tmp_path / "psd.dat"
+    calibration = tmp_path / "calibration.txt"
+    transfer_directory = tmp_path / "staged_data"
+    for path in (frame, psd, calibration):
+        path.write_text("data", encoding="utf-8")
+    transfer_directory.mkdir()
+
+    module.validate_submission_local_paths(
+        "\n".join(
+            [
+                f"data-dict={{ H1:file://localhost{frame}, "
+                "L1:osdf:///igwn/frame.gwf }}",
+                f"psd-dict={{ H1:{psd} }}",
+                f"spline-calibration-envelope-dict={{ H1:{calibration} }}",
+                f"additional-transfer-paths=[{transfer_directory}]",
+            ]
+        ),
+        base_directory=tmp_path,
+    )
+
+
+def test_submission_preflight_reports_every_missing_input(tmp_path):
+    module = load_submission_sine_gaussian_utils_module()
+    paths = {
+        "data-dict": tmp_path / "frame.gwf",
+        "psd-dict": tmp_path / "psd.dat",
+        "spline-calibration-envelope-dict": tmp_path / "calibration.txt",
+        "additional-transfer-paths": tmp_path / "staged_data",
+    }
+    ini_text = "\n".join(
+        [
+            f"data-dict={{ H1:{paths['data-dict']} }}",
+            f"psd-dict={{ H1:{paths['psd-dict']} }}",
+            "spline-calibration-envelope-dict="
+            f"{{ H1:{paths['spline-calibration-envelope-dict']} }}",
+            f"additional-transfer-paths=[{paths['additional-transfer-paths']}]",
+        ]
+    )
+
+    with pytest.raises(FileNotFoundError) as exc:
+        module.validate_submission_local_paths(
+            ini_text,
+            base_directory=tmp_path,
+        )
+
+    for setting, path in paths.items():
+        assert f"{setting}: {path}" in str(exc.value)
 
 
 def test_independently_localized_coherent_configuration_and_priors():

@@ -40,6 +40,10 @@ Generated configs enable file transfer and the worldwide IGWN pool with
 `--require-epnfs` for worldwide execution; that option deliberately restricts
 jobs to CIT nodes exposing EPNFS.
 
+Immediately before calling `bilby_pipe`, the launchers verify that every local
+frame/data file, PSD, calibration envelope, and additional transfer path in the
+rendered config exists. Remote URLs are not treated as local paths.
+
 Both launchers submit by default. Add `--dry-run` if you only want to write
 the ini/prior files. The templates use `maxmcmc=5000`; the commands below
 set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written

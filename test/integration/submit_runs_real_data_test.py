@@ -74,6 +74,23 @@ def test_default_output_bases_are_under_public_event_directory(tmp_path):
     )
 
 
+def test_submit_run_preflights_local_inputs(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    ini_path = tmp_path / "run.ini"
+    ini_path.write_text(
+        f"psd-dict={{ H1:{tmp_path / 'missing_psd.dat'} }}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("bilby_pipe should not be called"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="missing_psd.dat"):
+        module.submit_run(ini_path, submit_directory=tmp_path)
+
+
 def test_student_likelihood_runs_student_and_gaussian_by_default():
     module = load_submit_runs_real_data_module()
     parser = module.build_argument_parser(SCRIPT_PATH.parent)

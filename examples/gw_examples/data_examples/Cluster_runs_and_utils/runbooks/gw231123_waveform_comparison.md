@@ -20,6 +20,9 @@ Generated configs use the worldwide IGWN pool (`transfer-files=True`,
 `osg=True`, `desired-sites=None`). Do not pass `--require-epnfs` unless the run
 must be restricted to CIT.
 
+Submission stops before `bilby_pipe` if a local frame/data file, PSD,
+calibration envelope, or additional transfer path is missing.
+
 Add `--dry-run` to write files without submitting. Run and web outputs are
 written below `$HOME/public_html/GW231123` by default, with each summary in
 `Runs/<run-name>/web`.

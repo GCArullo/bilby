@@ -19,7 +19,7 @@ IMAGE=bilby-$(BILBY_VERSION)$(BILBY_COMMIT_SUFFIX)-bilby_pipe-$(BILBY_PIPE_VERSI
 IMAGE_URL=osdf:///igwn/cit/staging/$(USERNAME)/$(IMAGE)
 IMAGE_REGISTRY=container_images.json
 
-.PHONY: default clean image scitoken publish _publish _publish_cit _publish_remote _record_image temp_image.sif
+.PHONY: default clean image validate scitoken publish _publish _publish_cit _publish_remote _record_image temp_image.sif
 
 default: image
 
@@ -51,7 +51,10 @@ pesummary_version.txt: temp_image.sif
 pesummary_commit.txt: temp_image.sif
 	apptainer exec temp_image.sif python -c 'import importlib.metadata as m, json; print(json.loads(m.distribution("pesummary").read_text("direct_url.json"))["vcs_info"]["commit_id"][:12])' > pesummary_commit.txt
 
-image: bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt pesummary_version.txt pesummary_commit.txt
+validate: temp_image.sif
+	apptainer exec temp_image.sif python -c 'from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator; gwsignal_get_waveform_generator("SEOBNRv5PHM")'
+
+image: validate bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt pesummary_version.txt pesummary_commit.txt
 	cp temp_image.sif $(IMAGE)
 
 scitoken:

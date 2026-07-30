@@ -185,6 +185,12 @@ def lal_binary_black_hole(
 _GWSIGNAL_ONLY_APPROXIMANTS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
 
 
+class _WaveformPolarizations(dict):
+    def __init__(self, *args, component_polarizations=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.component_polarizations = component_polarizations or {}
+
+
 def cbc_plus_sine_gaussians(
         frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
         phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, lambda_1=0.0,
@@ -302,7 +308,11 @@ def cbc_plus_sine_gaussians(
 
     h_plus = base_waveform['plus']
     h_cross = base_waveform['cross']
-    combined_waveform = dict(plus=h_plus, cross=h_cross)
+    combined_waveform = _WaveformPolarizations(
+        plus=h_plus,
+        cross=h_cross,
+        component_polarizations={"cbc": base_waveform},
+    )
 
     if isinstance(sine_gaussian_parameters, dict):
         sine_gaussian_parameters = [sine_gaussian_parameters]

@@ -1,5 +1,6 @@
 import logging
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -801,6 +802,81 @@ class TestGenerateAllParameters(unittest.TestCase):
         for key, value in sg_parameters.items():
             self.assertIn(key, converted)
             self.assertTrue(np.all(converted[key] == value))
+
+    def test_compute_snrs_stores_cbc_and_sine_gaussian_components(self):
+        class Interferometer:
+            name = "H1"
+
+            @staticmethod
+            def inner_product(signal):
+                return np.sum(signal)
+
+            @staticmethod
+            def optimal_snr_squared(signal):
+                return np.sum(np.abs(signal) ** 2)
+
+        class WaveformGenerator:
+            @staticmethod
+            def frequency_domain_strain(parameters):
+                return bilby.gw.source._WaveformPolarizations(
+                    plus=np.array([3.0, 4.0]),
+                    component_polarizations={
+                        "cbc": {"plus": np.array([1.0, 2.0])}
+                    },
+                )
+
+        class Likelihood:
+            interferometers = [Interferometer()]
+            waveform_generator = WaveformGenerator()
+
+            @staticmethod
+            def _compute_full_waveform(
+                signal_polarizations, interferometer, parameters
+            ):
+                return signal_polarizations["plus"]
+
+            @staticmethod
+            def calculate_snrs(
+                signal_polarizations, interferometer, return_array=True,
+                parameters=None,
+            ):
+                signal = signal_polarizations["plus"]
+                optimal_snr_squared = interferometer.optimal_snr_squared(signal)
+                return SimpleNamespace(snrs_as_sample={
+                    "matched_filter_snr": (
+                        interferometer.inner_product(signal)
+                        / optimal_snr_squared**0.5
+                    ),
+                    "optimal_snr": optimal_snr_squared**0.5,
+                })
+
+        samples = pd.DataFrame([{"mass_1": 30.0}])
+        conversion.compute_snrs(samples, Likelihood())
+
+        self.assertAlmostEqual(samples["H1_cbc_optimal_snr"][0], np.sqrt(5))
+        self.assertAlmostEqual(
+            samples["H1_sine_gaussian_optimal_snr"][0], np.sqrt(8)
+        )
+        self.assertAlmostEqual(
+            samples["H1_cbc_matched_filter_snr"][0], 3 / np.sqrt(5)
+        )
+        self.assertAlmostEqual(
+            samples["H1_sine_gaussian_matched_filter_snr"][0], 4 / np.sqrt(8)
+        )
+
+        no_sine_gaussian = bilby.gw.source._WaveformPolarizations(
+            plus=np.array([1.0, 2.0]),
+            component_polarizations={
+                "cbc": {"plus": np.array([1.0, 2.0])}
+            },
+        )
+        component_snrs = conversion._component_snrs_as_sample(
+            Likelihood(), no_sine_gaussian, Interferometer(), {}
+        )
+        self.assertEqual(
+            component_snrs["sine_gaussian_matched_filter_snr"], 0j
+        )
+        self.assertEqual(component_snrs["sine_gaussian_optimal_snr"], 0)
 
     def _generate(self, func, expected):
         for values in [self.parameters, self.data_frame]:

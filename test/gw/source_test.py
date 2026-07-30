@@ -154,6 +154,10 @@ class TestCBCPlusSineGaussians(unittest.TestCase):
 
         for polarisation in ["plus", "cross"]:
             self.assertTrue(np.allclose(base[polarisation], combined[polarisation]))
+            self.assertTrue(np.allclose(
+                base[polarisation],
+                combined.component_polarizations["cbc"][polarisation],
+            ))
 
     def test_adds_sine_gaussian_contribution(self):
         kwargs = dict(self.parameters)

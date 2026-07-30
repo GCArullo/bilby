@@ -2609,8 +2609,10 @@ def generate_source_frame_parameters(sample):
 
 def compute_snrs(sample, likelihood, npool=1):
     """
-    Compute the optimal and matched filter snrs of all posterior samples
-    and print it out.
+    Compute the optimal and matched filter SNRs of all posterior samples.
+
+    For ``cbc_plus_sine_gaussians`` waveforms, this also stores separate CBC
+    and aggregate sine-Gaussian SNRs for each detector.
 
     Parameters
     ==========
@@ -2625,10 +2627,12 @@ def compute_snrs(sample, likelihood, npool=1):
             signal_polarizations = likelihood.waveform_generator.frequency_domain_strain(sample.copy())
             for ifo in likelihood.interferometers:
                 per_detector_snr = likelihood.calculate_snrs(signal_polarizations, ifo, parameters=sample)
-                sample['{}_matched_filter_snr'.format(ifo.name)] =\
-                    per_detector_snr.complex_matched_filter_snr
-                sample['{}_optimal_snr'.format(ifo.name)] = \
-                    per_detector_snr.optimal_snr_squared.real ** 0.5
+                snr_update = per_detector_snr.snrs_as_sample
+                snr_update.update(_component_snrs_as_sample(
+                    likelihood, signal_polarizations, ifo, sample
+                ))
+                for key, value in snr_update.items():
+                    sample[f"{ifo.name}_{key}"] = value
         else:
             from tqdm.auto import tqdm
             logger.info('Computing SNRs for every sample.')
@@ -2654,10 +2658,10 @@ def compute_snrs(sample, likelihood, npool=1):
 
             for ii, ifo in enumerate(likelihood.interferometers):
                 snr_updates = dict()
-                for key in new_samples[0][ii].snrs_as_sample.keys():
+                for key in new_samples[0][ii]:
                     snr_updates[f"{ifo.name}_{key}"] = list()
                 for new_sample in new_samples:
-                    snr_update = new_sample[ii].snrs_as_sample
+                    snr_update = new_sample[ii]
                     for key, val in snr_update.items():
                         snr_updates[f"{ifo.name}_{key}"].append(val)
                 for k, v in snr_updates.items():
@@ -2677,10 +2681,52 @@ def _compute_snrs(args):
     )
     snrs = list()
     for ifo in likelihood.interferometers:
-        snrs.append(likelihood.calculate_snrs(
+        per_detector_snr = likelihood.calculate_snrs(
             signal_polarizations, ifo, return_array=False, parameters=sample
+        )
+        snr_update = per_detector_snr.snrs_as_sample
+        snr_update.update(_component_snrs_as_sample(
+            likelihood, signal_polarizations, ifo, sample
         ))
+        snrs.append(snr_update)
     return snrs
+
+
+def _component_snrs_as_sample(
+    likelihood, signal_polarizations, interferometer, parameters
+):
+    component_polarizations = getattr(
+        signal_polarizations, "component_polarizations", {}
+    )
+    if "cbc" not in component_polarizations:
+        return {}
+
+    cbc_polarizations = component_polarizations["cbc"]
+    sine_gaussian_polarizations = {
+        mode: (
+            signal_polarizations[mode] - cbc_polarizations[mode]
+            if mode in cbc_polarizations
+            else signal_polarizations[mode]
+        )
+        for mode in signal_polarizations
+    }
+    component_polarizations = {
+        "cbc": cbc_polarizations,
+        "sine_gaussian": sine_gaussian_polarizations,
+    }
+
+    output = {}
+    for name, polarizations in component_polarizations.items():
+        with np.errstate(divide="ignore", invalid="ignore"):
+            component_snr = likelihood.calculate_snrs(
+                polarizations, interferometer, return_array=False,
+                parameters=parameters,
+            ).snrs_as_sample
+        if component_snr["optimal_snr"] == 0:
+            component_snr["matched_filter_snr"] = 0j
+        for key, value in component_snr.items():
+            output[f"{name}_{key}"] = value
+    return output
 
 
 def compute_per_detector_log_likelihoods(samples, likelihood, npool=1, block=10):

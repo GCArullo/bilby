@@ -88,6 +88,35 @@ class EventDefaults:
 
 
 EVENT_DEFAULTS: dict[str, EventDefaults] = {
+    "GW150914": EventDefaults(
+        label_prefix="GW150914_IMRPhenomXPHM",
+        run_subdir="GW150914/Runs",
+        file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
+        ini_template=(
+            "Special_events_configs/templates/"
+            "GW150914_t_student_igwn_template.ini"
+        ),
+        prior_template=(
+            "Special_events_configs/priors/GW150914_igwn_template.prior"
+        ),
+        working_directory="LVK_posteriors/GW150914",
+        detectors=("H1", "L1"),
+    ),
+    "GW190521_030229_LVK_NRSur7dq4": EventDefaults(
+        label_prefix="GW190521_030229_LVK_NRSur7dq4",
+        run_subdir="GWTC_parametric_noise/Runs/GW190521_030229",
+        file_prefix="GW190521_030229_LVK_NRSur7dq4",
+        ini_template=(
+            "Special_events_configs/templates/"
+            "GW190521_030229_LVK_NRSur7dq4.ini"
+        ),
+        prior_template=(
+            "Special_events_configs/priors/"
+            "GW190521_030229_LVK_NRSur7dq4.prior"
+        ),
+        working_directory="Special_events_configs",
+        detectors=("H1", "L1", "V1"),
+    ),
     "GW231123": EventDefaults(
         label_prefix="GW231123_t_Student",
         run_subdir="GW231123/t_Student/Runs",

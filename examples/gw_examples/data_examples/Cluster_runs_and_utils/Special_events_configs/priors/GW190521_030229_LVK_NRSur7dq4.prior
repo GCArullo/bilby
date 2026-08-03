@@ -1,0 +1,20 @@
+# Bilby translation of the bounds in the NRSur7dq4 LALInference configuration
+# released in LIGO-P2000158-v4.
+chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=70.0, maximum=150.0, unit='$M_{\odot}$')
+mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.17, maximum=1.0)
+mass_1 = Constraint(name='mass_1', minimum=30.0, maximum=300.0)
+mass_2 = Constraint(name='mass_2', minimum=30.0, maximum=300.0)
+total_mass = Constraint(name='total_mass', minimum=200.0, maximum=600.0)
+a_1 = Uniform(name='a_1', minimum=0, maximum=0.99)
+a_2 = Uniform(name='a_2', minimum=0, maximum=0.99)
+tilt_1 = Sine(name='tilt_1')
+tilt_2 = Sine(name='tilt_2')
+phi_12 = Uniform(name='phi_12', minimum=0, maximum=2 * np.pi, boundary='periodic')
+phi_jl = Uniform(name='phi_jl', minimum=0, maximum=2 * np.pi, boundary='periodic')
+luminosity_distance = PowerLaw(alpha=2, name='luminosity_distance', minimum=10, maximum=10000, unit='Mpc')
+theta_jn = Sine(name='theta_jn')
+psi = Uniform(name='psi', minimum=0, maximum=np.pi, boundary='periodic')
+phase = Uniform(name='phase', minimum=0, maximum=2 * np.pi, boundary='periodic')
+dec = Cosine(name='dec')
+ra = Uniform(name='ra', minimum=0, maximum=2 * np.pi, boundary='periodic')
+__NU_PRIORS__

@@ -550,6 +550,11 @@ def test_main_creates_missing_output_bases_before_submission(monkeypatch, tmp_pa
         lambda *args, **kwargs: submitted.append(1),
     )
     monkeypatch.setattr(
+        module,
+        "preflight_local_data",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
         sys,
         "argv",
         [
@@ -667,6 +672,23 @@ def test_existing_gaussian_companion_is_not_resubmitted(monkeypatch, tmp_path):
     assert module.main() == 0
     assert len(submitted) == 1
     assert "hyperbolic" in submitted[0].name
+
+
+def test_submit_run_preflights_local_inputs(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    ini_path = tmp_path / "run.ini"
+    ini_path.write_text(
+        f"psd-dict={{ H1:{tmp_path / 'missing_psd.dat'} }}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("bilby_pipe should not be called"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="missing_psd.dat"):
+        module.submit_run(ini_path, submit_directory=tmp_path)
 
 
 def test_student_likelihood_runs_student_and_gaussian_by_default():
@@ -833,7 +855,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(prior_dir),
             "--home-dir",
             str(tmp_path),
-            "--require-epnfs",
         ],
     )
 
@@ -858,7 +879,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in ini_text
-    assert "queue=EPNFS\n" in ini_text
+    assert "queue=None\n" in ini_text
 
     ini_settings = dict(
         line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line

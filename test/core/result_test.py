@@ -1157,7 +1157,7 @@ class TestResultListError(unittest.TestCase):
             likelihood=dict(likelihood_class="StudentTGravitationalWaveTransient")
         )
         self.nested_results[1].meta_data = dict(
-            likelihood=dict(likelihood_class="GravitationalWaveTransient")
+            likelihood=dict(likelihood_class="HyperbolicGravitationalWaveTransient")
         )
         self.nested_results[1].log_noise_evidence = 15
 

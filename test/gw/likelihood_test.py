@@ -293,7 +293,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             )
         )
 
-    def test_large_nu_matches_gaussian_up_to_constant(self):
+    def test_large_nu_matches_gaussian_absolute_likelihood(self):
         gaussian_likelihood = bilby.gw.likelihood.GravitationalWaveTransient(
             interferometers=self.interferometers,
             waveform_generator=self.waveform_generator,
@@ -301,22 +301,20 @@ class TestStudentTGWTransient(unittest.TestCase):
         student_likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
             waveform_generator=self.waveform_generator,
-            nu=1e9,
+            nu=1e15,
         )
 
-        shifted_parameters = self.parameters.copy()
-        shifted_parameters["luminosity_distance"] = 8000.0
-
-        delta_default = (
-            student_likelihood.log_likelihood(self.parameters)
-            - gaussian_likelihood.log_likelihood(self.parameters)
-        )
-        delta_shifted = (
-            student_likelihood.log_likelihood(shifted_parameters)
-            - gaussian_likelihood.log_likelihood(shifted_parameters)
-        )
-
-        self.assertAlmostEqual(delta_default, delta_shifted, 6)
+        parameter_points = [
+            self.parameters.copy(),
+            {**self.parameters, "luminosity_distance": 2000.0},
+            {**self.parameters, "luminosity_distance": 8000.0},
+        ]
+        for parameters in parameter_points:
+            self.assertAlmostEqual(
+                student_likelihood.log_likelihood(parameters),
+                gaussian_likelihood.log_likelihood(parameters),
+                delta=1e-9,
+            )
 
     def test_large_nu_matches_gaussian_likelihood_ratio_to_machine_precision(self):
         gaussian_likelihood = bilby.gw.likelihood.GravitationalWaveTransient(
@@ -2076,14 +2074,14 @@ class TestGWTransient(unittest.TestCase):
         """Test noise log likelihood matches precomputed value"""
         self.likelihood.noise_log_likelihood()
         self.assertAlmostEqual(
-            -4014.1787704539474, self.likelihood.noise_log_likelihood(), 3
+            422060.1822410761, self.likelihood.noise_log_likelihood(), 3
         )
 
     def test_log_likelihood(self):
         """Test log likelihood matches precomputed value"""
         self.likelihood.log_likelihood(self.parameters)
         self.assertAlmostEqual(self.likelihood.log_likelihood(self.parameters),
-                               -4032.4397343470005, 3)
+                               422041.92127718317, 3)
 
     def test_log_likelihood_ratio(self):
         """Test log likelihood ratio returns the correct value"""

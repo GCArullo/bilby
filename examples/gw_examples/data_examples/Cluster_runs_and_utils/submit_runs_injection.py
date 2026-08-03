@@ -53,6 +53,7 @@ from submission_sine_gaussian_utils import (
     require_supported_sine_gaussian_source_model,
     resolve_sine_gaussian_configurations,
     sine_gaussian_frequency_bounds,
+    validate_submission_local_paths,
 )
 
 
@@ -1882,10 +1883,10 @@ def render_ini(
             repr(float(template_settings["duration"])),
         )
     rendered = replace_line(rendered, "accounting-user", args.accounting_user)
-    rendered = replace_line(
+    rendered = replace_or_append_line(
         rendered,
         "container",
-        args.container_image or "None",
+        getattr(args, "container_image", None) or "None",
     )
     rendered = replace_or_append_line(
         rendered,
@@ -2204,6 +2205,10 @@ def submit_runs(ini_paths: list[Path], executable: str) -> None:
         raise FileNotFoundError(f"Unable to find executable: {executable}")
     for ini_path in ini_paths:
         run_base_dir = ini_path.resolve().parents[1]
+        validate_submission_local_paths(
+            ini_path.read_text(encoding="utf-8"),
+            base_directory=run_base_dir,
+        )
         subprocess.run(
             [executable, str(ini_path), "--submit"],
             check=True,

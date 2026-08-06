@@ -21,9 +21,39 @@ sampling rate, priors, and sampler settings are unchanged.
 
 The PSDs were themselves estimated by BayesWave on the de-glitched data. They
 are kept here deliberately: reusing them isolates the strain as the single
-changed input. The unsubtracted excess power at 36 Hz in Livingston is what
-these runs are meant to expose, and Udall et al. (PRD 111, 024046) show that
-the Livingston band 30-40 Hz is what drives the negative-`chi_eff` preference.
+changed input, and the two conditioned data dumps do carry byte-identical
+PSD arrays.
+
+## What the glitch subtraction actually removed
+
+Matched-filter SNR of the difference between the two conditioned data sets,
+using the released PSDs over 20-448 Hz and the 4 s analysis segment:
+
+| band | H1 | L1 |
+| --- | --- | --- |
+| 20-25 Hz | 0.15 | 2.56 |
+| 25-30 Hz | 5.60 | 3.50 |
+| 30-35 Hz | 8.36 | 0.00 |
+| 35-40 Hz | 6.24 | 0.00 |
+| 40-150 Hz | 0.05 | 0.01 |
+| 150-448 Hz | 0.00 | 4.51 |
+| total | 11.84 | 6.26 |
+
+Three things follow, and they set what these runs can and cannot say.
+
+- The Hanford subtraction dominates, and it sits at 25-40 Hz, on top of the
+  inspiral track.
+- In Livingston the subtraction is confined to the ~24 Hz arch below 30 Hz.
+  The 30-40 Hz Livingston band is untouched: the 36 Hz excess power was
+  deliberately left in the GWTC-3 data because it could not be separated from
+  the signal, so it is present in both data sets. Udall et al.
+  (PRD 111, 024046) show that this band is what drives the negative-`chi_eff`
+  preference, so these runs do *not* probe that mechanism; restricting the
+  Livingston minimum frequency does.
+- The Livingston model also removed a broad feature centred at ~197 Hz, at
+  roughly a quarter of the noise ASD there. This is a second difference
+  between the two data sets that has nothing to do with the scattering arch,
+  and it is worth keeping in mind when comparing posteriors.
 
 Because these frames are only published to gwdatafind as local files, the
 template sets `data-find-urltype=file`; the frames are resolved at DAG

@@ -23,6 +23,7 @@ translation is in `templates/`.
 The event runbooks are:
 
 - `runbooks/gw150914_hyperbolic.md`
+- `runbooks/gw150914_welch.md`
 - `runbooks/gw190521_030229_lvk_nrsur7dq4.md`
 - `runbooks/gw200129_065458_hannam_nrsur7dq4.md`
 - `runbooks/gw230814_student.md`

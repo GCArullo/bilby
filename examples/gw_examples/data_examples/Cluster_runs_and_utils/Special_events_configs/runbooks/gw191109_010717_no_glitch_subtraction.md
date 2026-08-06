@@ -115,3 +115,36 @@ python "$REAL" "${COMMON[@]}" --likelihood hyperbolic \
 parametric likelihoods generate by default, since the Gaussian run above
 already covers it. The seven commands produce 25 runs. Add `--dry-run` to
 write the ini and prior files without submitting.
+
+## Hyperbolic with band edges matched to the glitch
+
+Equal-width bands cannot isolate the glitch: over 20-448 Hz even `N=4` leaves a
+107 Hz first band against a 15 Hz glitch, so the tail parameters have to
+describe contaminated and clean bins together. `--frequency-band-edges` places
+the edges where the table above says the power actually is. Both runs use
+detector-dependent parameters, so they differ only in whether the edges are
+shared.
+
+Shared edges, five bands, 20 noise parameters:
+
+```
+python "$REAL" "${COMMON[@]}" --likelihood hyperbolic --no-add-gaussian \
+  --detector-dependent-noise \
+  --frequency-band-edges 20,30,40,180,235,448 \
+  --outdir-label no_glitch_subtraction_bands_common
+```
+
+Per-detector edges, four bands each, 16 noise parameters. Hanford isolates its
+25-40 Hz glitch; Livingston isolates the 20-30 Hz arch and the 180-235 Hz
+feature, and its remaining edges only split clean data:
+
+```
+python "$REAL" "${COMMON[@]}" --likelihood hyperbolic --no-add-gaussian \
+  --detector-dependent-noise \
+  --frequency-band-edges H1:20,25,40,235,448 L1:20,30,180,235,448 \
+  --outdir-label no_glitch_subtraction_bands_per_detector
+```
+
+Band `i` means a different frequency range in each detector in the second run,
+which is the point: the parameters are per detector as well as per band. Both
+`--outdir-label` values replace the one in `COMMON`, so pass them after it.

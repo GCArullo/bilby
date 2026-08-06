@@ -212,6 +212,9 @@ def print_snapshot(
             elif ad:
                 state = "DONE"
                 detail = "completed successfully"
+            elif (run_dir / "result" / f"{label}_result.hdf5").is_file():
+                state = "DONE"
+                detail = "completed (result on disk; aged out of condor_history)"
             else:
                 state = "WAITING"
                 detail = "waiting for DAG dependencies"

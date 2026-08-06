@@ -1111,6 +1111,55 @@ class TestHyperbolicGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(calculated, float(manual), 7)
 
+    def test_frequency_band_edges_override_equal_width_bands(self):
+        band_alphas = [4.0, 10.0]
+        band_deltas = [0.7, 1.3]
+        equal_width = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=band_alphas,
+            delta=band_deltas,
+            num_frequency_bands=2,
+        )
+        explicit = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=band_alphas,
+            delta=band_deltas,
+            frequency_band_edges=equal_width._frequency_band_edges,
+        )
+        equal_width.parameters = self.parameters.copy()
+        explicit.parameters = self.parameters.copy()
+        self.assertEqual(explicit.num_frequency_bands, 2)
+        self.assertEqual(equal_width.log_likelihood(), explicit.log_likelihood())
+
+        network = bilby.gw.detector.InterferometerList(["H1", "L1"])
+        network.set_strain_data_from_power_spectral_densities(
+            sampling_frequency=self.sampling_frequency, duration=self.duration
+        )
+        per_detector = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=network,
+            waveform_generator=self.waveform_generator,
+            detector_dependent_noise=True,
+            frequency_band_edges={"H1": [20.0, 30.0, 512.0], "L1": [20.0, 60.0, 512.0]},
+        )
+        frequencies = np.array([25.0, 45.0])
+        self.assertEqual(
+            [mask.tolist() for mask in per_detector._get_frequency_band_masks(frequencies, "H1")],
+            [[True, False], [False, True]],
+        )
+        self.assertEqual(
+            [mask.tolist() for mask in per_detector._get_frequency_band_masks(frequencies, "L1")],
+            [[True, True], [False, False]],
+        )
+        with self.assertRaises(ValueError):
+            bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+                interferometers=network,
+                waveform_generator=self.waveform_generator,
+                detector_dependent_noise=True,
+                frequency_band_edges={"H1": [20.0, 30.0, 512.0], "L1": [20.0, 512.0]},
+            )
+
     def test_log_likelihood_handles_different_detector_masks(self):
         interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
         interferometers.set_strain_data_from_power_spectral_densities(

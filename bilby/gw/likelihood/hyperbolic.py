@@ -53,6 +53,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         infer_alpha=False,
         infer_delta=False,
         num_frequency_bands=1,
+        frequency_band_edges=None,
         detector_dependent_noise=False,
         joint=False,
         time_marginalization=False,
@@ -98,7 +99,18 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             detector-specific: 'delta_H1', ... or 'delta_H1_1', ..., 'delta_L1_1', ... .
         num_frequency_bands : int
             Number of contiguous frequency bands spanning the active analysis range. Each
-            band has its own hyperbolic `alpha` and `delta` parameters.
+            band has its own hyperbolic `alpha` and `delta` parameters. Bands are of
+            equal width; use `frequency_band_edges` for unequal widths.
+        frequency_band_edges : array-like, dict, optional
+            Explicit band edges in Hz, as an increasing sequence of length
+            `num_bands + 1`. This overrides `num_frequency_bands`, which is then set
+            from the number of edges. A dict keyed by detector name gives each
+            interferometer its own edges, which requires
+            `detector_dependent_noise=True` and an entry for every detector; every
+            detector must define the same number of bands, so that band `i` of one
+            detector and band `i` of another remain distinct parameters covering
+            different frequencies. Edges outside the active analysis range are kept,
+            and bands containing no active frequency simply do not contribute.
         detector_dependent_noise : bool
             If True, allow distinct hyperbolic `alpha` and `delta` values for each
             interferometer (and for each frequency band if `num_frequency_bands > 1`).
@@ -153,7 +165,6 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             **kwargs,
         )
 
-        self.num_frequency_bands = self._validate_num_frequency_bands(num_frequency_bands)
         self.detector_dependent_noise = bool(detector_dependent_noise)
         self.joint = bool(joint)
         if self.joint and self.detector_dependent_noise:
@@ -161,11 +172,14 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 "joint=True requires detector_dependent_noise=False"
             )
         self._detector_names = [ifo.name for ifo in self.interferometers]
+        self.num_frequency_bands = self._validate_num_frequency_bands(num_frequency_bands)
+        self._detector_frequency_band_edges = self._resolve_frequency_band_edges(
+            frequency_band_edges
+        )
         self._fixed_alpha = self._coerce_parameter_array(alpha, "alpha")
         self._fixed_delta = self._coerce_parameter_array(delta, "delta")
         self.infer_alpha = bool(infer_alpha)
         self.infer_delta = bool(infer_delta)
-        self._frequency_band_edges = self._create_frequency_band_edges()
         self.noise_evidence_nlive = self._validate_noise_evidence_nlive(
             noise_evidence_nlive
         )
@@ -327,7 +341,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                     interferometer.frequency_mask
                 ]
                 for band_index, band_mask in enumerate(
-                    self._get_frequency_band_masks(frequencies)
+                    self._get_frequency_band_masks(frequencies, interferometer.name)
                 ):
                     if np.any(band_mask):
                         coordinates.append((interferometer.name, band_index, 2))
@@ -441,6 +455,10 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             detector_dependent_noise=self.detector_dependent_noise,
             joint=self.joint,
             num_frequency_bands=self.num_frequency_bands,
+            frequency_band_edges={
+                name: edges.tolist()
+                for name, edges in self._detector_frequency_band_edges.items()
+            },
             noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
@@ -566,6 +584,87 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         frequencies = np.unique(np.concatenate(active_frequencies))
         return np.linspace(frequencies[0], frequencies[-1], self.num_frequency_bands + 1)
 
+    @staticmethod
+    def _validate_frequency_band_edges(edges, name):
+        edges = np.asarray(edges, dtype=float).ravel()
+        if edges.ndim != 1 or len(edges) < 2:
+            raise ValueError(f"{name} must contain at least two frequency edges")
+        if not np.all(np.isfinite(edges)):
+            raise ValueError(f"{name} must contain only finite frequencies")
+        if np.any(np.diff(edges) <= 0):
+            raise ValueError(f"{name} must be strictly increasing")
+        if np.any(edges < 0):
+            raise ValueError(f"{name} must contain only non-negative frequencies")
+        return edges
+
+    def _resolve_frequency_band_edges(self, frequency_band_edges):
+        """Return band edges per detector and set ``num_frequency_bands``.
+
+        ``None`` keeps the equal-width behaviour built from
+        ``num_frequency_bands``. A sequence gives every detector the same explicit
+        edges. A dict gives each detector its own edges, which requires
+        detector-dependent noise parameters and the same band count everywhere.
+        """
+        if frequency_band_edges is None:
+            edges = self._create_frequency_band_edges()
+            return {name: edges for name in self._detector_names}
+
+        if isinstance(frequency_band_edges, dict):
+            if not self.detector_dependent_noise:
+                raise ValueError(
+                    "per-detector frequency_band_edges requires "
+                    "detector_dependent_noise=True"
+                )
+            missing = set(self._detector_names) - set(frequency_band_edges)
+            if missing:
+                raise ValueError(
+                    "frequency_band_edges must contain an entry for every detector; "
+                    f"missing {sorted(missing)}"
+                )
+            unknown = set(frequency_band_edges) - set(self._detector_names)
+            if unknown:
+                raise ValueError(
+                    f"frequency_band_edges contains unknown detectors {sorted(unknown)}"
+                )
+            edges_by_detector = {
+                name: self._validate_frequency_band_edges(
+                    frequency_band_edges[name], f"frequency_band_edges['{name}']"
+                )
+                for name in self._detector_names
+            }
+            band_counts = {
+                name: len(edges) - 1 for name, edges in edges_by_detector.items()
+            }
+            if len(set(band_counts.values())) > 1:
+                raise ValueError(
+                    "every detector must define the same number of frequency bands; "
+                    f"got {band_counts}"
+                )
+            self.num_frequency_bands = next(iter(band_counts.values()))
+            return edges_by_detector
+
+        edges = self._validate_frequency_band_edges(
+            frequency_band_edges, "frequency_band_edges"
+        )
+        self.num_frequency_bands = len(edges) - 1
+        return {name: edges for name in self._detector_names}
+
+    def _band_edges(self, detector_name=None):
+        """Band edges for one detector, or the common edges when detector-independent.
+
+        Callers that combine detectors, that is the shared-parameter and joint
+        paths, must not pass a detector name; those paths reject per-detector
+        edges at construction time because they require detector-dependent noise.
+        """
+        if detector_name is not None:
+            return self._detector_frequency_band_edges[detector_name]
+        return self._frequency_band_edges
+
+    @property
+    def _frequency_band_edges(self):
+        """The common band edges, which every detector shares unless a dict was given."""
+        return self._detector_frequency_band_edges[self._detector_names[0]]
+
     def _detector_parameter_key(self, parameter_name, detector_name, band_index):
         if self.num_frequency_bands == 1:
             return f"{parameter_name}_{detector_name}"
@@ -670,12 +769,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             return parameter_values
         return parameter_values[self._detector_names.index(interferometer.name)]
 
-    def _get_frequency_band_masks(self, frequencies):
+    def _get_frequency_band_masks(self, frequencies, detector_name=None):
         frequencies = np.asarray(frequencies, dtype=float)
+        edges = self._band_edges(detector_name)
         band_masks = []
-        for index, (lower, upper) in enumerate(
-            zip(self._frequency_band_edges[:-1], self._frequency_band_edges[1:])
-        ):
+        for index, (lower, upper) in enumerate(zip(edges[:-1], edges[1:])):
             if index == self.num_frequency_bands - 1:
                 band_mask = (frequencies >= lower) & (frequencies <= upper)
             else:
@@ -868,6 +966,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         parameters=None,
         waveform_polarizations=None,
         include_log_scale2=True,
+        band_detector_name=None,
     ):
         frequency_bin_data = self._get_frequency_bin_data(
             interferometers=interferometers,
@@ -881,7 +980,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if len(frequencies) == 0:
             return 0.0
 
-        band_masks = self._get_frequency_band_masks(frequencies)
+        band_masks = self._get_frequency_band_masks(frequencies, band_detector_name)
         logl = 0.0
         for alpha, delta, band_mask in zip(alpha_values, delta_values, band_masks):
             if not np.any(band_mask):
@@ -924,6 +1023,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 parameters=parameters,
                 waveform_polarizations=waveform_polarizations,
                 include_log_scale2=include_log_scale2,
+                band_detector_name=interferometer.name,
             )
             if not np.isfinite(detector_logl):
                 return -np.inf
@@ -1248,6 +1348,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 parameters=parameters,
                 waveform_polarizations=pols,
                 include_log_scale2=False,
+                band_detector_name=interferometer.name,
             )
             detector_noise_logl = self._compute_network_log_likelihood(
                 interferometers=[interferometer],
@@ -1258,6 +1359,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                     interferometer, delta_values
                 ),
                 include_log_scale2=False,
+                band_detector_name=interferometer.name,
             )
             parameters[f"{interferometer.name}_log_likelihood"] = float(
                 detector_signal_logl - detector_noise_logl

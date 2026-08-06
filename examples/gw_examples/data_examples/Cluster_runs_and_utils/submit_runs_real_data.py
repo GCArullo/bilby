@@ -307,6 +307,79 @@ def minimum_frequency_suffix(value: float | None) -> str:
     return f"_fmin{value:g}".replace(".", "p")
 
 
+def parse_frequency_band_edges(
+    values: list[str] | None,
+    *,
+    detectors: list[str] | tuple[str, ...],
+    detector_dependent_noise: bool,
+):
+    """Parse --frequency-band-edges into a list of edges or a per-detector dict.
+
+    Returns None when no edges were given, so that the equal-width
+    --num-frequency-bands behaviour is left untouched.
+    """
+    if not values:
+        return None
+
+    def parse_edges(text: str, label: str) -> list[float]:
+        try:
+            edges = [float(entry) for entry in text.split(",") if entry.strip()]
+        except ValueError as exc:
+            raise ValueError(f"{label} must be a comma-separated list of numbers") from exc
+        if len(edges) < 2:
+            raise ValueError(f"{label} must contain at least two frequency edges")
+        if any(second <= first for first, second in zip(edges, edges[1:])):
+            raise ValueError(f"{label} must be strictly increasing")
+        return edges
+
+    if len(values) == 1 and ":" not in values[0]:
+        return parse_edges(values[0], "--frequency-band-edges")
+
+    edges_by_detector = {}
+    for value in values:
+        detector, separator, text = value.partition(":")
+        if not separator:
+            raise ValueError(
+                "mix of shared and per-detector --frequency-band-edges arguments; "
+                "pass either one comma-separated list or one DETECTOR:list per detector"
+            )
+        if detector in edges_by_detector:
+            raise ValueError(f"--frequency-band-edges repeats detector {detector}")
+        edges_by_detector[detector] = parse_edges(
+            text, f"--frequency-band-edges for {detector}"
+        )
+
+    if not detector_dependent_noise:
+        raise ValueError(
+            "per-detector --frequency-band-edges requires --detector-dependent-noise"
+        )
+    missing = set(detectors) - set(edges_by_detector)
+    if missing:
+        raise ValueError(
+            f"--frequency-band-edges is missing detectors {sorted(missing)}"
+        )
+    unknown = set(edges_by_detector) - set(detectors)
+    if unknown:
+        raise ValueError(
+            f"--frequency-band-edges has unknown detectors {sorted(unknown)}"
+        )
+    band_counts = {
+        detector: len(edges) - 1 for detector, edges in edges_by_detector.items()
+    }
+    if len(set(band_counts.values())) > 1:
+        raise ValueError(
+            "every detector must define the same number of frequency bands; "
+            f"got {band_counts}"
+        )
+    return edges_by_detector
+
+
+def frequency_band_count(frequency_band_edges) -> int:
+    if isinstance(frequency_band_edges, dict):
+        return len(next(iter(frequency_band_edges.values()))) - 1
+    return len(frequency_band_edges) - 1
+
+
 def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -340,6 +413,20 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "Positive integer. In single mode this is the exact band count. "
             "In range mode this is the maximum band count. "
             f"Defaults to {DEFAULT_NUM_FREQUENCY_BANDS}."
+        ),
+    )
+    parser.add_argument(
+        "--frequency-band-edges",
+        nargs="+",
+        default=None,
+        help=(
+            "Explicit hyperbolic band edges in Hz instead of equal-width bands. "
+            "Pass one comma-separated list for edges shared by every detector, "
+            "e.g. 20,30,40,180,235,448, or one DETECTOR:list argument per "
+            "detector, e.g. H1:20,25,40,235,448 L1:20,30,180,235,448. "
+            "Per-detector edges require --detector-dependent-noise, and every "
+            "detector must define the same number of bands. The band count is "
+            "taken from the edges, so --num-frequency-bands is not used."
         ),
     )
     parser.add_argument(
@@ -1172,6 +1259,7 @@ def render_ini(
     noise_only_inference: bool = False,
     disable_calibration: bool = False,
     joint: bool = False,
+    frequency_band_edges=None,
 ) -> str:
     resolved_template_settings = resolve_template_settings(
         template_settings,
@@ -1286,7 +1374,12 @@ def render_ini(
                 f"{DEFAULT_HYPERBOLIC_ALPHA}, 'delta': {DEFAULT_HYPERBOLIC_DELTA}, "
                 "'infer_alpha': True, 'infer_delta': True, "
                 f"'num_frequency_bands': {band_count}, "
-                f"'detector_dependent_noise': {detector_dependent_noise}, "
+                + (
+                    f"'frequency_band_edges': {frequency_band_edges!r}, "
+                    if frequency_band_edges is not None
+                    else ""
+                )
+                + f"'detector_dependent_noise': {detector_dependent_noise}, "
                 f"'joint': {joint}"
                 "}"
             ),
@@ -1386,6 +1479,7 @@ def prepare_run(
     disable_calibration: bool,
     approximant_suffix: str = "",
     joint: bool = False,
+    frequency_band_edges=None,
 ) -> Path:
     waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
     if hypothesis == "student":
@@ -1546,6 +1640,9 @@ def prepare_run(
             noise_only_inference=noise_only_inference,
             disable_calibration=disable_calibration,
             joint=joint,
+            frequency_band_edges=(
+                frequency_band_edges if hypothesis == "hyperbolic" else None
+            ),
         ),
         encoding="utf-8",
     )
@@ -1564,13 +1661,48 @@ def prepare_run(
     return ini_path
 
 
-def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
-    validate_submission_local_paths(
-        ini_path.read_text(encoding="utf-8"),
-        base_directory=submit_directory,
+def read_config_value(text: str, key: str) -> str:
+    prefix = f"{key}="
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):].strip()
+    raise ValueError(f"Unable to find config key '{key}' in config")
+
+
+def pin_pesummary_to_cit(submit_path: Path) -> None:
+    """Keep summarypages on CIT.
+
+    The NRSur_fits conversion loads NRSur7dq4.h5 and NRSur7dq4Remnant.h5 from
+    LAL_DATA_PATH=/scratch/lalsimulation, which is a CIT mount. bilby_pipe only
+    passes DESIRED_Sites to analysis nodes, so pesummary is left with the
+    deprecated (ignored) MY.flock_local and flocks to OSG, where the data is
+    absent and the fit dies with an I/O error.
+    """
+    text = submit_path.read_text(encoding="utf-8")
+    if "MY.flock_local = True" not in text:
+        raise ValueError(f"Unable to find flocking line in '{submit_path}'")
+    submit_path.write_text(
+        text.replace(
+            "MY.flock_local = True",
+            'MY.DESIRED_Sites = "nogrid"\nMY.POOLS = "CIT"',
+        ),
+        encoding="utf-8",
     )
+
+
+def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
+    ini_text = ini_path.read_text(encoding="utf-8")
+    validate_submission_local_paths(ini_text, base_directory=submit_directory)
     subprocess.run(
-        ["bilby_pipe", str(ini_path), "--submit"],
+        ["bilby_pipe", str(ini_path)],
+        check=True,
+        cwd=submit_directory,
+    )
+    label = read_config_value(ini_text, "label")
+    dag_directory = submit_directory / read_config_value(ini_text, "outdir") / "submit"
+    pin_pesummary_to_cit(dag_directory / f"{label}_pesummary.submit")
+    subprocess.run(
+        ["condor_submit_dag", str(dag_directory / f"dag_{label}.submit")],
         check=True,
         cwd=submit_directory,
     )
@@ -1630,6 +1762,20 @@ def main() -> int:
     webdir_base = args.webdir_base or outdir_base
     file_prefix = args.file_prefix or defaults.file_prefix
     detectors = tuple(args.detectors) if args.detectors else defaults.detectors
+    frequency_band_edges = parse_frequency_band_edges(
+        args.frequency_band_edges,
+        detectors=detectors,
+        detector_dependent_noise=args.detector_dependent_noise,
+    )
+    if frequency_band_edges is not None:
+        if args.likelihood != "hyperbolic":
+            raise ValueError(
+                "--frequency-band-edges is only implemented for "
+                "--likelihood hyperbolic"
+            )
+        if args.range_mode:
+            raise ValueError("--frequency-band-edges cannot be combined with --range")
+        args.num_frequency_bands = frequency_band_count(frequency_band_edges)
     working_directory = resolve_path(
         args.working_directory,
         script_dir / defaults.working_directory,
@@ -1757,6 +1903,7 @@ def main() -> int:
                 disable_calibration=args.disable_calibration,
                 approximant_suffix=approximant_suffix,
                 joint=args.joint,
+                frequency_band_edges=frequency_band_edges,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

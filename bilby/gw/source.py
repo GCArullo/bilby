@@ -17,6 +17,9 @@ Unused waveform_kwargs: {waveform_kwargs}
 """
 
 
+_gwsignal_binary_black_hole_warned = False
+
+
 def gwsignal_binary_black_hole(frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
                                phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, **kwargs):
     """
@@ -87,11 +90,14 @@ def gwsignal_binary_black_hole(frequency_array, mass_1, mass_2, luminosity_dista
     This version is only intended to be used with `SEOBNRv5HM` and `SEOBNRv5PHM` and
     does not have full functionality for other waveform models.
     """
-    logger.warning(
-        "bilby.gw.source.gwsignal_binary_black_hole is deprecated and will be removed "
-        "in a future release, use bilby.gw.waveform_generator.GWSignalWaveformGenerator"
-        " instead."
-    )
+    global _gwsignal_binary_black_hole_warned
+    if not _gwsignal_binary_black_hole_warned:
+        logger.warning(
+            "bilby.gw.source.gwsignal_binary_black_hole is deprecated and will be removed "
+            "in a future release, use bilby.gw.waveform_generator.GWSignalWaveformGenerator"
+            " instead."
+        )
+        _gwsignal_binary_black_hole_warned = True
 
     return _base_gwsignal_cbc_fd_waveform(
         frequency_array=frequency_array, mass_1=mass_1, mass_2=mass_2,

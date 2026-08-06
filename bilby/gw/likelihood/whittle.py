@@ -7,6 +7,7 @@ from scipy.integrate import quad
 from ...core.likelihood import Likelihood, _fallback_to_parameters
 from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
+from .. import utils as gwutils
 from .base import GravitationalWaveTransient
 
 
@@ -486,6 +487,80 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
             logl += np.sum(band_logl)
 
         return float(logl)
+
+    def _corrected_power_spectral_density_array(
+        self, interferometer, log_psd_scale_values
+    ):
+        """PSD used by the Gaussian-parametric likelihood: the interferometer's
+        input PSD, masked to the active frequencies and scaled per band by
+        ``10**log_psd_scale``, exactly as in :meth:`_compute_detector_log_likelihood`."""
+        mask = interferometer.frequency_mask
+        frequencies = interferometer.frequency_array[mask]
+        psd = interferometer.power_spectral_density_array[mask].copy()
+        for log_psd_scale, band_mask in zip(
+            log_psd_scale_values, self._get_frequency_band_masks(frequencies)
+        ):
+            psd[band_mask] *= 10.0 ** log_psd_scale
+        return psd
+
+    def calculate_snrs(
+        self, waveform_polarizations, interferometer, *, return_array=True, parameters
+    ):
+        """
+        Compute the SNRs against the PSD scaled by the (inferred or fixed)
+        ``log_psd_scale``, so reported SNRs reflect the noise level the
+        Gaussian-parametric likelihood actually uses, rather than the
+        unscaled input PSD used by :meth:`Interferometer.optimal_snr_squared`.
+        """
+        if self.time_marginalization or self.calibration_marginalization:
+            raise NotImplementedError(
+                "GaussianParametricGravitationalWaveTransient does not support "
+                "time or calibration marginalization"
+            )
+
+        log_psd_scale_values = self._get_active_log_psd_scale_values(
+            parameters, update_state=False,
+        )
+        if log_psd_scale_values is None:
+            raise ValueError(
+                "Invalid log_psd_scale values encountered while computing SNRs"
+            )
+        corrected_psd = self._corrected_power_spectral_density_array(
+            interferometer,
+            self._get_detector_log_psd_scale_values(
+                log_psd_scale_values, interferometer.name
+            ),
+        )
+
+        signal = self._compute_full_waveform(
+            signal_polarizations=waveform_polarizations,
+            interferometer=interferometer,
+            parameters=parameters,
+        )
+        mask = interferometer.frequency_mask
+        if 'recalib_index' in parameters:
+            signal[mask] *= self.calibration_draws[interferometer.name][int(parameters['recalib_index'])]
+
+        d_inner_h = gwutils.noise_weighted_inner_product(
+            aa=signal[mask],
+            bb=interferometer.frequency_domain_strain[mask],
+            power_spectral_density=corrected_psd,
+            duration=interferometer.strain_data.duration,
+        )
+        optimal_snr_squared = gwutils.optimal_snr_squared(
+            signal=signal[mask],
+            power_spectral_density=corrected_psd,
+            duration=interferometer.strain_data.duration,
+        )
+        complex_matched_filter_snr = d_inner_h / (optimal_snr_squared ** 0.5)
+
+        return self._CalculatedSNRs(
+            d_inner_h=d_inner_h,
+            optimal_snr_squared=optimal_snr_squared.real,
+            complex_matched_filter_snr=complex_matched_filter_snr,
+            d_inner_h_array=None,
+            optimal_snr_squared_array=None,
+        )
 
     def _noise_log_likelihood_from_parameters(self, parameters):
         log_psd_scale_values = self._get_active_log_psd_scale_values(

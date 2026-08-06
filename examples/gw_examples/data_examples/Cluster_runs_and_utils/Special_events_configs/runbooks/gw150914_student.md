@@ -8,7 +8,7 @@ REAL="$UTILS/submit_runs_real_data.py"
 INI="$UTILS/Special_events_configs/templates/GW150914_t_student_igwn_template.ini"
 PRIOR="$UTILS/Special_events_configs/priors/GW150914_igwn_template.prior"
 WORKING_DIRECTORY="$UTILS/LVK_posteriors/GW150914"
-OUTPUT="$HOME/public_html/GW150914/Runs"
+OUTPUT="$HOME/public_html/GWTC_parametric_noise/Runs/GW150914"
 ```
 
 ## Prepare the IGWN data products

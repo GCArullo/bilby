@@ -20,10 +20,15 @@ Its embedded LALInference configuration is stored in
 `source_configs/GW190521_030229_LVK_NRSur7dq4.ini`; the executable Bilby
 translation is in `templates/`.
 
+The GW191109 no-glitch-subtraction profile reuses the PSDs, calibration
+envelopes, and prior of `../GWTC_catalog_configs/GWTC-3`, replacing only the
+de-glitched frames with the production C01 frames they were built from.
+
 The event runbooks are:
 
 - `runbooks/gw150914_hyperbolic.md`
 - `runbooks/gw150914_welch.md`
+- `runbooks/gw191109_010717_no_glitch_subtraction.md`
 - `runbooks/gw190521_030229_lvk_nrsur7dq4.md`
 - `runbooks/gw200129_065458_hannam_nrsur7dq4.md`
 - `runbooks/gw230814_student.md`

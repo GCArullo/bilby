@@ -930,6 +930,34 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             logl += detector_logl
         return float(logl)
 
+    def _compute_log_likelihood(
+        self,
+        *,
+        interferometers,
+        alpha_values,
+        delta_values,
+        parameters=None,
+        waveform_polarizations=None,
+        include_log_scale2=True,
+    ):
+        """Combine detectors into one network density if ``joint``, else factorise.
+
+        This is the single place where the ``joint`` flag selects between the two
+        conventions, so every caller stays consistent.
+        """
+        if self.joint:
+            combine = self._compute_network_log_likelihood
+        else:
+            combine = self._sum_detector_log_likelihoods
+        return combine(
+            interferometers=interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+            parameters=parameters,
+            waveform_polarizations=waveform_polarizations,
+            include_log_scale2=include_log_scale2,
+        )
+
     def _noise_log_likelihood_from_parameters(self, parameters):
         alpha_values, delta_values = self._get_active_shape_parameters(
             parameters, update_state=False
@@ -937,18 +965,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
 
-        if self.joint:
-            logl = self._compute_network_log_likelihood(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-            )
-        else:
-            logl = self._sum_detector_log_likelihoods(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-            )
+        logl = self._compute_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+        )
         if not np.isfinite(logl):
             return np.nan_to_num(-np.inf)
         return float(logl)
@@ -1127,22 +1148,13 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        if self.joint:
-            logl = self._compute_network_log_likelihood(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-            )
-        else:
-            logl = self._sum_detector_log_likelihoods(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-            )
+        logl = self._compute_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+            parameters=parameters,
+            waveform_polarizations=pols,
+        )
         if not np.isfinite(logl):
             return np.nan_to_num(-np.inf)
         return float(logl)
@@ -1190,36 +1202,20 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if pols is None:
             return np.nan_to_num(-np.inf)
 
-        if self.joint:
-            signal_logl = self._compute_network_log_likelihood(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-                include_log_scale2=False,
-            )
-            noise_logl = self._compute_network_log_likelihood(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                include_log_scale2=False,
-            )
-        else:
-            signal_logl = self._sum_detector_log_likelihoods(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                parameters=parameters,
-                waveform_polarizations=pols,
-                include_log_scale2=False,
-            )
-            noise_logl = self._sum_detector_log_likelihoods(
-                interferometers=self.interferometers,
-                alpha_values=alpha_values,
-                delta_values=delta_values,
-                include_log_scale2=False,
-            )
+        signal_logl = self._compute_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+            parameters=parameters,
+            waveform_polarizations=pols,
+            include_log_scale2=False,
+        )
+        noise_logl = self._compute_log_likelihood(
+            interferometers=self.interferometers,
+            alpha_values=alpha_values,
+            delta_values=delta_values,
+            include_log_scale2=False,
+        )
         if not np.isfinite(signal_logl) or not np.isfinite(noise_logl):
             return np.nan_to_num(-np.inf)
         return float(signal_logl - noise_logl)

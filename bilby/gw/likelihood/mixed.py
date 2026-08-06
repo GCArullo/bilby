@@ -56,9 +56,10 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
 
     ``detector_likelihoods`` is either one family name or a mapping from
     interferometer name to one of ``gaussian``, ``student-t``, or ``hyperbolic``.
-    Hyperbolic detectors retain their existing joint-network likelihood when
-    ``detector_dependent_noise`` is false. Gaussian and Student-t detectors are
-    evaluated independently.
+    Every detector is evaluated independently: hyperbolic detectors use the
+    factorised per-detector density (``joint=False``), matching the default of
+    :class:`HyperbolicGravitationalWaveTransient`. Joint network densities are
+    not available here.
 
     Marginalizations are unavailable because their existing derivations assume a
     single Gaussian network likelihood.
@@ -329,22 +330,13 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
                 )
 
         if self._hyperbolic_likelihood is not None:
-            if self._hyperbolic_likelihood.detector_dependent_noise:
-                log_likelihood += self._hyperbolic_likelihood._sum_detector_log_likelihoods(
-                    interferometers=self._hyperbolic_likelihood.interferometers,
-                    alpha_values=alpha_values,
-                    delta_values=delta_values,
-                    parameters=parameters,
-                    waveform_polarizations=waveform_polarizations,
-                )
-            else:
-                log_likelihood += self._hyperbolic_likelihood._compute_network_log_likelihood(
-                    interferometers=self._hyperbolic_likelihood.interferometers,
-                    alpha_values=alpha_values,
-                    delta_values=delta_values,
-                    parameters=parameters,
-                    waveform_polarizations=waveform_polarizations,
-                )
+            log_likelihood += self._hyperbolic_likelihood._compute_log_likelihood(
+                interferometers=self._hyperbolic_likelihood.interferometers,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+                parameters=parameters,
+                waveform_polarizations=waveform_polarizations,
+            )
 
         if not np.isfinite(log_likelihood):
             return np.nan_to_num(-np.inf)

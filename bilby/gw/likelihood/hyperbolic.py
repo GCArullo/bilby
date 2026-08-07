@@ -176,6 +176,17 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         self._detector_frequency_band_edges = self._resolve_frequency_band_edges(
             frequency_band_edges
         )
+        self._band_suffix_cache = (
+            None
+            if frequency_band_edges is None
+            else {
+                name: [
+                    self._band_frequency_suffix(lower, upper)
+                    for lower, upper in zip(edges[:-1], edges[1:])
+                ]
+                for name, edges in self._detector_frequency_band_edges.items()
+            }
+        )
         self._fixed_alpha = self._coerce_parameter_array(alpha, "alpha")
         self._fixed_delta = self._coerce_parameter_array(delta, "delta")
         self.infer_alpha = bool(infer_alpha)
@@ -258,30 +269,28 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
 
     @property
     def alpha_parameter_keys(self):
-        if not self.detector_dependent_noise:
-            if self.num_frequency_bands == 1:
-                return ["alpha"]
-            return [f"alpha_{index}" for index in range(1, self.num_frequency_bands + 1)]
-        if self.num_frequency_bands == 1:
-            return [f"alpha_{detector_name}" for detector_name in self._detector_names]
-        return [
-            f"alpha_{detector_name}_{index}"
-            for detector_name in self._detector_names
-            for index in range(1, self.num_frequency_bands + 1)
-        ]
+        return self._parameter_keys("alpha")
 
     @property
     def delta_parameter_keys(self):
+        return self._parameter_keys("delta")
+
+    def _parameter_keys(self, parameter_name):
         if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
-                return ["delta"]
-            return [f"delta_{index}" for index in range(1, self.num_frequency_bands + 1)]
+                return [parameter_name]
+            return [
+                f"{parameter_name}_{suffix}" for suffix in self._band_suffixes()
+            ]
         if self.num_frequency_bands == 1:
-            return [f"delta_{detector_name}" for detector_name in self._detector_names]
+            return [
+                f"{parameter_name}_{detector_name}"
+                for detector_name in self._detector_names
+            ]
         return [
-            f"delta_{detector_name}_{index}"
+            f"{parameter_name}_{detector_name}_{suffix}"
             for detector_name in self._detector_names
-            for index in range(1, self.num_frequency_bands + 1)
+            for suffix in self._band_suffixes(detector_name)
         ]
 
     @property
@@ -390,7 +399,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
                 )
                 coordinate = detector_name
             if self.num_frequency_bands > 1:
-                coordinate = f"{coordinate} band {band_index + 1}"
+                edges = self._band_edges(detector_name)
+                coordinate = (
+                    f"{coordinate} band {band_index + 1} "
+                    f"({edges[band_index]:g}-{edges[band_index + 1]:g} Hz)"
+                )
 
             alpha, alpha_source = self._gaussian_limit_parameter(
                 priors, "alpha", alpha_key, fixed_alphas[alpha_key]
@@ -668,7 +681,28 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
     def _detector_parameter_key(self, parameter_name, detector_name, band_index):
         if self.num_frequency_bands == 1:
             return f"{parameter_name}_{detector_name}"
-        return f"{parameter_name}_{detector_name}_{band_index + 1}"
+        suffix = self._band_suffixes(detector_name)[band_index]
+        return f"{parameter_name}_{detector_name}_{suffix}"
+
+    def _band_suffixes(self, detector_name=None):
+        """Per-band name suffixes: the band edges in Hz, or 1..N for equal-width bands.
+
+        Explicit edges are named after the frequencies they cover, because a bare
+        index says nothing once the widths are arbitrary and, with per-detector
+        edges, band `i` covers a different range in each interferometer. Equal-width
+        bands keep the index, so that names stay stable for existing runs and are
+        never derived from a frequency grid the caller writing the priors would
+        have to reconstruct.
+        """
+        if self._band_suffix_cache is None:
+            return [str(index) for index in range(1, self.num_frequency_bands + 1)]
+        return self._band_suffix_cache[
+            detector_name if detector_name is not None else self._detector_names[0]
+        ]
+
+    @staticmethod
+    def _band_frequency_suffix(lower, upper):
+        return f"{lower:g}_{upper:g}".replace(".", "p")
 
     def _get_alpha_values(self, parameters):
         if not self.infer_alpha:

@@ -820,50 +820,90 @@ def build_nu_priors(
     )
 
 
+def band_frequency_suffix(lower: float, upper: float) -> str:
+    """Name a band after the frequencies it covers.
+
+    This must match HyperbolicGravitationalWaveTransient._band_frequency_suffix:
+    the likelihood falls back to the fixed value for any noise parameter it
+    cannot find by name, so a disagreement would silently stop sampling it.
+    """
+    return f"{lower:g}_{upper:g}".replace(".", "p")
+
+
+def band_suffixes(band_count: int, edges=None) -> list[str]:
+    if edges is None:
+        return [str(index) for index in range(1, band_count + 1)]
+    return [
+        band_frequency_suffix(lower, upper)
+        for lower, upper in zip(edges, edges[1:])
+    ]
+
+
+def band_latex_fragment(suffix: str) -> str:
+    """Turn a band suffix into a superscript for the parameter's latex label."""
+    if "_" not in suffix:
+        return f"({suffix})"
+    lower, upper = suffix.split("_", maxsplit=1)
+    lower = lower.replace("p", ".")
+    upper = upper.replace("p", ".")
+    return f"{lower}-{upper}\\\\;\\\\mathrm{{Hz}}"
+
+
 def build_hyperbolic_priors(
     band_count: int,
     *,
     detector_dependent_noise: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+    frequency_band_edges=None,
 ) -> str:
     lines = []
+
+    def detector_edges(detector: str):
+        if isinstance(frequency_band_edges, dict):
+            return frequency_band_edges[detector]
+        return frequency_band_edges
+
     if detector_dependent_noise:
         if band_count == 1:
             parameter_keys = [
-                (f"alpha_{detector}", "alpha") for detector in detectors
+                (f"alpha_{detector}", "alpha", detector, None)
+                for detector in detectors
             ] + [
-                (f"delta_{detector}", "delta") for detector in detectors
+                (f"delta_{detector}", "delta", detector, None)
+                for detector in detectors
             ]
         else:
             parameter_keys = [
-                (f"alpha_{detector}_{index}", "alpha")
+                (f"{name}_{detector}_{suffix}", name, detector, suffix)
+                for name in ("alpha", "delta")
                 for detector in detectors
-                for index in range(1, band_count + 1)
-            ] + [
-                (f"delta_{detector}_{index}", "delta")
-                for detector in detectors
-                for index in range(1, band_count + 1)
+                for suffix in band_suffixes(band_count, detector_edges(detector))
             ]
     elif band_count == 1:
-        parameter_keys = [("alpha", "alpha"), ("delta", "delta")]
+        parameter_keys = [("alpha", "alpha", None, None), ("delta", "delta", None, None)]
     else:
         parameter_keys = [
-            (f"alpha_{index}", "alpha")
-            for index in range(1, band_count + 1)
-        ] + [
-            (f"delta_{index}", "delta")
-            for index in range(1, band_count + 1)
+            (f"{name}_{suffix}", name, None, suffix)
+            for name in ("alpha", "delta")
+            for suffix in band_suffixes(band_count, frequency_band_edges)
         ]
 
-    for key, parameter_name in parameter_keys:
+    for key, parameter_name, detector, suffix in parameter_keys:
         if parameter_name == "alpha":
             minimum = DEFAULT_HYPERBOLIC_ALPHA_MIN
             maximum = DEFAULT_HYPERBOLIC_ALPHA_MAX
         else:
             minimum = DEFAULT_HYPERBOLIC_DELTA_MIN
             maximum = DEFAULT_HYPERBOLIC_DELTA_MAX
+        latex = ""
+        if suffix is not None and frequency_band_edges is not None:
+            subscript = f"_{{\\\\mathrm{{{detector}}}}}" if detector else ""
+            latex = (
+                f", latex_label='$\\\\{parameter_name}{subscript}"
+                f"^{{{band_latex_fragment(suffix)}}}$'"
+            )
         lines.append(
-            f"{key} = Uniform(name='{key}', minimum={minimum}, maximum={maximum})"
+            f"{key} = Uniform(name='{key}', minimum={minimum}, maximum={maximum}{latex})"
         )
     return "\n".join(lines)
 
@@ -908,6 +948,7 @@ def render_prior(
     template_settings: dict[str, object],
     sine_gaussian_config,
     noise_only_inference: bool = False,
+    frequency_band_edges=None,
 ) -> str:
     if noise_only_inference:
         return render_noise_only_prior(
@@ -916,6 +957,7 @@ def render_prior(
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
             template_settings=template_settings,
+            frequency_band_edges=frequency_band_edges,
         )
 
     if hypothesis == "student":
@@ -929,6 +971,7 @@ def render_prior(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
         )
     elif hypothesis == "gaussian-parametric":
         noise_prior_block = build_log_psd_scale_priors(
@@ -1201,6 +1244,7 @@ def render_noise_only_prior(
     detector_dependent_noise: bool,
     detectors: list[str] | tuple[str, ...],
     template_settings: dict[str, object],
+    frequency_band_edges=None,
 ) -> str:
     if hypothesis == "student":
         noise_prior_block = build_nu_priors(
@@ -1213,6 +1257,7 @@ def render_noise_only_prior(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
         )
     elif hypothesis == "gaussian-parametric":
         noise_prior_block = build_log_psd_scale_priors(
@@ -1617,6 +1662,9 @@ def prepare_run(
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             noise_only_inference=noise_only_inference,
+            frequency_band_edges=(
+                frequency_band_edges if hypothesis == "hyperbolic" else None
+            ),
         ),
         encoding="utf-8",
     )

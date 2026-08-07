@@ -87,16 +87,17 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             value per band.
         infer_alpha : bool
             If True, treat the hyperbolic tail parameter as sampled. For a single band
-            this uses the parameter name 'alpha'. For multiple bands this uses
-            'alpha_1', ..., 'alpha_N'; you must add priors for each sampled parameter.
-            If `detector_dependent_noise=True`, sampled parameters become
-            detector-specific: 'alpha_H1', ... or 'alpha_H1_1', ..., 'alpha_L1_1', ... .
+            this uses the parameter name 'alpha'. Equal-width bands use
+            'alpha_1', ..., 'alpha_N', while explicit `frequency_band_edges` name each
+            band after the frequencies it covers, 'alpha_20_25', ..., with '.' written
+            as 'p'. You must add priors for each sampled parameter, under exactly
+            these names: any parameter not found by name keeps its fixed value instead
+            of being sampled. If `detector_dependent_noise=True`, sampled parameters
+            become detector-specific: 'alpha_H1', or 'alpha_H1_1', 'alpha_L1_1', ...,
+            or 'alpha_H1_20_25', 'alpha_L1_20_30', ... .
         infer_delta : bool
-            If True, treat the hyperbolic scale parameter as sampled. For a single band
-            this uses the parameter name 'delta'. For multiple bands this uses
-            'delta_1', ..., 'delta_N'; you must add priors for each sampled parameter.
-            If `detector_dependent_noise=True`, sampled parameters become
-            detector-specific: 'delta_H1', ... or 'delta_H1_1', ..., 'delta_L1_1', ... .
+            If True, treat the hyperbolic scale parameter as sampled. The parameter
+            names follow `infer_alpha` with 'delta' in place of 'alpha'.
         num_frequency_bands : int
             Number of contiguous frequency bands spanning the active analysis range. Each
             band has its own hyperbolic `alpha` and `delta` parameters. Bands are of

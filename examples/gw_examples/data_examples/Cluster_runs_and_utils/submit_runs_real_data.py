@@ -18,6 +18,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
 from container_creation.submission_container_utils import (
     add_container_arguments,
     resolve_container_image,
@@ -86,6 +88,8 @@ DEFAULT_HYPERBOLIC_DELTA_MIN = 1e-6
 DEFAULT_HYPERBOLIC_DELTA_MAX = 30.0
 DEFAULT_LOG_PSD_SCALE_MIN = -1.0
 DEFAULT_LOG_PSD_SCALE_MAX = 1.0
+DEFAULT_NU_MIN = 2.1
+DEFAULT_NU_MAX = 1000
 DEFAULT_REQUEST_CPUS = 16
 DEFAULT_REQUEST_MEMORY_GB = 24.0
 WORKING_DIRECTORY_PLACEHOLDER = "__WORKING_DIRECTORY__"
@@ -420,13 +424,27 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         nargs="+",
         default=None,
         help=(
-            "Explicit hyperbolic band edges in Hz instead of equal-width bands. "
+            "Explicit noise band edges in Hz instead of equal-width bands, for "
+            "any parametric-noise likelihood. "
             "Pass one comma-separated list for edges shared by every detector, "
             "e.g. 20,30,40,180,235,448, or one DETECTOR:list argument per "
             "detector, e.g. H1:20,25,40,235,448 L1:20,30,180,235,448. "
             "Per-detector edges require --detector-dependent-noise, and every "
             "detector must define the same number of bands. The band count is "
             "taken from the edges, so --num-frequency-bands is not used."
+        ),
+    )
+    parser.add_argument(
+        "--noise-bands-from-calibration",
+        action="store_true",
+        help=(
+            "Use the cubic-spline calibration node frequencies as the noise band "
+            "edges, so the bands and the calibration share one log-spaced grid. "
+            "The band count follows from the nodes: spline-calibration-nodes=10 "
+            "gives 9 bands. The resolved edges are written into the generated ini, "
+            "and detectors with different analysis bands get different edges, "
+            "which then requires --detector-dependent-noise. Cannot be combined "
+            "with --frequency-band-edges or --disable-calibration."
         ),
     )
     parser.add_argument(
@@ -801,23 +819,107 @@ def build_nu_priors(
     *,
     detector_dependent_noise: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+    frequency_band_edges=None,
 ) -> str:
-    if not detector_dependent_noise:
-        if band_count == 1:
-            return "nu = Uniform(name='nu', minimum=2.1, maximum=1000)"
-        return "\n".join(
-            f"nu_{index} = Uniform(name='nu_{index}', minimum=2.1, maximum=1000)"
-            for index in range(1, band_count + 1)
-        )
     return "\n".join(
-        (
-            f"nu_{detector} = Uniform(name='nu_{detector}', minimum=2.1, maximum=1000)"
-            if band_count == 1
-            else f"nu_{detector}_{index} = Uniform(name='nu_{detector}_{index}', minimum=2.1, maximum=1000)"
+        f"{key} = Uniform(name='{key}', minimum={DEFAULT_NU_MIN}, "
+        f"maximum={DEFAULT_NU_MAX}"
+        + band_latex_label(
+            BAND_LATEX_SYMBOLS["nu"], detector, suffix, frequency_band_edges
         )
-        for detector in detectors
-        for index in range(1, band_count + 1)
+        + ")"
+        for key, detector, suffix in band_parameter_keys(
+            "nu",
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
+        )
     )
+
+
+def calibration_spline_nodes(
+    template_settings: dict[str, object],
+    detectors: list[str] | tuple[str, ...],
+) -> dict[str, list[float]]:
+    """The cubic-spline calibration node frequencies, per detector.
+
+    These are the frequencies bilby places the calibration nodes at:
+    ``numpy.linspace`` over ``log(f)`` between each detector's analysis bounds,
+    per ``CalibrationPriorDict.from_envelope_file``. Reproduced here so that the
+    launcher can write the same grid into the ini as band edges, rather than the
+    likelihood having to reach into the calibration model at run time.
+
+    The two endpoints are snapped back onto the analysis bounds. ``exp(log(f))``
+    can land an ulp above ``f``, and a frequency bin sitting exactly on the lower
+    bound would then fall below the first band, outside every band, and be
+    dropped from the likelihood altogether. The shift is ~1e-14 Hz against a bin
+    spacing of 1/duration, so no node moves in any meaningful sense.
+    """
+    model = template_settings.get("calibration_model")
+    if model is None or str(model) != "CubicSpline":
+        raise ValueError(
+            "--noise-bands-from-calibration requires calibration-model=CubicSpline "
+            f"in the ini template; found {model!r}"
+        )
+    nodes = template_settings.get("spline_calibration_nodes")
+    if nodes is None:
+        raise ValueError(
+            "--noise-bands-from-calibration requires spline-calibration-nodes "
+            "in the ini template"
+        )
+    node_count = int(nodes)
+    if node_count < 2:
+        raise ValueError(
+            f"spline-calibration-nodes must be at least 2, found {node_count}"
+        )
+
+    def bound(setting, detector):
+        value = template_settings[setting]
+        if isinstance(value, dict):
+            return float(value[detector])
+        return float(value)
+
+    edges = {}
+    for detector in detectors:
+        minimum = bound("minimum_frequency", detector)
+        maximum = bound("maximum_frequency", detector)
+        if not 0.0 < minimum < maximum:
+            raise ValueError(
+                f"{detector} needs 0 < minimum < maximum frequency to place "
+                f"log-spaced calibration nodes; got {minimum} and {maximum}"
+            )
+        nodes = np.exp(np.linspace(np.log(minimum), np.log(maximum), node_count))
+        nodes[0] = minimum
+        nodes[-1] = maximum
+        edges[detector] = [float(value) for value in nodes]
+    return edges
+
+
+def band_edges_from_calibration(
+    template_settings: dict[str, object],
+    detectors: list[str] | tuple[str, ...],
+    *,
+    detector_dependent_noise: bool,
+):
+    """Band edges matching the calibration nodes: one list, or one per detector.
+
+    Detectors sharing the same analysis band get identical nodes, so a single
+    shared list is returned and detector-dependent noise stays optional. Only
+    when the bands genuinely differ are per-detector edges needed, and those
+    require detector-dependent parameters.
+    """
+    edges = calibration_spline_nodes(template_settings, detectors)
+    distinct = {tuple(value) for value in edges.values()}
+    if len(distinct) == 1:
+        return list(next(iter(distinct)))
+    if not detector_dependent_noise:
+        raise ValueError(
+            "--noise-bands-from-calibration gives different edges per detector "
+            "because the detectors have different analysis bands, which requires "
+            "--detector-dependent-noise"
+        )
+    return edges
 
 
 def band_frequency_suffix(lower: float, upper: float) -> str:
@@ -849,14 +951,27 @@ def band_latex_fragment(suffix: str) -> str:
     return f"{lower}-{upper}\\\\;\\\\mathrm{{Hz}}"
 
 
-def build_hyperbolic_priors(
+BAND_LATEX_SYMBOLS = {
+    "nu": r"\\nu",
+    "alpha": r"\\alpha",
+    "delta": r"\\delta",
+    "log_psd_scale": r"\\log_{10} s",
+}
+
+
+def band_parameter_keys(
+    parameter_name: str,
     band_count: int,
     *,
-    detector_dependent_noise: bool = False,
-    detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+    detector_dependent_noise: bool,
+    detectors: list[str] | tuple[str, ...],
     frequency_band_edges=None,
-) -> str:
-    lines = []
+) -> list[tuple[str, str | None, str | None]]:
+    """(key, detector, band suffix) for one noise parameter over detectors and bands.
+
+    The detector is None when the parameter is shared, and the suffix is None for
+    a single band, which carries no band name.
+    """
 
     def detector_edges(detector: str):
         if isinstance(frequency_band_edges, dict):
@@ -865,46 +980,79 @@ def build_hyperbolic_priors(
 
     if detector_dependent_noise:
         if band_count == 1:
-            parameter_keys = [
-                (f"alpha_{detector}", "alpha", detector, None)
-                for detector in detectors
-            ] + [
-                (f"delta_{detector}", "delta", detector, None)
+            return [
+                (f"{parameter_name}_{detector}", detector, None)
                 for detector in detectors
             ]
-        else:
-            parameter_keys = [
-                (f"{name}_{detector}_{suffix}", name, detector, suffix)
-                for name in ("alpha", "delta")
-                for detector in detectors
-                for suffix in band_suffixes(band_count, detector_edges(detector))
-            ]
-    elif band_count == 1:
-        parameter_keys = [("alpha", "alpha", None, None), ("delta", "delta", None, None)]
-    else:
-        parameter_keys = [
-            (f"{name}_{suffix}", name, None, suffix)
-            for name in ("alpha", "delta")
-            for suffix in band_suffixes(band_count, frequency_band_edges)
+        return [
+            (f"{parameter_name}_{detector}_{suffix}", detector, suffix)
+            for detector in detectors
+            for suffix in band_suffixes(band_count, detector_edges(detector))
         ]
+    if band_count == 1:
+        return [(parameter_name, None, None)]
+    return [
+        (f"{parameter_name}_{suffix}", None, suffix)
+        for suffix in band_suffixes(band_count, frequency_band_edges)
+    ]
 
-    for key, parameter_name, detector, suffix in parameter_keys:
-        if parameter_name == "alpha":
-            minimum = DEFAULT_HYPERBOLIC_ALPHA_MIN
-            maximum = DEFAULT_HYPERBOLIC_ALPHA_MAX
-        else:
-            minimum = DEFAULT_HYPERBOLIC_DELTA_MIN
-            maximum = DEFAULT_HYPERBOLIC_DELTA_MAX
-        latex = ""
-        if suffix is not None and frequency_band_edges is not None:
-            subscript = f"_{{\\\\mathrm{{{detector}}}}}" if detector else ""
-            latex = (
-                f", latex_label='$\\\\{parameter_name}{subscript}"
-                f"^{{{band_latex_fragment(suffix)}}}$'"
+
+def band_edges_kwarg(frequency_band_edges) -> str:
+    """The frequency_band_edges entry for extra-likelihood-kwargs, or nothing.
+
+    Writing the resolved edges into the ini keeps each run self-documenting: the
+    band boundaries are recorded next to the band count rather than having to be
+    reconstructed from the launcher arguments.
+    """
+    if frequency_band_edges is None:
+        return ""
+    return f"'frequency_band_edges': {frequency_band_edges!r}, "
+
+
+def band_latex_label(
+    latex_symbol: str, detector, suffix, frequency_band_edges
+) -> str:
+    """Latex label naming the band in Hz, empty unless explicit edges are used."""
+    if suffix is None or frequency_band_edges is None:
+        return ""
+    subscript = f"_{{\\\\mathrm{{{detector}}}}}" if detector else ""
+    return (
+        f", latex_label='${latex_symbol}{subscript}"
+        f"^{{{band_latex_fragment(suffix)}}}$'"
+    )
+
+
+def build_hyperbolic_priors(
+    band_count: int,
+    *,
+    detector_dependent_noise: bool = False,
+    detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+    frequency_band_edges=None,
+) -> str:
+    bounds = {
+        "alpha": (DEFAULT_HYPERBOLIC_ALPHA_MIN, DEFAULT_HYPERBOLIC_ALPHA_MAX),
+        "delta": (DEFAULT_HYPERBOLIC_DELTA_MIN, DEFAULT_HYPERBOLIC_DELTA_MAX),
+    }
+    lines = []
+    for parameter_name in ("alpha", "delta"):
+        minimum, maximum = bounds[parameter_name]
+        for key, detector, suffix in band_parameter_keys(
+            parameter_name,
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
+        ):
+            latex = band_latex_label(
+                BAND_LATEX_SYMBOLS[parameter_name],
+                detector,
+                suffix,
+                frequency_band_edges,
             )
-        lines.append(
-            f"{key} = Uniform(name='{key}', minimum={minimum}, maximum={maximum}{latex})"
-        )
+            lines.append(
+                f"{key} = Uniform(name='{key}', minimum={minimum}, "
+                f"maximum={maximum}{latex})"
+            )
     return "\n".join(lines)
 
 
@@ -913,28 +1061,25 @@ def build_log_psd_scale_priors(
     *,
     detector_dependent_noise: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
+    frequency_band_edges=None,
 ) -> str:
-    if detector_dependent_noise:
-        if band_count == 1:
-            parameter_keys = [
-                f"log_psd_scale_{detector}" for detector in detectors
-            ]
-        else:
-            parameter_keys = [
-                f"log_psd_scale_{detector}_{index}"
-                for detector in detectors
-                for index in range(1, band_count + 1)
-            ]
-    elif band_count == 1:
-        parameter_keys = ["log_psd_scale"]
-    else:
-        parameter_keys = [
-            f"log_psd_scale_{index}" for index in range(1, band_count + 1)
-        ]
     return "\n".join(
         f"{key} = Uniform(name='{key}', minimum={DEFAULT_LOG_PSD_SCALE_MIN}, "
-        f"maximum={DEFAULT_LOG_PSD_SCALE_MAX})"
-        for key in parameter_keys
+        f"maximum={DEFAULT_LOG_PSD_SCALE_MAX}"
+        + band_latex_label(
+            BAND_LATEX_SYMBOLS["log_psd_scale"],
+            detector,
+            suffix,
+            frequency_band_edges,
+        )
+        + ")"
+        for key, detector, suffix in band_parameter_keys(
+            "log_psd_scale",
+            band_count,
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
+        )
     )
 
 
@@ -965,6 +1110,7 @@ def render_prior(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
         )
     elif hypothesis == "hyperbolic":
         noise_prior_block = build_hyperbolic_priors(
@@ -978,6 +1124,7 @@ def render_prior(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
         )
     elif hypothesis == "gaussian":
         noise_prior_block = ""
@@ -1251,6 +1398,7 @@ def render_noise_only_prior(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
         )
     elif hypothesis == "hyperbolic":
         noise_prior_block = build_hyperbolic_priors(
@@ -1264,6 +1412,7 @@ def render_noise_only_prior(
             band_count,
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
+            frequency_band_edges=frequency_band_edges,
         )
     elif hypothesis == "gaussian":
         noise_prior_block = ""
@@ -1400,7 +1549,8 @@ def render_ini(
             (
                 "{'nu': 8.0, 'infer_nu': True, "
                 f"'num_frequency_bands': {band_count}, "
-                f"'detector_dependent_noise': {detector_dependent_noise}, "
+                + band_edges_kwarg(frequency_band_edges)
+                + f"'detector_dependent_noise': {detector_dependent_noise}, "
                 f"'joint': {joint}"
                 "}"
             ),
@@ -1419,11 +1569,7 @@ def render_ini(
                 f"{DEFAULT_HYPERBOLIC_ALPHA}, 'delta': {DEFAULT_HYPERBOLIC_DELTA}, "
                 "'infer_alpha': True, 'infer_delta': True, "
                 f"'num_frequency_bands': {band_count}, "
-                + (
-                    f"'frequency_band_edges': {frequency_band_edges!r}, "
-                    if frequency_band_edges is not None
-                    else ""
-                )
+                + band_edges_kwarg(frequency_band_edges)
                 + f"'detector_dependent_noise': {detector_dependent_noise}, "
                 f"'joint': {joint}"
                 "}"
@@ -1445,7 +1591,8 @@ def render_ini(
             (
                 "{'log_psd_scale': 0.0, 'infer_log_psd_scale': True, "
                 f"'num_psd_frequency_bands': {band_count}, "
-                f"'detector_dependent_noise': {detector_dependent_noise}"
+                + band_edges_kwarg(frequency_band_edges)
+                + f"'detector_dependent_noise': {detector_dependent_noise}"
                 "}"
             ),
         )
@@ -1663,7 +1810,9 @@ def prepare_run(
             sine_gaussian_config=sine_gaussian_config,
             noise_only_inference=noise_only_inference,
             frequency_band_edges=(
-                frequency_band_edges if hypothesis == "hyperbolic" else None
+                frequency_band_edges
+                if hypothesis in PARAMETRIC_NOISE_LIKELIHOODS
+                else None
             ),
         ),
         encoding="utf-8",
@@ -1689,7 +1838,9 @@ def prepare_run(
             disable_calibration=disable_calibration,
             joint=joint,
             frequency_band_edges=(
-                frequency_band_edges if hypothesis == "hyperbolic" else None
+                frequency_band_edges
+                if hypothesis in PARAMETRIC_NOISE_LIKELIHOODS
+                else None
             ),
         ),
         encoding="utf-8",
@@ -1815,15 +1966,11 @@ def main() -> int:
         detectors=detectors,
         detector_dependent_noise=args.detector_dependent_noise,
     )
-    if frequency_band_edges is not None:
-        if args.likelihood != "hyperbolic":
-            raise ValueError(
-                "--frequency-band-edges is only implemented for "
-                "--likelihood hyperbolic"
-            )
-        if args.range_mode:
-            raise ValueError("--frequency-band-edges cannot be combined with --range")
-        args.num_frequency_bands = frequency_band_count(frequency_band_edges)
+    if frequency_band_edges is not None and args.noise_bands_from_calibration:
+        raise ValueError(
+            "--noise-bands-from-calibration cannot be combined with "
+            "--frequency-band-edges"
+        )
     working_directory = resolve_path(
         args.working_directory,
         script_dir / defaults.working_directory,
@@ -1841,6 +1988,31 @@ def main() -> int:
                 args.minimum_frequency,
             ),
         )
+    # The calibration nodes span the analysis band, so resolve them only after
+    # any --minimum-frequency override has been applied to the template.
+    if args.noise_bands_from_calibration:
+        if args.disable_calibration:
+            raise ValueError(
+                "--noise-bands-from-calibration cannot be combined with "
+                "--disable-calibration: the generated run would have no "
+                "calibration nodes for the bands to match"
+            )
+        frequency_band_edges = band_edges_from_calibration(
+            template_settings,
+            detectors,
+            detector_dependent_noise=args.detector_dependent_noise,
+        )
+    if frequency_band_edges is not None:
+        if args.likelihood not in PARAMETRIC_NOISE_LIKELIHOODS:
+            raise ValueError(
+                "explicit frequency band edges require a parametric-noise "
+                f"likelihood: {', '.join(PARAMETRIC_NOISE_LIKELIHOODS)}"
+            )
+        if args.range_mode:
+            raise ValueError(
+                "explicit frequency band edges cannot be combined with --range"
+            )
+        args.num_frequency_bands = frequency_band_count(frequency_band_edges)
     if not args.dry_run:
         preflight_local_data(
             template_settings,

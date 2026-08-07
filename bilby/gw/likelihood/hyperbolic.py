@@ -8,7 +8,9 @@ from scipy.integrate import quad
 from ...core.likelihood import Likelihood, _fallback_to_parameters
 from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
+from .. import utils as gwutils
 from .base import GravitationalWaveTransient
+from .frequency_bands import ParametricNoiseFrequencyBands
 
 
 class _HyperbolicNoiseOnlyLikelihood(Likelihood):
@@ -29,7 +31,9 @@ class _HyperbolicNoiseOnlyLikelihood(Likelihood):
         return 0.0
 
 
-class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
+class HyperbolicGravitationalWaveTransient(
+    ParametricNoiseFrequencyBands, GravitationalWaveTransient
+):
     r"""
     A heavy-tailed likelihood based on the hyperbolic distribution in Eq. 8-9 of
     arXiv:2602.22074.
@@ -174,20 +178,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             )
         self._detector_names = [ifo.name for ifo in self.interferometers]
         self.num_frequency_bands = self._validate_num_frequency_bands(num_frequency_bands)
-        self._detector_frequency_band_edges = self._resolve_frequency_band_edges(
-            frequency_band_edges
-        )
-        self._band_suffix_cache = (
-            None
-            if frequency_band_edges is None
-            else {
-                name: [
-                    self._band_frequency_suffix(lower, upper)
-                    for lower, upper in zip(edges[:-1], edges[1:])
-                ]
-                for name, edges in self._detector_frequency_band_edges.items()
-            }
-        )
+        self._setup_frequency_bands(frequency_band_edges)
         self._fixed_alpha = self._coerce_parameter_array(alpha, "alpha")
         self._fixed_delta = self._coerce_parameter_array(delta, "delta")
         self.infer_alpha = bool(infer_alpha)
@@ -469,10 +460,7 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             detector_dependent_noise=self.detector_dependent_noise,
             joint=self.joint,
             num_frequency_bands=self.num_frequency_bands,
-            frequency_band_edges={
-                name: edges.tolist()
-                for name, edges in self._detector_frequency_band_edges.items()
-            },
+            frequency_band_edges=self._frequency_band_edges_meta_data(),
             noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
@@ -598,112 +586,11 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         frequencies = np.unique(np.concatenate(active_frequencies))
         return np.linspace(frequencies[0], frequencies[-1], self.num_frequency_bands + 1)
 
-    @staticmethod
-    def _validate_frequency_band_edges(edges, name):
-        edges = np.asarray(edges, dtype=float).ravel()
-        if edges.ndim != 1 or len(edges) < 2:
-            raise ValueError(f"{name} must contain at least two frequency edges")
-        if not np.all(np.isfinite(edges)):
-            raise ValueError(f"{name} must contain only finite frequencies")
-        if np.any(np.diff(edges) <= 0):
-            raise ValueError(f"{name} must be strictly increasing")
-        if np.any(edges < 0):
-            raise ValueError(f"{name} must contain only non-negative frequencies")
-        return edges
-
-    def _resolve_frequency_band_edges(self, frequency_band_edges):
-        """Return band edges per detector and set ``num_frequency_bands``.
-
-        ``None`` keeps the equal-width behaviour built from
-        ``num_frequency_bands``. A sequence gives every detector the same explicit
-        edges. A dict gives each detector its own edges, which requires
-        detector-dependent noise parameters and the same band count everywhere.
-        """
-        if frequency_band_edges is None:
-            edges = self._create_frequency_band_edges()
-            return {name: edges for name in self._detector_names}
-
-        if isinstance(frequency_band_edges, dict):
-            if not self.detector_dependent_noise:
-                raise ValueError(
-                    "per-detector frequency_band_edges requires "
-                    "detector_dependent_noise=True"
-                )
-            missing = set(self._detector_names) - set(frequency_band_edges)
-            if missing:
-                raise ValueError(
-                    "frequency_band_edges must contain an entry for every detector; "
-                    f"missing {sorted(missing)}"
-                )
-            unknown = set(frequency_band_edges) - set(self._detector_names)
-            if unknown:
-                raise ValueError(
-                    f"frequency_band_edges contains unknown detectors {sorted(unknown)}"
-                )
-            edges_by_detector = {
-                name: self._validate_frequency_band_edges(
-                    frequency_band_edges[name], f"frequency_band_edges['{name}']"
-                )
-                for name in self._detector_names
-            }
-            band_counts = {
-                name: len(edges) - 1 for name, edges in edges_by_detector.items()
-            }
-            if len(set(band_counts.values())) > 1:
-                raise ValueError(
-                    "every detector must define the same number of frequency bands; "
-                    f"got {band_counts}"
-                )
-            self.num_frequency_bands = next(iter(band_counts.values()))
-            return edges_by_detector
-
-        edges = self._validate_frequency_band_edges(
-            frequency_band_edges, "frequency_band_edges"
-        )
-        self.num_frequency_bands = len(edges) - 1
-        return {name: edges for name in self._detector_names}
-
-    def _band_edges(self, detector_name=None):
-        """Band edges for one detector, or the common edges when detector-independent.
-
-        Callers that combine detectors, that is the shared-parameter and joint
-        paths, must not pass a detector name; those paths reject per-detector
-        edges at construction time because they require detector-dependent noise.
-        """
-        if detector_name is not None:
-            return self._detector_frequency_band_edges[detector_name]
-        return self._frequency_band_edges
-
-    @property
-    def _frequency_band_edges(self):
-        """The common band edges, which every detector shares unless a dict was given."""
-        return self._detector_frequency_band_edges[self._detector_names[0]]
-
     def _detector_parameter_key(self, parameter_name, detector_name, band_index):
         if self.num_frequency_bands == 1:
             return f"{parameter_name}_{detector_name}"
         suffix = self._band_suffixes(detector_name)[band_index]
         return f"{parameter_name}_{detector_name}_{suffix}"
-
-    def _band_suffixes(self, detector_name=None):
-        """Per-band name suffixes: the band edges in Hz, or 1..N for equal-width bands.
-
-        Explicit edges are named after the frequencies they cover, because a bare
-        index says nothing once the widths are arbitrary and, with per-detector
-        edges, band `i` covers a different range in each interferometer. Equal-width
-        bands keep the index, so that names stay stable for existing runs and are
-        never derived from a frequency grid the caller writing the priors would
-        have to reconstruct.
-        """
-        if self._band_suffix_cache is None:
-            return [str(index) for index in range(1, self.num_frequency_bands + 1)]
-        return self._band_suffix_cache[
-            detector_name if detector_name is not None else self._detector_names[0]
-        ]
-
-    @staticmethod
-    def _band_frequency_suffix(lower, upper):
-        return f"{lower:g}_{upper:g}".replace(".", "p")
 
     def _get_alpha_values(self, parameters):
         if not self.infer_alpha:
@@ -803,18 +690,6 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
         if not self.detector_dependent_noise:
             return parameter_values
         return parameter_values[self._detector_names.index(interferometer.name)]
-
-    def _get_frequency_band_masks(self, frequencies, detector_name=None):
-        frequencies = np.asarray(frequencies, dtype=float)
-        edges = self._band_edges(detector_name)
-        band_masks = []
-        for index, (lower, upper) in enumerate(zip(edges[:-1], edges[1:])):
-            if index == self.num_frequency_bands - 1:
-                band_mask = (frequencies >= lower) & (frequencies <= upper)
-            else:
-                band_mask = (frequencies >= lower) & (frequencies < upper)
-            band_masks.append(band_mask)
-        return band_masks
 
     @staticmethod
     def _map_frequencies_to_network_grid(network_frequencies, frequencies):
@@ -1091,6 +966,85 @@ class HyperbolicGravitationalWaveTransient(GravitationalWaveTransient):
             parameters=parameters,
             waveform_polarizations=waveform_polarizations,
             include_log_scale2=include_log_scale2,
+        )
+
+    def _corrected_power_spectral_density_array(
+        self, interferometer, alpha_values, delta_values
+    ):
+        """The interferometer's input PSD, masked to the active frequencies and
+        scaled per band by the hyperbolic scale ratio ``delta / alpha``."""
+        mask = interferometer.frequency_mask
+        frequencies = interferometer.frequency_array[mask]
+        psd = interferometer.power_spectral_density_array[mask].copy()
+        for alpha, delta, band_mask in zip(
+            alpha_values, delta_values, self._get_frequency_band_masks(frequencies)
+        ):
+            psd[band_mask] *= delta / alpha
+        return psd
+
+    def calculate_snrs(
+        self, waveform_polarizations, interferometer, *, return_array=True, parameters
+    ):
+        """
+        Compute the SNRs against the PSD scaled by ``delta / alpha``, so reported
+        SNRs track the noise level implied by the (inferred or fixed) hyperbolic
+        shape parameters, rather than the unscaled input PSD used by
+        :meth:`Interferometer.optimal_snr_squared`.
+
+        ``delta / alpha`` is the scale degree of freedom of the hyperbolic family:
+        the effective noise variance is ``(delta / alpha) * [1 + O(1 / alpha delta)]``
+        in units of the input PSD, for any residual dimension. This correction is
+        therefore exact only in the near-Gaussian regime ``alpha * delta >> 1``, and
+        neglects the shape-dependent factor derived in
+        ``notes/nongaussian_snr_definitions.tex``. Time and calibration
+        marginalization are not supported and are rejected rather than silently
+        reporting SNRs built from the uncorrected PSD.
+        """
+        if self.time_marginalization or self.calibration_marginalization:
+            raise NotImplementedError(
+                "HyperbolicGravitationalWaveTransient does not support corrected "
+                "SNRs with time or calibration marginalization"
+            )
+
+        alpha_values, delta_values = self._get_active_shape_parameters(
+            parameters, update_state=False,
+        )
+        if alpha_values is None or delta_values is None:
+            raise ValueError(
+                "Invalid alpha or delta values encountered while computing SNRs"
+            )
+        corrected_psd = self._corrected_power_spectral_density_array(
+            interferometer,
+            self._get_interferometer_parameter_values(interferometer, alpha_values),
+            self._get_interferometer_parameter_values(interferometer, delta_values),
+        )
+
+        signal = self._compute_full_waveform(
+            signal_polarizations=waveform_polarizations,
+            interferometer=interferometer,
+            parameters=parameters,
+        )
+        mask = interferometer.frequency_mask
+
+        d_inner_h = gwutils.noise_weighted_inner_product(
+            aa=signal[mask],
+            bb=interferometer.frequency_domain_strain[mask],
+            power_spectral_density=corrected_psd,
+            duration=interferometer.strain_data.duration,
+        )
+        optimal_snr_squared = gwutils.optimal_snr_squared(
+            signal=signal[mask],
+            power_spectral_density=corrected_psd,
+            duration=interferometer.strain_data.duration,
+        )
+        complex_matched_filter_snr = d_inner_h / (optimal_snr_squared ** 0.5)
+
+        return self._CalculatedSNRs(
+            d_inner_h=d_inner_h,
+            optimal_snr_squared=optimal_snr_squared.real,
+            complex_matched_filter_snr=complex_matched_filter_snr,
+            d_inner_h_array=None,
+            optimal_snr_squared_array=None,
         )
 
     def _noise_log_likelihood_from_parameters(self, parameters):

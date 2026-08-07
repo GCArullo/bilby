@@ -345,6 +345,8 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
         sampler_kwargs=sampler_kwargs,
         sampling_seed=parsed.get("sampling-seed"),
         data_dict=data_dict,
+        calibration_model=parsed.get("calibration-model"),
+        spline_calibration_nodes=parsed.get("spline-calibration-nodes"),
         spline_calibration_envelope_dict=calibration_envelopes,
         psd_dict=psd_dict,
         frequency_domain_source_model=str(parsed["frequency-domain-source-model"]),

@@ -9,6 +9,7 @@ from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .. import utils as gwutils
 from .base import GravitationalWaveTransient
+from .frequency_bands import ParametricNoiseFrequencyBands
 
 
 class _GaussianParametricNoiseOnlyLikelihood(Likelihood):
@@ -33,7 +34,9 @@ class _GaussianParametricNoiseOnlyLikelihood(Likelihood):
         return 0.0
 
 
-class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
+class GaussianParametricGravitationalWaveTransient(
+    ParametricNoiseFrequencyBands, GravitationalWaveTransient
+):
     """
     Gaussian frequency-domain likelihood with sampled PSD scale parameters.
 
@@ -47,6 +50,8 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
     _NOISE_EVIDENCE_QUADRATURE_EPSREL = 1e-8
     _NOISE_EVIDENCE_QUADRATURE_LIMIT = 200
 
+    _band_count_attribute = "num_psd_frequency_bands"
+
     def __init__(
         self,
         interferometers,
@@ -54,6 +59,7 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
         log_psd_scale=0.0,
         infer_log_psd_scale=False,
         num_psd_frequency_bands=1,
+        frequency_band_edges=None,
         detector_dependent_noise=False,
         time_marginalization=False,
         distance_marginalization=False,
@@ -81,13 +87,30 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
             band. A value of zero keeps the input PSD unchanged.
         infer_log_psd_scale : bool
             If True, treat the PSD scale as sampled. For a single band this uses
-            ``log_psd_scale``; for multiple bands this uses
-            ``log_psd_scale_1``, ..., ``log_psd_scale_N``. With
+            ``log_psd_scale``. Equal-width bands use ``log_psd_scale_1``, ...,
+            ``log_psd_scale_N``, while explicit ``frequency_band_edges`` name each
+            band after the frequencies it covers, ``log_psd_scale_20_25``, ...,
+            with '.' written as 'p'. You must add priors for each sampled
+            parameter, under exactly these names: any parameter not found by name
+            keeps its fixed value instead of being sampled. With
             ``detector_dependent_noise=True``, the names are detector-specific:
-            ``log_psd_scale_H1``, or ``log_psd_scale_H1_1``, ... .
+            ``log_psd_scale_H1``, or ``log_psd_scale_H1_1``, ..., or
+            ``log_psd_scale_H1_20_25``, ... .
         num_psd_frequency_bands : int
             Number of contiguous frequency bands spanning the active analysis
-            range. Each band has its own PSD scale.
+            range. Each band has its own PSD scale. Bands are of equal width; use
+            ``frequency_band_edges`` for unequal widths.
+        frequency_band_edges : array-like, dict, optional
+            Explicit band edges in Hz, as an increasing sequence of length
+            ``num_bands + 1``. This overrides ``num_psd_frequency_bands``, which is
+            then set from the number of edges. A dict keyed by detector name gives
+            each interferometer its own edges, which requires
+            ``detector_dependent_noise=True`` and an entry for every detector;
+            every detector must define the same number of bands, so that band `i`
+            of one detector and band `i` of another remain distinct parameters
+            covering different frequencies. Edges outside the active analysis range
+            are kept, and bands containing no active frequency simply do not
+            contribute.
         detector_dependent_noise : bool
             If True, use a distinct PSD scale for each detector and frequency
             band. If False, share each band's scale across all detectors.
@@ -138,9 +161,11 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
         )
         self.detector_dependent_noise = bool(detector_dependent_noise)
         self._detector_names = [ifo.name for ifo in self.interferometers]
+        # Explicit edges can override the band count, so resolve the bands before
+        # anything that is shaped by it, such as the fixed scale array below.
+        self._setup_frequency_bands(frequency_band_edges)
         self._fixed_log_psd_scale = self._coerce_log_psd_scale_array(log_psd_scale)
         self.infer_log_psd_scale = bool(infer_log_psd_scale)
-        self._frequency_band_edges = self._create_frequency_band_edges()
         self.noise_evidence_nlive = self._validate_noise_evidence_nlive(
             noise_evidence_nlive
         )
@@ -182,16 +207,13 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
                     for detector_name in self._detector_names
                 ]
             return [
-                f"log_psd_scale_{detector_name}_{index}"
+                f"log_psd_scale_{detector_name}_{suffix}"
                 for detector_name in self._detector_names
-                for index in range(1, self.num_psd_frequency_bands + 1)
+                for suffix in self._band_suffixes(detector_name)
             ]
         if self.num_psd_frequency_bands == 1:
             return ["log_psd_scale"]
-        return [
-            f"log_psd_scale_{index}"
-            for index in range(1, self.num_psd_frequency_bands + 1)
-        ]
+        return [f"log_psd_scale_{suffix}" for suffix in self._band_suffixes()]
 
     @property
     def noise_parameter_keys(self):
@@ -207,6 +229,7 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
             log_psd_scale=self._fixed_log_psd_scale.tolist(),
             infer_log_psd_scale=self.infer_log_psd_scale,
             num_psd_frequency_bands=self.num_psd_frequency_bands,
+            frequency_band_edges=self._frequency_band_edges_meta_data(),
             detector_dependent_noise=self.detector_dependent_noise,
             noise_evidence_method=self.noise_evidence_method,
         )
@@ -346,19 +369,6 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
             self.num_psd_frequency_bands + 1,
         )
 
-    def _get_frequency_band_masks(self, frequencies):
-        frequencies = np.asarray(frequencies, dtype=float)
-        band_masks = []
-        for index, (lower, upper) in enumerate(
-            zip(self._frequency_band_edges[:-1], self._frequency_band_edges[1:])
-        ):
-            if index == self.num_psd_frequency_bands - 1:
-                band_mask = (frequencies >= lower) & (frequencies <= upper)
-            else:
-                band_mask = (frequencies >= lower) & (frequencies < upper)
-            band_masks.append(band_mask)
-        return band_masks
-
     def _get_log_psd_scale_values(self, parameters):
         if not self.infer_log_psd_scale:
             return self._fixed_log_psd_scale
@@ -415,7 +425,8 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
     def _detector_log_psd_scale_parameter_key(self, detector_name, band_index):
         if self.num_psd_frequency_bands == 1:
             return f"log_psd_scale_{detector_name}"
-        return f"log_psd_scale_{detector_name}_{band_index + 1}"
+        suffix = self._band_suffixes(detector_name)[band_index]
+        return f"log_psd_scale_{detector_name}_{suffix}"
 
     def _get_detector_log_psd_scale_values(
         self, log_psd_scale_values, detector_name
@@ -469,7 +480,7 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
             residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
 
         abs2 = residual.real ** 2 + residual.imag ** 2
-        band_masks = self._get_frequency_band_masks(frequencies)
+        band_masks = self._get_frequency_band_masks(frequencies, interferometer.name)
 
         logl = 0.0
         for log_psd_scale, band_mask in zip(log_psd_scale_values, band_masks):
@@ -498,7 +509,8 @@ class GaussianParametricGravitationalWaveTransient(GravitationalWaveTransient):
         frequencies = interferometer.frequency_array[mask]
         psd = interferometer.power_spectral_density_array[mask].copy()
         for log_psd_scale, band_mask in zip(
-            log_psd_scale_values, self._get_frequency_band_masks(frequencies)
+            log_psd_scale_values,
+            self._get_frequency_band_masks(frequencies, interferometer.name),
         ):
             psd[band_mask] *= 10.0 ** log_psd_scale
         return psd

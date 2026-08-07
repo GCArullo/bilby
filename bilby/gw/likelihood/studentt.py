@@ -9,6 +9,7 @@ from ...core.likelihood import Likelihood, _fallback_to_parameters
 from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .base import GravitationalWaveTransient
+from .frequency_bands import ParametricNoiseFrequencyBands
 
 
 class _StudentTNoiseOnlyLikelihood(Likelihood):
@@ -26,7 +27,9 @@ class _StudentTNoiseOnlyLikelihood(Likelihood):
         return 0.0
 
 
-class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
+class StudentTGravitationalWaveTransient(
+    ParametricNoiseFrequencyBands, GravitationalWaveTransient
+):
     """
     A simple heavy-tailed replacement for the standard Gaussian (Whittle) likelihood.
 
@@ -47,6 +50,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         nu=8.0,
         infer_nu=False,
         num_frequency_bands=1,
+        frequency_band_edges=None,
         detector_dependent_nu=False,
         detector_dependent_noise=None,
         joint=False,
@@ -77,13 +81,28 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             bands, or an array with one value per band.
         infer_nu : bool
             If True, treat the Student-t degrees of freedom as sampled parameters. For a single
-            frequency band this uses the parameter name 'nu'. For multiple bands this uses
-            'nu_1', ..., 'nu_N'; you must add priors for each sampled parameter. If
-            `detector_dependent_noise=True`, sampled parameters become detector-specific:
-            'nu_H1', ..., or 'nu_H1_1', ..., 'nu_L1_1', ... .
+            frequency band this uses the parameter name 'nu'. Equal-width bands use
+            'nu_1', ..., 'nu_N', while explicit `frequency_band_edges` name each band
+            after the frequencies it covers, 'nu_20_25', ..., with '.' written as 'p'.
+            You must add priors for each sampled parameter, under exactly these names:
+            any parameter not found by name keeps its fixed value instead of being
+            sampled. If `detector_dependent_noise=True`, sampled parameters become
+            detector-specific: 'nu_H1', ..., or 'nu_H1_1', ..., 'nu_L1_1', ..., or
+            'nu_H1_20_25', 'nu_L1_20_30', ... .
         num_frequency_bands : int
             Number of equispaced contiguous frequency bands spanning the total likelihood frequency range. Each band has
-            its own Student-t degrees of freedom parameter.
+            its own Student-t degrees of freedom parameter. Bands are of equal width;
+            use `frequency_band_edges` for unequal widths.
+        frequency_band_edges : array-like, dict, optional
+            Explicit band edges in Hz, as an increasing sequence of length
+            `num_bands + 1`. This overrides `num_frequency_bands`, which is then set
+            from the number of edges. A dict keyed by detector name gives each
+            interferometer its own edges, which requires
+            `detector_dependent_noise=True` and an entry for every detector; every
+            detector must define the same number of bands, so that band `i` of one
+            detector and band `i` of another remain distinct parameters covering
+            different frequencies. Edges outside the active analysis range are kept,
+            and bands containing no active frequency simply do not contribute.
         detector_dependent_nu : bool
             Deprecated alias for `detector_dependent_noise`.
         detector_dependent_noise : bool, optional
@@ -151,9 +170,11 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 "joint=True requires detector_dependent_noise=False"
             )
         self._detector_names       = [ifo.name for ifo in self.interferometers]
+        # Explicit edges can override the band count, so resolve the bands before
+        # anything that is shaped by it, such as the fixed nu array below.
+        self._setup_frequency_bands(frequency_band_edges)
         self._fixed_nu             = self._coerce_nu_array(nu)
         self.infer_nu              = bool(infer_nu)
-        self._frequency_band_edges = self._create_frequency_band_edges()
         self.noise_evidence_nlive  = self._validate_noise_evidence_nlive(
             noise_evidence_nlive
         )
@@ -208,15 +229,15 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
                 return ["nu"]
-            return [f"nu_{index}" for index in range(1, self.num_frequency_bands + 1)]
+            return [f"nu_{suffix}" for suffix in self._band_suffixes()]
 
         if self.num_frequency_bands == 1:
             return [f"nu_{detector_name}" for detector_name in self._detector_names]
 
         return [
-            f"nu_{detector_name}_{index}"
+            f"nu_{detector_name}_{suffix}"
             for detector_name in self._detector_names
-            for index in range(1, self.num_frequency_bands + 1)
+            for suffix in self._band_suffixes(detector_name)
         ]
 
     @property
@@ -265,9 +286,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             )
             dimensions_by_band = [
                 np.unique(2 * active_counts[band_mask])
-                for band_mask in self._get_frequency_band_masks_from_frequencies(
-                    network_frequencies
-                )
+                for band_mask in self._get_frequency_band_masks(network_frequencies)
             ]
 
         for parameter_index, key in enumerate(self.nu_parameter_keys):
@@ -282,12 +301,18 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             if self.detector_dependent_noise:
                 detector_index = parameter_index // self.num_frequency_bands
                 band_index = parameter_index % self.num_frequency_bands
-                coordinate = self._detector_names[detector_index]
+                detector_name = self._detector_names[detector_index]
+                coordinate = detector_name
             else:
                 band_index = parameter_index
+                detector_name = None
                 coordinate = "shared"
             if self.num_frequency_bands > 1:
-                coordinate = f"{coordinate} band {band_index + 1}"
+                edges = self._band_edges(detector_name)
+                coordinate = (
+                    f"{coordinate} band {band_index + 1} "
+                    f"({edges[band_index]:g}-{edges[band_index + 1]:g} Hz)"
+                )
 
             for dimension in dimensions_by_band[band_index]:
                 rows.append(
@@ -339,6 +364,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             detector_dependent_nu=self.detector_dependent_nu,
             joint=self.joint,
             num_frequency_bands=self.num_frequency_bands,
+            frequency_band_edges=self._frequency_band_edges_meta_data(),
             noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
@@ -534,25 +560,13 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         if self.num_frequency_bands == 1:
             return f"nu_{detector_name}"
-        return f"nu_{detector_name}_{band_index + 1}"
+        suffix = self._band_suffixes(detector_name)[band_index]
+        return f"nu_{detector_name}_{suffix}"
 
-    def _get_frequency_band_masks(self, interferometer):
+    def _get_interferometer_frequency_band_masks(self, interferometer):
 
         frequencies = interferometer.frequency_array[interferometer.frequency_mask]
-        return self._get_frequency_band_masks_from_frequencies(frequencies)
-
-    def _get_frequency_band_masks_from_frequencies(self, frequencies):
-
-        frequencies = np.asarray(frequencies, dtype=float)
-        band_masks = []
-        for index, (lower, upper) in enumerate(
-            zip(self._frequency_band_edges[:-1], self._frequency_band_edges[1:])
-        ):
-            if index == self.num_frequency_bands - 1: band_mask = (frequencies >= lower) & (frequencies <= upper)
-            else                                    : band_mask = (frequencies >= lower) & (frequencies <  upper)
-            band_masks.append(band_mask)
-
-        return band_masks
+        return self._get_frequency_band_masks(frequencies, interferometer.name)
 
     @staticmethod
     def _map_frequencies_to_network_grid(network_frequencies, frequencies):
@@ -632,7 +646,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             residual = interferometer.frequency_domain_strain[mask] - h_f[mask]
 
         abs2 = residual.real ** 2 + residual.imag ** 2
-        band_masks = self._get_frequency_band_masks(interferometer)
+        band_masks = self._get_interferometer_frequency_band_masks(interferometer)
 
         logl = 0.0
         for nu, band_mask in zip(nu_values, band_masks):
@@ -788,7 +802,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if len(frequencies) == 0:
             return 0.0
 
-        band_masks = self._get_frequency_band_masks_from_frequencies(frequencies)
+        band_masks = self._get_frequency_band_masks(frequencies)
         logl = 0.0
         for nu, band_mask in zip(nu_values, band_masks):
             if not np.any(band_mask):

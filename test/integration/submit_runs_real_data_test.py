@@ -381,6 +381,12 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
     )
     summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
     assert "create-summary=True\n" in ini_text
+    # Naming the page after the run directory keeps pesummary's
+    # '<label>_<label>_<parameter>.html' names inside the 255 byte limit.
+    outdir_line = next(
+        line for line in ini_text.splitlines() if line.startswith("outdir=")
+    )
+    assert summary_arguments["labels"] == [Path(outdir_line.split("=", 1)[1]).name]
     assert summary_arguments["ignore_parameters"] == ["recalib*"]
     assert summary_arguments["disable_expert"] is True
     assert summary_arguments["f_ref"] == 10.0

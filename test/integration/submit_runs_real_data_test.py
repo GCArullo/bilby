@@ -990,6 +990,89 @@ def test_render_ini_writes_maxmcmc_override():
     assert sampler_kwargs["maxmcmc"] == 10000
 
 
+def test_render_ini_writes_per_run_submission_controls():
+    module = load_submit_runs_real_data_module()
+    ini_template = "\n".join(
+        [
+            "accounting-user=old",
+            "container=None",
+            "queue=None",
+            "detectors=['H1', 'L1']",
+            "reference-frame=H1L1",
+            "time-reference=H1L1",
+            "create-summary=False",
+            "environment-variables={}",
+            "summarypages-arguments=None",
+            "sampler-kwargs={'nlive': 2000}",
+            "likelihood-type=old",
+            "extra-likelihood-kwargs=old",
+            "distance-marginalization=True",
+            "waveform-approximant=old",
+            "waveform-arguments-dict=None",
+            "minimum-frequency=20",
+            "",
+        ]
+    )
+    template_settings = dict(
+        minimum_frequency={"H1": 20.0, "waveform": 10.0},
+        maximum_frequency=448.0,
+        reference_frequency=10.0,
+        waveform_approximant="IMRPhenomXPHM",
+        frequency_domain_source_model="bilby.gw.source.lal_binary_black_hole",
+        spline_calibration_envelope_dict=None,
+        psd_dict={"L1": "__WORKING_DIRECTORY__/psds/L1.dat"},
+        sampler_kwargs={"nlive": 2000},
+    )
+
+    rendered = module.render_ini(
+        ini_template,
+        hypothesis="gaussian",
+        label="label",
+        outdir="out",
+        webdir="web",
+        prior_file=Path("prior.prior"),
+        band_count=1,
+        detector_dependent_noise=False,
+        detectors=["L1"],
+        working_directory=Path("/base/dir"),
+        accounting_user="acct",
+        container_image=None,
+        require_epnfs=False,
+        condor_job_priority=10,
+        maxmcmc=None,
+        waveform_arguments={"PhenomXPrecVersion": 320},
+        template_settings=template_settings,
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+
+    lines = rendered.splitlines()
+    # The template omits condor-job-priority, so it must be appended.
+    assert "condor-job-priority=10" in lines
+    assert "detectors=['L1']" in lines
+    # One detector cannot triangulate, so the zenith/azimuth frame is dropped.
+    assert "reference-frame=sky" in lines
+    assert "time-reference=L1" in lines
+    assert "waveform-arguments-dict={'PhenomXPrecVersion': 320}" in lines
+    assert "__WORKING_DIRECTORY__" not in rendered
+
+
+def test_resolve_spin_taylor_approximant_maps_to_prec_version():
+    module = load_submit_runs_real_data_module()
+
+    assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM") == (
+        "IMRPhenomXPHM",
+        None,
+    )
+    assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM_SpinTaylor") == (
+        "IMRPhenomXPHM",
+        {"PhenomXPrecVersion": 320},
+    )
+
+
 @pytest.mark.parametrize(
     "likelihood",
     ["gaussian", "student", "hyperbolic", "gaussian-parametric"],

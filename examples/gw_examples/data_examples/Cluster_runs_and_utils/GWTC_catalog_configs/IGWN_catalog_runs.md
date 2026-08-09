@@ -146,3 +146,89 @@ summarypages \
 
 Keep the wildcard quoted so that the shell does not expand it. This rule also
 applies when every result file contains calibration samples.
+
+### Keep the page label short
+
+PESummary writes the label into its own output names twice: `html/` holds
+`<label>_<label>_<parameter>.html` and `samples/` holds
+`<label>_<result file name>`. Left to itself bilby_pipe labels the results-page
+job with the full merge-result basename, which is 113 to 125 characters for
+these runs, so both names run past the 255 byte limit and the job dies with
+
+```
+OSError: [Errno 36] File name too long
+```
+
+`submit_runs_real_data.py` therefore passes `labels` in
+`summarypages-arguments`, naming each per-run page after its run directory.
+Hand-written labels need the same discipline: the budget is roughly 110
+characters, and comparison pages should use short names such as
+`Student_ind_N2` anyway.
+
+### Confirm the page was written
+
+This failure is quiet. The page aborts partway, leaving a populated `web/`
+directory that looks plausible, and the DAG records the failure only in
+`submit/*.dagman.out`. Check the metafile, which PESummary writes last:
+
+```
+<run>/web/samples/posterior_samples.h5
+```
+
+Its presence means `home.html`, the per-parameter pages, and the metafile were
+all produced. Across a run directory:
+
+```
+for d in */; do
+  [ -f "${d}web/samples/posterior_samples.h5" ] || echo "incomplete: ${d%/}"
+done
+```
+
+### Rebuilding a page
+
+Rerun the node from its own submit file rather than resubmitting the DAG. Take
+the argument string from the `VARS ..._pesummary_arg_0` line of
+`submit/dag_*.submit`, shorten `--labels`, and redirect `log`, `output`, and
+`error` to `*_pesummary_fixed.*` so the original logs survive. Move the partial
+`web/` aside first, otherwise stale files from the failed attempt are left
+alongside the new ones.
+
+### NRSur remnant fits off site
+
+`NRSur_fits` evaluates the remnant surrogate, which reads
+`NRSur7dq4Remnant_v1.0.h5` through `LAL_DATA_PATH=/scratch/lalsimulation`. That
+directory exists on CIT nodes only, so a results page that flocks to an OSG site
+fails with
+
+```
+XLAL Error - NRSurRemnant_LoadH5File (LALSimNRSurRemnantUtils.c:76): I/O error
+```
+
+The file is 124 MB and `additional-transfer-paths` is applied to every node of
+the DAG, including each parallel analysis job, so it is deliberately not
+transferred by default. When a page hits this, resubmit it with the file
+appended to `transfer_input_files` and `LAL_DATA_PATH=.:/scratch/lalsimulation`
+so the job scratch is searched first.
+
+### Comparison pages
+
+Comparison pages are built by hand from the `final_result` files, which is what
+makes a run eligible: `final_result/*_merge_result.hdf5` exists only once the
+merge node has completed. Write to a staging directory and move it into place
+afterwards, so a failed rebuild cannot destroy the live page, and set `baseurl`
+to the final location rather than the staging one:
+
+```
+summarypages \
+  --webdir  "$C/all_completed_new" \
+  --baseurl "https://ldas-jobs.ligo.caltech.edu/~$USER/.../all_completed" \
+  --labels  Student_ind_N1 Student_ind_N2 \
+  --samples "$R/student_..._N1/final_result/..._merge_result.hdf5" \
+            "$R/student_..._N2/final_result/..._merge_result.hdf5" \
+  --gw --no_conversion --disable_interactive \
+  --include_unshared_parameters --multi_process 4 --seed 123456789
+```
+
+`--no_conversion` is what keeps the comparison page off the conversion code
+path that the per-run pages exercise; do not drop it without checking that the
+page still builds.

@@ -1181,8 +1181,18 @@ def maximum_frequency_for_pesummary(maximum_frequency):
     return maximum_frequency
 
 
-def build_pesummary_arguments(template_settings: dict[str, object]) -> dict[str, object]:
+def build_pesummary_arguments(
+    template_settings: dict[str, object],
+    *,
+    page_label: str,
+) -> dict[str, object]:
     arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
+    # pesummary names its outputs '<label>_<label>_<parameter>.html' and
+    # '<label>_<result file name>'. Left to bilby_pipe the label is the full
+    # merge-result basename, so those names run past the 255 byte file name
+    # limit and the results page aborts with OSError errno 36. Name the page
+    # after the run directory instead.
+    arguments["labels"] = [page_label]
     f_low = minimum_frequency_for_pesummary(template_settings["minimum_frequency"])
     f_ref = template_settings["reference_frequency"]
     arguments.update(
@@ -1563,7 +1573,12 @@ def render_ini(
         rendered = replace_line(
             rendered,
             "summarypages-arguments",
-            repr(build_pesummary_arguments(summary_settings)),
+            repr(
+                build_pesummary_arguments(
+                    summary_settings,
+                    page_label=Path(outdir).name,
+                )
+            ),
         )
     if noise_only_inference:
         rendered = apply_noise_only_inference_settings(rendered)

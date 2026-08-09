@@ -24,6 +24,10 @@ The GW191109 no-glitch-subtraction profile reuses the PSDs, calibration
 envelopes, and prior of `../GWTC_catalog_configs/GWTC-3`, replacing only the
 de-glitched frames with the production C01 frames they were built from.
 
+Results and comparison pages follow the same rules for every event, catalog or
+special: see `## PESummary Pages` in
+`../GWTC_catalog_configs/IGWN_catalog_runs.md`.
+
 The event runbooks are:
 
 - `runbooks/gw150914_hyperbolic.md`

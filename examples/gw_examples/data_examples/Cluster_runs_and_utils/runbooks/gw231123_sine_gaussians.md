@@ -55,6 +55,11 @@ The generated recovery configs use `nlive=2000` for the baseline CBC run,
 SGs in total. This includes `coherent-independent` runs and incoherent
 `H1=1 L1=1`.
 
+Pass `--condor-job-priority N` to set `condor-job-priority` in the generated
+configs. Larger values are matched first among your own idle jobs; it has no
+effect relative to other users. The key is appended when the ini template does
+not define it.
+
 Monitor all active Bilby run roots discovered in your Condor queue:
 
 ```
@@ -140,6 +145,33 @@ GW231123 NRsur + 2 SG in L1 (incoherent):
 ```
 python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors L1 --maxmcmc "$MAXMCMC"
 ```
+
+## Single-detector Runs
+
+`--detectors` selects the detectors that are analysed, not just the ones used
+to build detector-dependent nu priors. A single detector cannot triangulate, so
+those runs are switched to `reference-frame=sky` and `time-reference=<detector>`
+and sample `ra`/`dec` directly. Labels, output directories, and ini/prior
+filenames gain a `_<DETECTOR>only` suffix.
+
+Prefer this over `coherence-test`, which does produce per-detector analyses but
+forces every sub-run to share the network run's prior file. Separate
+submissions are needed whenever a single-detector run wants its own bounds.
+
+GW231123 NRsur in L1 only:
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --detectors L1 --maxmcmc "$MAXMCMC"
+```
+
+GW231123 NRsur + 1 SG (coherent) in H1 only:
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --detectors H1 --num-sine-gaussians 1 --sine-gaussian-mode coherent --maxmcmc "$MAXMCMC"
+```
+
+To give a single-detector run different mass bounds, point `--prior-template` at
+a dedicated template, for example `Prior_templates/GW231123_L1_template.prior`.
 
 ## Injections
 

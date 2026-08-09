@@ -36,6 +36,8 @@ from submission_sine_gaussian_utils import (
 
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
+SPIN_TAYLOR_SUFFIX = "_SpinTaylor"
+SPIN_TAYLOR_PREC_VERSION = 320
 DEFAULT_CONTAINER_IMAGES_FILE = (
     Path(__file__).resolve().parent / "container_creation" / "container_images.json"
 )
@@ -200,6 +202,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help="Generate files but do not call bilby_pipe.",
     )
     parser.add_argument(
+        "--condor-job-priority",
+        type=int,
+        default=None,
+        help=(
+            "Value written into condor-job-priority. Larger values are matched "
+            "first among your own idle jobs. Defaults to the ini template value."
+        ),
+    )
+    parser.add_argument(
         "--require-epnfs",
         action="store_true",
         help=(
@@ -236,8 +247,9 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         nargs="+",
         default=None,
         help=(
-            "Detector names used when building detector-dependent nu priors. "
-            "Defaults to the selected event."
+            "Detectors to analyse, also used when building detector-dependent nu "
+            "priors. Defaults to the selected event. A single detector switches "
+            "the run to reference-frame=sky, since one detector cannot localise."
         ),
     )
     parser.add_argument(
@@ -533,6 +545,20 @@ def replace_or_append_line(
     return "\n".join(lines) + "\n"
 
 
+def resolve_spin_taylor_approximant(approximant: str) -> tuple[str, dict | None]:
+    """Split `<approximant>_SpinTaylor` into its LAL name and precession version.
+
+    LALSuite has no standalone SpinTaylor approximant: the SpinTaylor precession
+    prescription is selected on IMRPhenomXPHM through PhenomXPrecVersion.
+    """
+    if not approximant.endswith(SPIN_TAYLOR_SUFFIX):
+        return approximant, None
+    return (
+        approximant[: -len(SPIN_TAYLOR_SUFFIX)],
+        {"PhenomXPrecVersion": SPIN_TAYLOR_PREC_VERSION},
+    )
+
+
 def render_ini(
     ini_template: str,
     *,
@@ -550,6 +576,9 @@ def render_ini(
     maxmcmc: int | None,
     template_settings: dict[str, object],
     sine_gaussian_config,
+    detectors: list[str] | tuple[str, ...] | None = None,
+    condor_job_priority: int | None = None,
+    waveform_arguments: dict | None = None,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -561,8 +590,6 @@ def render_ini(
         "__WORKING_DIRECTORY__": str(working_directory),
     }
     rendered = ini_template
-    for placeholder, value in replacements.items():
-        rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
     rendered = replace_or_append_line(
         rendered,
@@ -574,6 +601,24 @@ def render_ini(
     rendered = replace_or_append_line(rendered, "desired-sites", "None")
     if require_epnfs:
         rendered = replace_line(rendered, "queue", "EPNFS")
+    if condor_job_priority is not None:
+        # Not every event template sets this key.
+        rendered = replace_or_append_line(
+            rendered,
+            "condor-job-priority",
+            str(condor_job_priority),
+        )
+    if detectors is not None:
+        rendered = replace_line(
+            rendered,
+            "detectors",
+            repr([str(name) for name in detectors]),
+        )
+        if len(detectors) == 1:
+            # A single detector cannot triangulate, so sample the sky directly
+            # instead of in the two-detector zenith/azimuth frame.
+            rendered = replace_line(rendered, "reference-frame", "sky")
+            rendered = replace_line(rendered, "time-reference", str(detectors[0]))
     rendered = replace_line(rendered, "create-summary", "True")
     rendered = replace_line(
         rendered,
@@ -615,6 +660,12 @@ def render_ini(
         "waveform-approximant",
         template_settings["waveform_approximant"],
     )
+    if waveform_arguments is not None:
+        rendered = replace_line(
+            rendered,
+            "waveform-arguments-dict",
+            repr(waveform_arguments),
+        )
     rendered = replace_line(
         rendered,
         "minimum-frequency",
@@ -641,6 +692,10 @@ def render_ini(
         sine_gaussian_config,
         replace_line=replace_line,
     )
+    # Substituted last: lines written above (summarypages-arguments in
+    # particular) carry template placeholders through from template_settings.
+    for placeholder, value in replacements.items():
+        rendered = rendered.replace(placeholder, value)
     return rendered
 
 
@@ -664,11 +719,16 @@ def prepare_run(
     accounting_user: str,
     container_image: str | None,
     require_epnfs: bool,
+    condor_job_priority: int | None,
     maxmcmc: int | None,
+    waveform_arguments: dict | None,
     sine_gaussian_config,
     approximant_suffix: str = "",
+    detector_suffix: str = "",
 ) -> Path:
-    waveform_suffix = sine_gaussian_config.label_suffix + approximant_suffix
+    waveform_suffix = (
+        sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
+    )
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -727,11 +787,14 @@ def prepare_run(
             prior_file=prior_path,
             band_count=run_band_count,
             detector_dependent_nu=run_detector_dependent_nu,
+            detectors=detectors,
             working_directory=working_directory,
             accounting_user=accounting_user,
             container_image=container_image,
             require_epnfs=require_epnfs,
+            condor_job_priority=condor_job_priority,
             maxmcmc=maxmcmc,
+            waveform_arguments=waveform_arguments,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
         ),
@@ -800,15 +863,19 @@ def main() -> int:
     prior_template = load_template(prior_template_path)
     template_settings = read_template_settings(ini_template)
 
+    waveform_arguments = None
     if args.waveform_approximant is not None:
         template_approximant = template_settings["waveform_approximant"]
+        lal_approximant, waveform_arguments = resolve_spin_taylor_approximant(
+            args.waveform_approximant,
+        )
         min_freq = template_settings["minimum_frequency"]
         if isinstance(min_freq, dict):
             detector_freqs = [v for k, v in min_freq.items() if k != "waveform"]
             min_freq = dict(min_freq, waveform=min(detector_freqs) if detector_freqs else 20.0)
         template_settings = dict(
             template_settings,
-            waveform_approximant=args.waveform_approximant,
+            waveform_approximant=lal_approximant,
             minimum_frequency=min_freq,
         )
         approximant_suffix = (
@@ -818,6 +885,12 @@ def main() -> int:
         )
     else:
         approximant_suffix = ""
+
+    detector_suffix = (
+        "_" + "".join(detectors) + "only"
+        if tuple(detectors) != defaults.detectors
+        else ""
+    )
 
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
@@ -865,9 +938,12 @@ def main() -> int:
                 accounting_user=args.accounting_user,
                 container_image=container_image,
                 require_epnfs=args.require_epnfs,
+                condor_job_priority=args.condor_job_priority,
                 maxmcmc=args.maxmcmc,
+                waveform_arguments=waveform_arguments,
                 sine_gaussian_config=sine_gaussian_config,
                 approximant_suffix=approximant_suffix,
+                detector_suffix=detector_suffix,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

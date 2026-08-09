@@ -271,6 +271,77 @@ def test_render_ini_writes_maxmcmc_override():
     assert sampler_kwargs["maxmcmc"] == 10000
 
 
+def test_render_ini_substitutes_placeholders_in_generated_lines():
+    """summarypages-arguments is written from the raw template settings, so it
+    still carries __WORKING_DIRECTORY__ when the substitution runs too early."""
+    module = load_submit_runs_real_data_module()
+    ini_template = "\n".join(
+        [
+            "accounting-user=old",
+            "queue=None",
+            "create-summary=False",
+            "environment-variables={}",
+            "summarypages-arguments=None",
+            "sampler-kwargs={'nlive': 2000}",
+            "likelihood-type=old",
+            "extra-likelihood-kwargs=old",
+            "waveform-approximant=old",
+            "minimum-frequency=20",
+            "",
+        ]
+    )
+    template_settings = dict(
+        minimum_frequency={"H1": 20.0, "waveform": 10.0},
+        maximum_frequency=448.0,
+        reference_frequency=10.0,
+        waveform_approximant="IMRPhenomXPHM",
+        spline_calibration_envelope_dict={"H1": "__WORKING_DIRECTORY__/calib/H1.txt"},
+        psd_dict={"H1": "__WORKING_DIRECTORY__/psds/H1.dat"},
+        sampler_kwargs={"nlive": 2000},
+    )
+
+    rendered = module.render_ini(
+        ini_template,
+        hypothesis="gaussian",
+        label="label",
+        outdir="out",
+        webdir="web",
+        prior_file=Path("prior.prior"),
+        band_count=1,
+        detector_dependent_nu=False,
+        working_directory=Path("/base/dir"),
+        accounting_user="acct",
+        container_image=None,
+        require_epnfs=False,
+        maxmcmc=None,
+        condor_job_priority=10,
+        template_settings=template_settings,
+        sine_gaussian_config=type(
+            "Config",
+            (),
+            dict(enabled=False, total_components=0),
+        )(),
+    )
+
+    assert "__WORKING_DIRECTORY__" not in rendered
+    assert "/base/dir/psds/H1.dat" in rendered
+    # The template omits condor-job-priority, so it must be appended.
+    assert "condor-job-priority=10" in rendered.splitlines()
+
+
+def test_resolve_spin_taylor_approximant_maps_to_prec_version():
+    module = load_submit_runs_real_data_module()
+
+    assert module.resolve_spin_taylor_approximant("IMRPhenomXPNR") == (
+        "IMRPhenomXPNR",
+        None,
+    )
+    assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM_SpinTaylor") == (
+        "IMRPhenomXPHM",
+        {"PhenomXPrecVersion": 320},
+    )
+
+
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
     monkeypatch, tmp_path
 ):

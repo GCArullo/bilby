@@ -167,7 +167,9 @@ def test_special_event_templates_and_priors_are_grouped_together():
     )
     assert {path.name for path in (special_dir / "templates").iterdir()} == {
         "GW150914_t_student_igwn_template.ini",
+        "GW150914_welch_template.ini",
         "GW190521_030229_LVK_NRSur7dq4.ini",
+        "GW191109_010717_no_glitch_subtraction_template.ini",
         "GW200129_065458_Hannam_NRSur7dq4.ini",
         "GW230814_t_student_pSEOB_template.ini",
         "GW231123_t_student_template.ini",

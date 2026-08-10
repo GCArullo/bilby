@@ -53,6 +53,7 @@ pesummary_commit.txt: temp_image.sif
 
 validate: temp_image.sif
 	apptainer exec temp_image.sif python -c 'from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator; gwsignal_get_waveform_generator("SEOBNRv5PHM")'
+	apptainer exec temp_image.sif python -c 'import os, sys; path = "/opt/lalsimulation-data/NRSur7dq4Remnant_v1.0.h5"; size = os.path.getsize(path); sys.exit(0 if size > 10**8 else "{} is {} bytes; the git-lfs pull left a pointer file".format(path, size))'
 
 image: validate bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt pesummary_version.txt pesummary_commit.txt
 	cp temp_image.sif $(IMAGE)

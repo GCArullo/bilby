@@ -102,7 +102,11 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    "LAL_DATA_PATH": "/scratch/lalsimulation",
+    # The cluster copy is searched first so that CIT nodes keep reading it, and
+    # the container copy is the fallback for jobs that land on OSG sites, where
+    # /scratch/lalsimulation does not exist. PESummary's NRSur_fits needs the
+    # remnant surrogate wherever the results page runs.
+    "LAL_DATA_PATH": "/scratch/lalsimulation:/opt/lalsimulation-data",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,

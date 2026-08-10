@@ -140,11 +140,9 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         if not self._valid_log_psd_scale_values(self._fixed_log_psd_scale):
             raise ValueError("All log_psd_scale values must give finite positive scales")
 
-    def log_psd_scale(self, parameters=None):
-        """PSD scale for the given parameters, or the fixed defaults."""
-        values = self._get_log_psd_scale_values(
-            parameters if parameters is not None else {}
-        )
+    def log_psd_scale(self, parameters):
+        """log10 PSD scale for this call, sampled or fixed at initialisation."""
+        values = self._get_log_psd_scale_values(parameters)
         if self.num_psd_frequency_bands == 1:
             return float(values[0])
         return values.copy()

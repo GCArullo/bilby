@@ -150,9 +150,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 "the Gaussian likelihood and may be inconsistent for Student-t noise."
             )
 
-    def nu(self, parameters=None):
-        """Degrees of freedom for the given parameters, or the fixed defaults."""
-        values = self._get_nu_values(parameters if parameters is not None else {})
+    def nu(self, parameters):
+        """Degrees of freedom for this call, sampled or fixed at initialisation."""
+        values = self._get_nu_values(parameters)
         if not self.detector_dependent_nu:
             if self.num_frequency_bands == 1:
                 return float(values[0])

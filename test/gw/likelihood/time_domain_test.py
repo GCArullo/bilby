@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+from scipy.integrate import quad
 from scipy.interpolate import interp1d
 from scipy.linalg import solve_toeplitz
 
@@ -28,6 +29,32 @@ def constant_time_domain_source(time_array, amplitude=0.0):
     plus = amplitude * np.ones_like(time_array, dtype=float)
     cross = np.zeros_like(time_array, dtype=float)
     return dict(plus=plus, cross=cross)
+
+
+def _direct_network_residual_statistics(likelihood, residuals_by_detector):
+    statistics = []
+    for band_index in range(likelihood._number_of_time_bands):
+        residuals_inner_product = 0.0
+        logdet = 0.0
+        dimension = 0
+        for interferometer in likelihood.interferometers:
+            detector_cache = likelihood._detector_likelihood_caches[
+                interferometer.name
+            ]
+            if likelihood._number_of_time_bands > 1:
+                cache = detector_cache["time_bands"][band_index]
+            else:
+                cache = detector_cache["full"]
+            residuals = residuals_by_detector[interferometer.name]
+            residuals_inner_product += _residuals_inner_product_from_cache(
+                residuals[cache.start : cache.end],
+                cache,
+                likelihood.likelihood_method,
+            )
+            logdet += cache.logdet
+            dimension += cache.end - cache.start
+        statistics.append((residuals_inner_product, logdet, dimension))
+    return statistics
 
 
 class TestTimeDomainGWTransient(unittest.TestCase):
@@ -310,6 +337,211 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                 )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
+
+    def test_joint_network_likelihoods_match_direct_calculation(self):
+        cases = [
+            (
+                bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient,
+                dict(nu=[6.0, 12.0]),
+                _student_t_log_likelihood_from_inner_product,
+                [dict(nu=6.0), dict(nu=12.0)],
+            ),
+            (
+                bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient,
+                dict(alpha=[6.0, 12.0], delta=[0.8, 1.4]),
+                _hyperbolic_log_likelihood_from_inner_product,
+                [
+                    dict(alpha=6.0, delta=0.8),
+                    dict(alpha=12.0, delta=1.4),
+                ],
+            ),
+        ]
+
+        for likelihood_class, kwargs, density, band_parameters in cases:
+            with self.subTest(likelihood=likelihood_class.__name__):
+                likelihood = likelihood_class(
+                    interferometers=self.interferometers,
+                    waveform_generator=self.waveform_generator,
+                    joint=True,
+                    time_band_boundaries=[0.5],
+                    **kwargs,
+                )
+                parameters = likelihood._resolve_signal_likelihood_parameters(
+                    self.parameters
+                )
+                waveform_polarizations = (
+                    likelihood._waveform_polarizations_frequency_domain(parameters)
+                )
+                signal_residuals = {
+                    interferometer.name: likelihood._residual_time_domain(
+                        interferometer=interferometer,
+                        parameters=parameters,
+                        waveform_polarizations=waveform_polarizations,
+                    )
+                    for interferometer in self.interferometers
+                }
+                noise_residuals = {
+                    interferometer.name: likelihood._data_time_domain(
+                        interferometer
+                    )
+                    for interferometer in self.interferometers
+                }
+
+                expected_signal = sum(
+                    density(
+                        residuals_inner_product=statistics[0],
+                        logdet=statistics[1],
+                        dimension=statistics[2],
+                        **band_parameters[band_index],
+                    )
+                    for band_index, statistics in enumerate(
+                        _direct_network_residual_statistics(
+                            likelihood, signal_residuals
+                        )
+                    )
+                )
+                expected_noise = sum(
+                    density(
+                        residuals_inner_product=statistics[0],
+                        logdet=statistics[1],
+                        dimension=statistics[2],
+                        **band_parameters[band_index],
+                    )
+                    for band_index, statistics in enumerate(
+                        _direct_network_residual_statistics(
+                            likelihood, noise_residuals
+                        )
+                    )
+                )
+
+                self.assertAlmostEqual(
+                    likelihood.log_likelihood(self.parameters),
+                    expected_signal,
+                    10,
+                )
+                self.assertAlmostEqual(
+                    likelihood.noise_log_likelihood(), expected_noise, 10
+                )
+                self.assertAlmostEqual(
+                    likelihood.log_likelihood_ratio(self.parameters),
+                    expected_signal - expected_noise,
+                    10,
+                )
+                per_detector = likelihood.compute_per_detector_log_likelihood(
+                    self.parameters
+                )
+                diagnostic_total = sum(
+                    per_detector[f"{interferometer.name}_log_likelihood"]
+                    for interferometer in self.interferometers
+                )
+                self.assertNotAlmostEqual(
+                    diagnostic_total,
+                    expected_signal - expected_noise,
+                    7,
+                )
+                self.assertTrue(likelihood.meta_data["joint"])
+
+    def test_joint_student_t_noise_evidence_matches_direct_integral(self):
+        likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=[8.0, 9.0],
+            infer_nu=True,
+            joint=True,
+            time_band_boundaries=[0.5],
+        )
+        sampled_key, fixed_key = likelihood.nu_parameter_keys
+        prior = bilby.core.prior.Uniform(4.0, 12.0, name=sampled_key)
+        priors = bilby.core.prior.PriorDict(
+            {
+                sampled_key: prior,
+                fixed_key: bilby.core.prior.DeltaFunction(
+                    9.0, name=fixed_key
+                ),
+            }
+        )
+        statistics_by_band = _direct_network_residual_statistics(
+            likelihood,
+            {
+                interferometer.name: likelihood._data_time_domain(interferometer)
+                for interferometer in self.interferometers
+            },
+        )
+        sampled_statistics = statistics_by_band[0]
+
+        def log_likelihood(unit_value):
+            return _student_t_log_likelihood_from_inner_product(
+                residuals_inner_product=sampled_statistics[0],
+                logdet=sampled_statistics[1],
+                dimension=sampled_statistics[2],
+                nu=float(prior.rescale(unit_value)),
+            )
+
+        reference = max(
+            log_likelihood(unit_value)
+            for unit_value in np.linspace(0.0, 1.0, 101)
+        )
+        integral, _ = quad(
+            lambda unit_value: np.exp(
+                log_likelihood(unit_value) - reference
+            ),
+            0.0,
+            1.0,
+            epsabs=0.0,
+            epsrel=1e-10,
+            limit=200,
+        )
+        fixed_statistics = statistics_by_band[1]
+        fixed_log_likelihood = _student_t_log_likelihood_from_inner_product(
+            residuals_inner_product=fixed_statistics[0],
+            logdet=fixed_statistics[1],
+            dimension=fixed_statistics[2],
+            nu=9.0,
+        )
+        expected = reference + np.log(integral) + fixed_log_likelihood
+
+        self.assertAlmostEqual(
+            likelihood.noise_log_evidence(priors=priors), expected, 8
+        )
+
+    def test_joint_network_validation(self):
+        positional_likelihood = (
+            bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+                self.interferometers,
+                self.waveform_generator,
+                8.0,
+                False,
+                False,
+                "toeplitz-inversion",
+            )
+        )
+        self.assertFalse(positional_likelihood.joint)
+        self.assertEqual(
+            positional_likelihood.likelihood_method, "toeplitz-inversion"
+        )
+
+        for likelihood_class in [
+            bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient,
+            bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient,
+        ]:
+            with self.subTest(likelihood=likelihood_class.__name__):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "joint=True requires detector_dependent_noise=False",
+                ):
+                    likelihood_class(
+                        interferometers=self.interferometers,
+                        waveform_generator=self.waveform_generator,
+                        joint=True,
+                        detector_dependent_noise=True,
+                    )
+
+        with self.assertRaisesRegex(ValueError, "does not support joint"):
+            bilby.gw.likelihood.MixedTimeDomainGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                joint=True,
+            )
 
     def test_student_t_noise_log_evidence_factorizes_over_detector_time_bands(self):
         likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
@@ -740,6 +972,7 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                     interferometers=self.interferometers,
                     waveform_generator=self.waveform_generator,
                     infer_nu=True,
+                    joint=True,
                 ),
                 {"nu": -1.0},
             ),
@@ -748,6 +981,7 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                     interferometers=self.interferometers,
                     waveform_generator=self.waveform_generator,
                     infer_alpha=True,
+                    joint=True,
                 ),
                 {"alpha": -1.0},
             ),

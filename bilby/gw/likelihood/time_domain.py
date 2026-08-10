@@ -1151,6 +1151,34 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
             )
         )
 
+    def _network_residual_statistics(self, residuals_by_detector):
+        statistics = []
+        for band_index in range(self._number_of_time_bands):
+            residuals_inner_product = 0.0
+            logdet = 0.0
+            dimension = 0
+            for interferometer in self.interferometers:
+                detector_cache = self._detector_likelihood_caches[
+                    interferometer.name
+                ]
+                if self._use_time_band_cache():
+                    cache = detector_cache["time_bands"][band_index]
+                else:
+                    cache = detector_cache["full"]
+                residuals = residuals_by_detector[interferometer.name]
+                band_residuals = residuals[cache.start : cache.end]
+                residuals_inner_product += _residuals_inner_product_from_cache(
+                    band_residuals,
+                    cache,
+                    self.likelihood_method,
+                )
+                logdet += cache.logdet
+                dimension += cache.end - cache.start
+            statistics.append(
+                (residuals_inner_product, logdet, dimension)
+            )
+        return statistics
+
     def _noise_log_likelihood_from_parameters(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
         log_likelihood = 0.0
@@ -1251,6 +1279,14 @@ class _StudentTTimeDomainNoiseOnlyLikelihood(Likelihood):
 
 
 class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTransient):
+    """A time-domain multivariate Student-t likelihood.
+
+    With ``joint=True``, each time band is one network density over the stacked
+    detector residuals. The detector covariance remains block diagonal; the
+    heavy-tail radial scale is shared. Per-detector outputs remain standalone
+    diagnostics and are not an additive decomposition of the joint ratio.
+    """
+
     _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
     _NOISE_EVIDENCE_QUADRATURE_EPSREL = 1e-8
     _NOISE_EVIDENCE_QUADRATURE_LIMIT = 200
@@ -1282,6 +1318,7 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         dlogz_noise=0.1,
         dlogZ_noise=None,
         noise_evidence_method="quadrature",
+        joint=False,
         **kwargs,
     ):
         super().__init__(
@@ -1308,6 +1345,11 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         )
 
         self.detector_dependent_noise = bool(detector_dependent_noise)
+        self.joint = bool(joint)
+        if self.joint and self.detector_dependent_noise:
+            raise ValueError(
+                "joint=True requires detector_dependent_noise=False"
+            )
         self.infer_nu = bool(infer_nu)
         self._fixed_nu = self._coerce_nu_array(nu)
         self.noise_evidence_nlive = _validate_noise_evidence_nlive(noise_evidence_nlive)
@@ -1325,6 +1367,7 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
             nu=np.asarray(self._fixed_nu).tolist(),
             infer_nu=self.infer_nu,
             detector_dependent_noise=self.detector_dependent_noise,
+            joint=self.joint,
             noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
@@ -1449,6 +1492,22 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
     def _validate_active_noise_parameters(self, parameters):
         return self._get_active_nu_values(parameters) is not None
 
+    def _compute_network_log_likelihood(
+        self, residuals_by_detector, nu_values
+    ):
+        log_likelihood = 0.0
+        for band_index, statistics in enumerate(
+            self._network_residual_statistics(residuals_by_detector)
+        ):
+            residuals_inner_product, logdet, dimension = statistics
+            log_likelihood += _student_t_log_likelihood_from_inner_product(
+                residuals_inner_product=residuals_inner_product,
+                logdet=logdet,
+                dimension=dimension,
+                nu=float(nu_values[band_index]),
+            )
+        return float(log_likelihood)
+
     def _log_likelihood_from_inner_product(
         self, residuals_inner_product, cache, dimension, interferometer_name, band_index, parameters
     ):
@@ -1465,6 +1524,24 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
+        if self.joint:
+            waveform_polarizations = (
+                self._waveform_polarizations_frequency_domain(parameters)
+            )
+            if waveform_polarizations is None:
+                return np.nan_to_num(-np.inf)
+            residuals_by_detector = {
+                interferometer.name: self._residual_time_domain(
+                    interferometer=interferometer,
+                    parameters=parameters,
+                    waveform_polarizations=waveform_polarizations,
+                )
+                for interferometer in self.interferometers
+            }
+            return self._compute_network_log_likelihood(
+                residuals_by_detector=residuals_by_detector,
+                nu_values=nu_values,
+            )
         return super().log_likelihood(parameters=parameters)
 
     def _noise_log_likelihood_from_parameters(self, parameters):
@@ -1472,6 +1549,14 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
+        if self.joint:
+            return self._compute_network_log_likelihood(
+                residuals_by_detector={
+                    interferometer.name: self._data_time_domain(interferometer)
+                    for interferometer in self.interferometers
+                },
+                nu_values=nu_values,
+            )
         return super()._noise_log_likelihood_from_parameters(parameters)
 
     def _get_default_nu_parameter_dict(self):
@@ -1563,11 +1648,20 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
                 )
         return list(blocks.values())
 
-    @staticmethod
-    def _noise_block_log_likelihood(block, parameters):
+    def _noise_block_log_likelihood(self, block, parameters):
         nu = float(parameters.get(block["keys"][0], block["default_nu"]))
         if nu <= 0.0 or not np.isfinite(nu):
             return np.nan_to_num(-np.inf)
+
+        if self.joint:
+            return _student_t_log_likelihood_from_inner_product(
+                residuals_inner_product=sum(
+                    term["residuals_inner_product"] for term in block["terms"]
+                ),
+                logdet=sum(term["logdet"] for term in block["terms"]),
+                dimension=sum(term["dimension"] for term in block["terms"]),
+                nu=nu,
+            )
 
         log_likelihood = 0.0
         for term in block["terms"]:
@@ -1659,6 +1753,14 @@ class _HyperbolicTimeDomainNoiseOnlyLikelihood(Likelihood):
 
 
 class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTransient):
+    """A time-domain multivariate hyperbolic likelihood.
+
+    With ``joint=True``, each time band is one network density over the stacked
+    detector residuals. The detector covariance remains block diagonal; the
+    heavy-tail radial scale is shared. Per-detector outputs remain standalone
+    diagnostics and are not an additive decomposition of the joint ratio.
+    """
+
     _NOISE_EVIDENCE_QUADRATURE_EPSABS = 0.0
     _NOISE_EVIDENCE_QUADRATURE_EPSREL = 1e-8
     _NOISE_EVIDENCE_QUADRATURE_LIMIT = 200
@@ -1692,6 +1794,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         dlogz_noise=0.1,
         dlogZ_noise=None,
         noise_evidence_method="quadrature",
+        joint=False,
         **kwargs,
     ):
         super().__init__(
@@ -1718,6 +1821,11 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         )
 
         self.detector_dependent_noise = bool(detector_dependent_noise)
+        self.joint = bool(joint)
+        if self.joint and self.detector_dependent_noise:
+            raise ValueError(
+                "joint=True requires detector_dependent_noise=False"
+            )
         self.infer_alpha = bool(infer_alpha)
         self.infer_delta = bool(infer_delta)
         self._fixed_alpha = self._coerce_parameter_array(alpha, "alpha")
@@ -1741,6 +1849,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             infer_alpha=self.infer_alpha,
             infer_delta=self.infer_delta,
             detector_dependent_noise=self.detector_dependent_noise,
+            joint=self.joint,
             noise_evidence_method=self.noise_evidence_method,
         )
         return meta_data
@@ -1887,6 +1996,23 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         )
         return alpha_values is not None and delta_values is not None
 
+    def _compute_network_log_likelihood(
+        self, residuals_by_detector, alpha_values, delta_values
+    ):
+        log_likelihood = 0.0
+        for band_index, statistics in enumerate(
+            self._network_residual_statistics(residuals_by_detector)
+        ):
+            residuals_inner_product, logdet, dimension = statistics
+            log_likelihood += _hyperbolic_log_likelihood_from_inner_product(
+                residuals_inner_product=residuals_inner_product,
+                logdet=logdet,
+                dimension=dimension,
+                alpha=float(alpha_values[band_index]),
+                delta=float(delta_values[band_index]),
+            )
+        return float(log_likelihood)
+
     def _band_shape_parameters(self, parameters, interferometer_name, band_index):
         alpha_values, delta_values = self._get_active_shape_parameters(
             parameters
@@ -1922,6 +2048,25 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         )
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
+        if self.joint:
+            waveform_polarizations = (
+                self._waveform_polarizations_frequency_domain(parameters)
+            )
+            if waveform_polarizations is None:
+                return np.nan_to_num(-np.inf)
+            residuals_by_detector = {
+                interferometer.name: self._residual_time_domain(
+                    interferometer=interferometer,
+                    parameters=parameters,
+                    waveform_polarizations=waveform_polarizations,
+                )
+                for interferometer in self.interferometers
+            }
+            return self._compute_network_log_likelihood(
+                residuals_by_detector=residuals_by_detector,
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+            )
         return super().log_likelihood(parameters=parameters)
 
     def _noise_log_likelihood_from_parameters(self, parameters):
@@ -1931,6 +2076,15 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         )
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
+        if self.joint:
+            return self._compute_network_log_likelihood(
+                residuals_by_detector={
+                    interferometer.name: self._data_time_domain(interferometer)
+                    for interferometer in self.interferometers
+                },
+                alpha_values=alpha_values,
+                delta_values=delta_values,
+            )
         return super()._noise_log_likelihood_from_parameters(parameters)
 
     def _get_default_shape_parameter_dict(self):
@@ -2039,14 +2193,24 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
                 )
         return list(blocks.values())
 
-    @staticmethod
-    def _noise_block_log_likelihood(block, parameters):
+    def _noise_block_log_likelihood(self, block, parameters):
         alpha = float(parameters.get(block["alpha_key"], block["default_alpha"]))
         delta = float(parameters.get(block["delta_key"], block["default_delta"]))
         if alpha <= 0.0 or delta <= 0.0:
             return np.nan_to_num(-np.inf)
         if not np.isfinite(alpha) or not np.isfinite(delta):
             return np.nan_to_num(-np.inf)
+
+        if self.joint:
+            return _hyperbolic_log_likelihood_from_inner_product(
+                residuals_inner_product=sum(
+                    term["residuals_inner_product"] for term in block["terms"]
+                ),
+                logdet=sum(term["logdet"] for term in block["terms"]),
+                dimension=sum(term["dimension"] for term in block["terms"]),
+                alpha=alpha,
+                delta=delta,
+            )
 
         log_likelihood = 0.0
         for term in block["terms"]:
@@ -2114,6 +2278,12 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
 
 
 class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTransient):
+    """A time-domain likelihood with one noise family per detector.
+
+    Joint network densities are unavailable because a mixed-family network does
+    not have one shared radial probability law.
+    """
+
     def __init__(
         self,
         interferometers,
@@ -2146,8 +2316,14 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
         dlogz_noise=0.1,
         dlogZ_noise=None,
         noise_evidence_method="quadrature",
+        joint=False,
         **kwargs,
     ):
+        if joint:
+            raise ValueError(
+                "MixedTimeDomainGravitationalWaveTransient does not support "
+                "joint network densities"
+            )
         super().__init__(
             interferometers=interferometers,
             waveform_generator=waveform_generator,

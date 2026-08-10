@@ -157,7 +157,8 @@ def test_high_mass_catalog_flag_runs_every_documented_event(monkeypatch):
 
 def test_special_event_templates_and_priors_are_grouped_together():
     module = load_submit_runs_real_data_module()
-    special_dir = SCRIPT_PATH.parent / module.SPECIAL_EVENTS_CONFIGS_DIR
+    configs_dir = module.SPECIAL_EVENTS_CONFIGS_DIR
+    special_dir = SCRIPT_PATH.parent / configs_dir
 
     assert module.EVENT_DEFAULTS["GW241127_SEOB"].working_directory == str(
         Path.home() / "LVK_posteriors/GW241127_061008"
@@ -165,30 +166,36 @@ def test_special_event_templates_and_priors_are_grouped_together():
     assert module.EVENT_DEFAULTS["GW241127_pSEOB"].working_directory == str(
         Path.home() / "LVK_posteriors/GW241127_061008"
     )
-    assert {path.name for path in (special_dir / "templates").iterdir()} == {
-        "GW150914_t_student_igwn_template.ini",
-        "GW150914_welch_template.ini",
-        "GW190521_030229_LVK_NRSur7dq4.ini",
-        "GW191109_010717_no_glitch_subtraction_template.ini",
-        "GW200129_065458_Hannam_NRSur7dq4.ini",
-        "GW230814_t_student_pSEOB_template.ini",
-        "GW231123_t_student_template.ini",
-        "GW241127_t_student_SEOB_template.ini",
-        "GW241127_t_student_pSEOB_template.ini",
+
+    referenced = {
+        template
+        for defaults in module.EVENT_DEFAULTS.values()
+        for template in (defaults.ini_template, defaults.prior_template)
+        if template.startswith(configs_dir)
     }
-    assert {path.name for path in (special_dir / "priors").iterdir()} == {
-        "GW150914_igwn_template.prior",
-        "GW190521_030229_LVK_NRSur7dq4.prior",
-        "GW200129_065458_Hannam_NRSur7dq4.prior",
-        "GW230814_gr_template.prior",
-        "GW230814_template.prior",
-        "GW231123_template.prior",
-        "GW241127_SEOB_template.prior",
-        "GW241127_pSEOB_template.prior",
-    }
-    assert {path.name for path in (special_dir / "source_configs").iterdir()} == {
-        "GW190521_030229_LVK_NRSur7dq4.ini",
-    }
+    for template in sorted(referenced):
+        assert (SCRIPT_PATH.parent / template).is_file(), (
+            f"{template} is referenced by EVENT_DEFAULTS but does not exist"
+        )
+
+    documented = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in [special_dir / "README.md", *(special_dir / "runbooks").iterdir()]
+        if path.is_file()
+    )
+    for subdir, suffix in (
+        ("templates", ".ini"),
+        ("priors", ".prior"),
+        ("source_configs", ".ini"),
+    ):
+        entries = sorted((special_dir / subdir).iterdir())
+        assert entries, f"{subdir} holds no configuration files"
+        for path in entries:
+            relative = f"{subdir}/{path.name}"
+            assert path.name.endswith(suffix), f"{relative} should be a {suffix} file"
+            assert (
+                f"{configs_dir}/{relative}" in referenced or relative in documented
+            ), f"{relative} is used by neither EVENT_DEFAULTS nor a runbook"
 
 
 @pytest.mark.parametrize(

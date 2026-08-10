@@ -1,3 +1,5 @@
+"""Tests for covariance-based time-domain likelihoods."""
+
 import unittest
 from unittest.mock import patch
 
@@ -8,6 +10,7 @@ from scipy.linalg import solve_toeplitz
 import bilby
 from bilby.gw.likelihood.time_domain import (
     _GohbergSemenculToeplitzInverse,
+    _factorized_noise_log_evidence_by_quadrature,
     _gaussian_log_likelihood_from_inner_product,
     _hyperbolic_log_likelihood_from_inner_product,
     _residuals_inner_product_from_cache,
@@ -96,10 +99,10 @@ class TestTimeDomainGWTransient(unittest.TestCase):
         )
         parameters = self.parameters.copy()
         parameters.update(
-            nu_H1_1=6.0,
-            nu_H1_2=8.0,
-            nu_L1_1=10.0,
-            nu_L1_2=12.0,
+            nu_H1_0_0p5=6.0,
+            nu_H1_0p5_2=8.0,
+            nu_L1_0_0p5=10.0,
+            nu_L1_0p5_2=12.0,
         )
         signal_parameters = likelihood._resolve_signal_likelihood_parameters(
             parameters.copy()
@@ -126,7 +129,11 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                     cache,
                     likelihood.likelihood_method,
                 )
-                nu = parameters[f"nu_{interferometer.name}_{band_index + 1}"]
+                nu = parameters[
+                    likelihood._detector_nu_parameter_key(
+                        interferometer.name, band_index
+                    )
+                ]
                 manual += _student_t_log_likelihood_from_inner_product(
                     residuals_inner_product=residuals_inner_product,
                     logdet=cache.logdet,
@@ -139,10 +146,10 @@ class TestTimeDomainGWTransient(unittest.TestCase):
     def test_time_band_boundaries_match_explicit_cut_times(self):
         parameters = self.parameters.copy()
         parameters.update(
-            nu_H1_1=6.0,
-            nu_H1_2=8.0,
-            nu_L1_1=10.0,
-            nu_L1_2=12.0,
+            nu_H1_0_0p5=6.0,
+            nu_H1_0p5_2=8.0,
+            nu_L1_0_0p5=10.0,
+            nu_L1_0p5_2=12.0,
         )
 
         list_likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
@@ -162,6 +169,15 @@ class TestTimeDomainGWTransient(unittest.TestCase):
 
         self.assertEqual(boundary_likelihood.time_bands, [0.5])
         self.assertEqual(boundary_likelihood.time_band_boundaries, [0.5])
+        self.assertEqual(
+            boundary_likelihood.nu_parameter_keys,
+            [
+                "nu_H1_0_0p5",
+                "nu_H1_0p5_2",
+                "nu_L1_0_0p5",
+                "nu_L1_0p5_2",
+            ],
+        )
         self.assertAlmostEqual(
             boundary_likelihood.log_likelihood(parameters.copy()),
             list_likelihood.log_likelihood(parameters.copy()),
@@ -191,6 +207,58 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                 time_band_boundaries=[0.5],
             )
 
+    def test_detector_specific_time_band_boundaries(self):
+        boundaries = {"H1": [0.25], "L1": [0.5]}
+        likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_nu=True,
+            detector_dependent_noise=True,
+            time_bands=2,
+            time_band_boundaries=boundaries,
+        )
+
+        self.assertEqual(likelihood.time_band_boundaries, boundaries)
+        self.assertEqual(
+            likelihood.nu_parameter_keys,
+            [
+                "nu_H1_0_0p25",
+                "nu_H1_0p25_2",
+                "nu_L1_0_0p5",
+                "nu_L1_0p5_2",
+            ],
+        )
+        self.assertEqual(
+            likelihood._detector_likelihood_caches["H1"]["time_bands"][0].end,
+            32,
+        )
+        self.assertEqual(
+            likelihood._detector_likelihood_caches["L1"]["time_bands"][0].end,
+            64,
+        )
+        parameters = self.parameters.copy()
+        parameters.update(
+            dict(zip(likelihood.nu_parameter_keys, [6.0, 8.0, 10.0, 12.0]))
+        )
+        self.assertTrue(np.isfinite(likelihood.log_likelihood(parameters)))
+
+        with self.assertRaisesRegex(
+            ValueError, "Per-detector time_band_boundaries requires"
+        ):
+            bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                time_band_boundaries=boundaries,
+            )
+
+        with self.assertRaisesRegex(ValueError, "unknown V1"):
+            bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                detector_dependent_noise=True,
+                time_band_boundaries={**boundaries, "V1": [0.5]},
+            )
+
     def test_hyperbolic_time_bands_match_direct_calculation(self):
         time_bands = [0.5]
         likelihood = bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient(
@@ -202,7 +270,12 @@ class TestTimeDomainGWTransient(unittest.TestCase):
             time_bands=time_bands,
         )
         parameters = self.parameters.copy()
-        parameters.update(alpha_1=6.0, alpha_2=12.0, delta_1=0.8, delta_2=1.4)
+        parameters.update(
+            alpha_0_0p5=6.0,
+            alpha_0p5_2=12.0,
+            delta_0_0p5=0.8,
+            delta_0p5_2=1.4,
+        )
         signal_parameters = likelihood._resolve_signal_likelihood_parameters(
             parameters.copy()
         )
@@ -232,8 +305,8 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                     residuals_inner_product=residuals_inner_product,
                     logdet=cache.logdet,
                     dimension=cache.end - cache.start,
-                    alpha=parameters[f"alpha_{band_index + 1}"],
-                    delta=parameters[f"delta_{band_index + 1}"],
+                    alpha=parameters[likelihood.alpha_parameter_keys[band_index]],
+                    delta=parameters[likelihood.delta_parameter_keys[band_index]],
                 )
 
         self.assertAlmostEqual(calculated, float(manual), 7)
@@ -248,13 +321,26 @@ class TestTimeDomainGWTransient(unittest.TestCase):
         )
         priors = bilby.core.prior.PriorDict(
             dict(
-                nu_H1_1=bilby.core.prior.Uniform(2.0, 20.0, name="nu_H1_1"),
-                nu_H1_2=bilby.core.prior.Uniform(3.0, 21.0, name="nu_H1_2"),
-                nu_L1_1=bilby.core.prior.Uniform(4.0, 22.0, name="nu_L1_1"),
-                nu_L1_2=bilby.core.prior.Uniform(5.0, 23.0, name="nu_L1_2"),
+                nu_H1_0_0p5=bilby.core.prior.Uniform(
+                    2.0, 20.0, name="nu_H1_0_0p5"
+                ),
+                nu_H1_0p5_2=bilby.core.prior.Uniform(
+                    3.0, 21.0, name="nu_H1_0p5_2"
+                ),
+                nu_L1_0_0p5=bilby.core.prior.Uniform(
+                    4.0, 22.0, name="nu_L1_0_0p5"
+                ),
+                nu_L1_0p5_2=bilby.core.prior.Uniform(
+                    5.0, 23.0, name="nu_L1_0p5_2"
+                ),
             )
         )
-        centers = dict(nu_H1_1=6.0, nu_H1_2=8.0, nu_L1_1=10.0, nu_L1_2=12.0)
+        centers = dict(
+            nu_H1_0_0p5=6.0,
+            nu_H1_0p5_2=8.0,
+            nu_L1_0_0p5=10.0,
+            nu_L1_0p5_2=12.0,
+        )
         unit_grid = np.linspace(0.0, 1.0, 5001)
         expected = 0.0
         for key, center in centers.items():
@@ -286,33 +372,49 @@ class TestTimeDomainGWTransient(unittest.TestCase):
         )
         priors = bilby.core.prior.PriorDict(
             dict(
-                alpha_H1_1=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_H1_1"),
-                delta_H1_1=bilby.core.prior.Uniform(0.5, 5.0, name="delta_H1_1"),
-                alpha_H1_2=bilby.core.prior.Uniform(3.0, 21.0, name="alpha_H1_2"),
-                delta_H1_2=bilby.core.prior.Uniform(0.6, 5.1, name="delta_H1_2"),
-                alpha_L1_1=bilby.core.prior.Uniform(4.0, 22.0, name="alpha_L1_1"),
-                delta_L1_1=bilby.core.prior.Uniform(0.7, 5.2, name="delta_L1_1"),
-                alpha_L1_2=bilby.core.prior.Uniform(5.0, 23.0, name="alpha_L1_2"),
-                delta_L1_2=bilby.core.prior.Uniform(0.8, 5.3, name="delta_L1_2"),
+                alpha_H1_0_0p5=bilby.core.prior.Uniform(
+                    2.0, 20.0, name="alpha_H1_0_0p5"
+                ),
+                delta_H1_0_0p5=bilby.core.prior.Uniform(
+                    0.5, 5.0, name="delta_H1_0_0p5"
+                ),
+                alpha_H1_0p5_2=bilby.core.prior.Uniform(
+                    3.0, 21.0, name="alpha_H1_0p5_2"
+                ),
+                delta_H1_0p5_2=bilby.core.prior.Uniform(
+                    0.6, 5.1, name="delta_H1_0p5_2"
+                ),
+                alpha_L1_0_0p5=bilby.core.prior.Uniform(
+                    4.0, 22.0, name="alpha_L1_0_0p5"
+                ),
+                delta_L1_0_0p5=bilby.core.prior.Uniform(
+                    0.7, 5.2, name="delta_L1_0_0p5"
+                ),
+                alpha_L1_0p5_2=bilby.core.prior.Uniform(
+                    5.0, 23.0, name="alpha_L1_0p5_2"
+                ),
+                delta_L1_0p5_2=bilby.core.prior.Uniform(
+                    0.8, 5.3, name="delta_L1_0p5_2"
+                ),
             )
         )
         centers = dict(
-            alpha_H1_1=6.0,
-            delta_H1_1=0.9,
-            alpha_H1_2=8.0,
-            delta_H1_2=1.1,
-            alpha_L1_1=10.0,
-            delta_L1_1=1.3,
-            alpha_L1_2=12.0,
-            delta_L1_2=1.5,
+            alpha_H1_0_0p5=6.0,
+            delta_H1_0_0p5=0.9,
+            alpha_H1_0p5_2=8.0,
+            delta_H1_0p5_2=1.1,
+            alpha_L1_0_0p5=10.0,
+            delta_L1_0_0p5=1.3,
+            alpha_L1_0p5_2=12.0,
+            delta_L1_0p5_2=1.5,
         )
         unit_grid = np.linspace(0.0, 1.0, 5001)
         expected = 0.0
         for alpha_key, delta_key in (
-            ("alpha_H1_1", "delta_H1_1"),
-            ("alpha_H1_2", "delta_H1_2"),
-            ("alpha_L1_1", "delta_L1_1"),
-            ("alpha_L1_2", "delta_L1_2"),
+            ("alpha_H1_0_0p5", "delta_H1_0_0p5"),
+            ("alpha_H1_0p5_2", "delta_H1_0p5_2"),
+            ("alpha_L1_0_0p5", "delta_L1_0_0p5"),
+            ("alpha_L1_0p5_2", "delta_L1_0p5_2"),
         ):
             expected += np.log(
                 np.trapezoid(
@@ -351,6 +453,81 @@ class TestTimeDomainGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(noise_log_evidence, expected, 6)
         mock_run_sampler.assert_not_called()
+
+    def test_student_t_noise_evidence_uses_fixed_prior_peaks(self):
+        likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=[8.0, 9.0],
+            infer_nu=True,
+            time_bands=2,
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                nu_1=bilby.core.prior.DeltaFunction(5.0, name="nu_1"),
+                nu_2=bilby.core.prior.DeltaFunction(6.0, name="nu_2"),
+            )
+        )
+
+        expected = likelihood._noise_log_likelihood_from_parameters(
+            dict(nu_1=5.0, nu_2=6.0)
+        )
+        self.assertEqual(likelihood.noise_log_evidence(priors=priors), expected)
+
+    def test_hyperbolic_noise_evidence_uses_fixed_prior_peaks(self):
+        likelihood = bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=10.0,
+            delta=1.0,
+            infer_alpha=True,
+            infer_delta=True,
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                alpha=bilby.core.prior.DeltaFunction(6.0, name="alpha"),
+                delta=bilby.core.prior.DeltaFunction(1.5, name="delta"),
+            )
+        )
+
+        expected = likelihood._noise_log_likelihood_from_parameters(
+            dict(alpha=6.0, delta=1.5)
+        )
+        self.assertEqual(likelihood.noise_log_evidence(priors=priors), expected)
+
+    def test_student_t_shared_nu_prior_is_integrated_once(self):
+        likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_nu=True,
+            detector_dependent_noise=True,
+            time_bands=2,
+        )
+        prior = bilby.core.prior.Uniform(2.0, 10.0, name="nu")
+        priors = bilby.core.prior.PriorDict(dict(nu=prior))
+        likelihood._noise_log_likelihood_from_parameters = lambda parameters: (
+            -0.5 * (parameters["nu"] - 6.0) ** 2
+        )
+        unit_grid = np.linspace(0.0, 1.0, 5001)
+        expected = np.log(
+            np.trapezoid(
+                np.exp(-0.5 * (prior.rescale(unit_grid) - 6.0) ** 2),
+                unit_grid,
+            )
+        )
+
+        self.assertAlmostEqual(
+            likelihood.noise_log_evidence(priors=priors), expected, 7
+        )
+        np.testing.assert_array_equal(
+            likelihood._get_nu_values(dict(nu=6.0)), np.full((2, 2), 6.0)
+        )
+
+        priors["nu_H1_1"] = bilby.core.prior.Uniform(
+            2.0, 10.0, name="nu_H1_1"
+        )
+        with self.assertRaisesRegex(ValueError, "either the shared nu prior"):
+            likelihood.noise_log_evidence(priors=priors)
 
     def test_prefer_time_domain_waveform_path_runs(self):
         waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
@@ -443,10 +620,10 @@ class TestTimeDomainGWTransient(unittest.TestCase):
     def test_gohberg_semencul_banded_student_t_matches_toeplitz_likelihood(self):
         parameters = self.parameters.copy()
         parameters.update(
-            nu_H1_1=6.0,
-            nu_H1_2=8.0,
-            nu_L1_1=10.0,
-            nu_L1_2=12.0,
+            nu_H1_0_0p5=6.0,
+            nu_H1_0p5_2=8.0,
+            nu_L1_0_0p5=10.0,
+            nu_L1_0p5_2=12.0,
         )
 
         toeplitz_likelihood = (
@@ -533,7 +710,143 @@ class TestTimeDomainGWTransient(unittest.TestCase):
             detector_dependent_noise=True,
         )
 
-        self.assertEqual(likelihood.noise_parameter_keys, ["nu_L1"])
+        self.assertEqual(likelihood.noise_parameter_keys, ["nu", "nu_L1"])
+
+    def test_parameter_api_is_explicit_and_noise_is_evaluation_order_independent(self):
+        likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+            infer_nu=True,
+        )
+
+        with self.assertRaises(TypeError):
+            likelihood.log_likelihood()
+
+        fixed_noise_log_likelihood = likelihood.noise_log_likelihood()
+        parameters = self.parameters.copy()
+        parameters["nu"] = 3.0
+        likelihood.log_likelihood(parameters)
+
+        self.assertFalse(hasattr(likelihood, "_parameters"))
+        self.assertEqual(
+            likelihood.noise_log_likelihood(), fixed_noise_log_likelihood
+        )
+
+    def test_invalid_noise_parameters_return_minus_infinity(self):
+        likelihoods_and_parameters = [
+            (
+                bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(
+                    interferometers=self.interferometers,
+                    waveform_generator=self.waveform_generator,
+                    infer_nu=True,
+                ),
+                {"nu": -1.0},
+            ),
+            (
+                bilby.gw.likelihood.HyperbolicTimeDomainGravitationalWaveTransient(
+                    interferometers=self.interferometers,
+                    waveform_generator=self.waveform_generator,
+                    infer_alpha=True,
+                ),
+                {"alpha": -1.0},
+            ),
+            (
+                bilby.gw.likelihood.MixedTimeDomainGravitationalWaveTransient(
+                    interferometers=self.interferometers,
+                    waveform_generator=self.waveform_generator,
+                    likelihood_type={"H1": "student-t", "L1": "gaussian"},
+                    infer_nu=True,
+                    detector_dependent_noise=True,
+                ),
+                {"nu_H1": -1.0},
+            ),
+        ]
+        minus_infinity = np.nan_to_num(-np.inf)
+
+        for likelihood, noise_parameters in likelihoods_and_parameters:
+            with self.subTest(likelihood=type(likelihood).__name__):
+                parameters = self.parameters.copy()
+                parameters.update(noise_parameters)
+                self.assertEqual(
+                    likelihood.log_likelihood_ratio(parameters), minus_infinity
+                )
+                result = likelihood.compute_per_detector_log_likelihood(parameters)
+                for interferometer in self.interferometers:
+                    self.assertEqual(
+                        result[f"{interferometer.name}_log_likelihood"],
+                        minus_infinity,
+                    )
+
+    def test_quadrature_reference_ignores_default_outside_prior(self):
+        noise_priors = bilby.core.prior.PriorDict(
+            dict(x=bilby.core.prior.Uniform(1.0, 2.0))
+        )
+        calculated = _factorized_noise_log_evidence_by_quadrature(
+            blocks=[{"keys": ("x",)}],
+            noise_priors=noise_priors,
+            base_parameters={"x": 0.0},
+            block_log_likelihood=lambda block, parameters: (
+                -1000.0 * parameters["x"]
+            ),
+            epsabs=1e-10,
+            epsrel=1e-10,
+            limit=100,
+            error_label="Test",
+        )
+
+        self.assertAlmostEqual(calculated, -1000.0 - np.log(1000.0), 7)
+
+    def test_mixed_detector_values_are_subset_and_per_detector_terms_sum(self):
+        likelihood = bilby.gw.likelihood.MixedTimeDomainGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            likelihood_type={"H1": "student-t", "L1": "hyperbolic"},
+            nu=[[6.0, 7.0], [8.0, 9.0]],
+            alpha=[[10.0, 11.0], [12.0, 13.0]],
+            delta=[[1.0, 1.1], [1.5, 1.6]],
+            detector_dependent_noise=True,
+            time_band_boundaries={"H1": [0.25], "L1": [0.5]},
+        )
+
+        self.assertIsInstance(
+            likelihood._student_t_likelihood.interferometers,
+            bilby.gw.detector.InterferometerList,
+        )
+        np.testing.assert_array_equal(
+            likelihood._student_t_likelihood._fixed_nu, [[6.0, 7.0]]
+        )
+        np.testing.assert_array_equal(
+            likelihood._hyperbolic_likelihood._fixed_alpha, [[12.0, 13.0]]
+        )
+        np.testing.assert_array_equal(
+            likelihood._hyperbolic_likelihood._fixed_delta, [[1.5, 1.6]]
+        )
+
+        per_detector = likelihood.compute_per_detector_log_likelihood(
+            self.parameters.copy()
+        )
+        per_detector_total = sum(
+            per_detector[f"{interferometer.name}_log_likelihood"]
+            for interferometer in self.interferometers
+        )
+        self.assertAlmostEqual(
+            per_detector_total,
+            likelihood.log_likelihood_ratio(self.parameters.copy()),
+            10,
+        )
+
+    def test_mixed_detector_mapping_rejects_unknown_detector(self):
+        with self.assertRaisesRegex(ValueError, "unknown V1"):
+            bilby.gw.likelihood.MixedTimeDomainGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                likelihood_type={
+                    "H1": "gaussian",
+                    "L1": "student-t",
+                    "V1": "hyperbolic",
+                },
+            )
 
 
 if __name__ == "__main__":

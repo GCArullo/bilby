@@ -11,9 +11,9 @@ from scipy.linalg import inv, solve_toeplitz, solve_triangular, toeplitz
 from scipy.special import kve
 
 from ...core import utils as core_utils
-from ...core.likelihood import Likelihood, _fallback_to_parameters
-from ...core.prior import DeltaFunction, PriorDict
-from ...core.utils import logger
+from ...core.likelihood import Likelihood
+from ...core.prior import DeltaFunction, JointPrior, PriorDict
+from ..detector import InterferometerList
 from ..waveform_generator import GWSignalWaveformGenerator
 from .base import GravitationalWaveTransient
 
@@ -314,6 +314,10 @@ def _is_time_band_cut_list(time_bands):
     return isinstance(time_bands, (list, tuple, np.ndarray))
 
 
+def _is_detector_time_band_map(time_bands):
+    return isinstance(time_bands, dict)
+
+
 def _coerce_time_band_boundaries(time_band_boundaries):
     if not _is_time_band_cut_list(time_band_boundaries):
         raise ValueError(
@@ -328,22 +332,95 @@ def _coerce_time_band_boundaries(time_band_boundaries):
     return boundaries.tolist()
 
 
-def _resolve_time_bands(time_bands, time_band_boundaries=None):
+def _coerce_detector_time_band_boundaries(time_band_boundaries, detector_names):
+    missing_detectors = [
+        detector_name
+        for detector_name in detector_names
+        if detector_name not in time_band_boundaries
+    ]
+    unknown_detectors = [
+        detector_name
+        for detector_name in time_band_boundaries
+        if detector_name not in detector_names
+    ]
+    if missing_detectors or unknown_detectors:
+        message = []
+        if missing_detectors:
+            message.append("missing " + ", ".join(missing_detectors))
+        if unknown_detectors:
+            message.append("unknown " + ", ".join(unknown_detectors))
+        raise ValueError(
+            "time_band_boundaries mapping has " + " and ".join(message)
+        )
+
+    boundaries = {
+        detector_name: _coerce_time_band_boundaries(
+            time_band_boundaries[detector_name]
+        )
+        for detector_name in detector_names
+    }
+    band_counts = {
+        detector_name: len(detector_boundaries) + 1
+        for detector_name, detector_boundaries in boundaries.items()
+    }
+    if len(set(band_counts.values())) > 1:
+        raise ValueError(
+            "Every detector must define the same number of time bands; "
+            f"got {band_counts}"
+        )
+    return boundaries
+
+
+def _coerce_time_band_specification(
+    time_band_boundaries, detector_names, detector_dependent_noise
+):
+    if _is_detector_time_band_map(time_band_boundaries):
+        if not detector_dependent_noise:
+            raise ValueError(
+                "Per-detector time_band_boundaries requires "
+                "detector_dependent_noise=True"
+            )
+        return _coerce_detector_time_band_boundaries(
+            time_band_boundaries, detector_names
+        )
+    return _coerce_time_band_boundaries(time_band_boundaries)
+
+
+def _resolve_time_bands(
+    time_bands,
+    time_band_boundaries=None,
+    detector_names=None,
+    detector_dependent_noise=False,
+):
+    detector_names = [] if detector_names is None else detector_names
     if time_band_boundaries is None:
-        if _is_time_band_cut_list(time_bands):
-            return _coerce_time_band_boundaries(time_bands)
+        if _is_time_band_cut_list(time_bands) or _is_detector_time_band_map(
+            time_bands
+        ):
+            return _coerce_time_band_specification(
+                time_bands, detector_names, detector_dependent_noise
+            )
         return int(time_bands)
 
-    boundaries = _coerce_time_band_boundaries(time_band_boundaries)
-    if _is_time_band_cut_list(time_bands):
-        if _coerce_time_band_boundaries(time_bands) != boundaries:
+    boundaries = _coerce_time_band_specification(
+        time_band_boundaries, detector_names, detector_dependent_noise
+    )
+    if _is_time_band_cut_list(time_bands) or _is_detector_time_band_map(
+        time_bands
+    ):
+        if (
+            _coerce_time_band_specification(
+                time_bands, detector_names, detector_dependent_noise
+            )
+            != boundaries
+        ):
             raise ValueError(
                 "time_bands and time_band_boundaries must match when both are provided"
             )
         return boundaries
 
     number_of_time_bands = int(time_bands)
-    if number_of_time_bands not in (1, len(boundaries) + 1):
+    if number_of_time_bands not in (1, _time_band_count(boundaries)):
         raise ValueError(
             "time_bands and time_band_boundaries must describe the same number of bands"
         )
@@ -351,9 +428,17 @@ def _resolve_time_bands(time_bands, time_band_boundaries=None):
 
 
 def _time_band_count(time_bands):
+    if _is_detector_time_band_map(time_bands):
+        return len(next(iter(time_bands.values()))) + 1
     if _is_time_band_cut_list(time_bands):
         return len(time_bands) + 1
     return int(time_bands)
+
+
+def _time_bands_for_detector(time_bands, detector_name):
+    if _is_detector_time_band_map(time_bands):
+        return time_bands[detector_name]
+    return time_bands
 
 
 def _time_band_sample_slices(dimension, time_bands, sampling_rate=None):
@@ -532,10 +617,19 @@ def _resolve_detector_likelihood_types(likelihood_type, detector_names):
             for detector_name in detector_names
             if detector_name not in likelihood_type
         ]
-        if missing_detectors:
+        extra_detectors = [
+            detector_name
+            for detector_name in likelihood_type
+            if detector_name not in detector_names
+        ]
+        if missing_detectors or extra_detectors:
+            message = []
+            if missing_detectors:
+                message.append("missing " + ", ".join(missing_detectors))
+            if extra_detectors:
+                message.append("unknown " + ", ".join(extra_detectors))
             raise ValueError(
-                "Detector-specific likelihood types are missing detectors: "
-                + ", ".join(missing_detectors)
+                "Detector-specific likelihood mapping has " + " and ".join(message)
             )
         return {
             detector_name: _normalise_likelihood_type(
@@ -609,6 +703,18 @@ def _factorized_noise_log_evidence_by_quadrature(
     limit,
     error_label,
 ):
+    coupled_keys = [
+        key
+        for key in noise_priors.non_fixed_keys
+        if isinstance(noise_priors[key], JointPrior)
+        or getattr(noise_priors[key], "required_variables", [])
+    ]
+    if coupled_keys:
+        raise ValueError(
+            f"{error_label} factorized noise evidence does not support coupled "
+            f"noise priors: {sorted(coupled_keys)}"
+        )
+
     reference_points = _noise_evidence_quadrature_points()
     non_fixed_keys = set(noise_priors.non_fixed_keys)
     total_log_evidence = 0.0
@@ -634,7 +740,15 @@ def _factorized_noise_log_evidence_by_quadrature(
                 )
             return block_log_likelihood(block, parameters)
 
-        candidate_logls = [block_log_likelihood(block, base_parameters)]
+        candidate_logls = []
+        if all(
+            key in base_parameters
+            and np.all(np.isfinite(prior.ln_prob(base_parameters[key])))
+            for key, prior in zip(block_keys, priors)
+        ):
+            candidate_logls.append(
+                block_log_likelihood(block, base_parameters)
+            )
         candidate_logls.extend(
             log_likelihood_from_unit_values(unit_values)
             for unit_values in product(reference_points, repeat=len(block_keys))
@@ -733,7 +847,10 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
 
     Set `time_bands` to a positive integer for equi-spaced bands, or pass
     `time_band_boundaries` as a list of cut times in seconds to match pyRing's
-    explicit time-band boundaries.
+    explicit time-band boundaries. With detector-dependent noise, a mapping
+    from detector name to cut-time list is also accepted. Noise parameters for
+    explicit bands are named after their time interval, with decimal points
+    written as ``p`` (for example, ``nu_H1_0_0p5``).
     """
 
     def __init__(
@@ -743,6 +860,7 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
         likelihood_method="cholesky-solve-triangular",
         time_bands=1,
         time_band_boundaries=None,
+        detector_dependent_noise=False,
         prefer_time_domain_waveform=False,
         time_marginalization=False,
         distance_marginalization=False,
@@ -788,15 +906,24 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
         )
 
         self.likelihood_method = _resolve_likelihood_method(likelihood_method)
+        self.detector_dependent_noise = bool(detector_dependent_noise)
+        self._detector_names = [
+            interferometer.name for interferometer in self.interferometers
+        ]
         self.time_bands = _resolve_time_bands(
-            time_bands=time_bands, time_band_boundaries=time_band_boundaries
+            time_bands=time_bands,
+            time_band_boundaries=time_band_boundaries,
+            detector_names=self._detector_names,
+            detector_dependent_noise=self.detector_dependent_noise,
         )
         self.time_band_boundaries = (
-            self.time_bands if _is_time_band_cut_list(self.time_bands) else None
+            self.time_bands
+            if _is_time_band_cut_list(self.time_bands)
+            or _is_detector_time_band_map(self.time_bands)
+            else None
         )
         self.prefer_time_domain_waveform = bool(prefer_time_domain_waveform)
         self._number_of_time_bands = _time_band_count(self.time_bands)
-        self._detector_names = [interferometer.name for interferometer in self.interferometers]
         self._detector_likelihood_caches = self._build_detector_likelihood_caches()
 
     @property
@@ -825,7 +952,9 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
                 time_band_cache = _make_time_band_likelihood_cache(
                     acf=acf,
                     likelihood_method=self.likelihood_method,
-                    time_bands=self.time_bands,
+                    time_bands=_time_bands_for_detector(
+                        self.time_bands, interferometer.name
+                    ),
                     sampling_rate=interferometer.sampling_frequency,
                 )
             caches[interferometer.name] = dict(
@@ -834,6 +963,28 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
                 psd=full_psd,
             )
         return caches
+
+    def _time_band_suffixes(self, detector_name=None):
+        if self.time_band_boundaries is None:
+            return [
+                str(index) for index in range(1, self._number_of_time_bands + 1)
+            ]
+
+        if detector_name is None:
+            detector_name = self._detector_names[0]
+        boundaries = _time_bands_for_detector(
+            self.time_band_boundaries, detector_name
+        )
+        interferometer = next(
+            interferometer
+            for interferometer in self.interferometers
+            if interferometer.name == detector_name
+        )
+        edges = [0.0, *boundaries, float(interferometer.duration)]
+        return [
+            f"{lower:g}_{upper:g}".replace(".", "p")
+            for lower, upper in zip(edges[:-1], edges[1:])
+        ]
 
     @staticmethod
     def _acf_from_psd(psd, interferometer):
@@ -883,17 +1034,10 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
             active_frequencies=active_frequencies,
         )
 
-    def _resolve_likelihood_parameters(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self._parameters:
-            parameters = parameters.copy()
-        else:
-            merged_parameters = self._parameters.copy()
-            merged_parameters.update(parameters)
-            parameters = merged_parameters
-        return parameters
+    def _resolve_likelihood_parameters(self, parameters):
+        return parameters.copy()
 
-    def _resolve_signal_likelihood_parameters(self, parameters=None):
+    def _resolve_signal_likelihood_parameters(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
         parameters.update(self.get_sky_frame_parameters(parameters))
         return parameters
@@ -1022,7 +1166,7 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
             )
         return float(log_likelihood)
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
         waveform_polarizations = self._waveform_polarizations_frequency_domain(parameters)
         if waveform_polarizations is None:
@@ -1043,17 +1187,29 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
         return float(log_likelihood)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
+        return self._noise_log_likelihood_from_parameters(dict())
 
-    def log_likelihood_ratio(self, parameters=None):
+    def _validate_active_noise_parameters(self, parameters):
+        return True
+
+    def log_likelihood_ratio(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
+        if not self._validate_active_noise_parameters(parameters):
+            return np.nan_to_num(-np.inf)
         return float(
             self.log_likelihood(parameters=parameters)
             - self._noise_log_likelihood_from_parameters(parameters)
         )
 
-    def compute_per_detector_log_likelihood(self, parameters=None):
+    def compute_per_detector_log_likelihood(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
+        if not self._validate_active_noise_parameters(parameters):
+            for interferometer in self.interferometers:
+                parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(
+                    -np.inf
+                )
+            return parameters.copy()
+
         waveform_polarizations = self._waveform_polarizations_frequency_domain(parameters)
         if waveform_polarizations is None:
             for interferometer in self.interferometers:
@@ -1066,21 +1222,28 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
                 parameters=parameters,
                 waveform_polarizations=waveform_polarizations,
             )
-            parameters[f"{interferometer.name}_log_likelihood"] = self._compute_detector_log_likelihood(
+            signal_log_likelihood = self._compute_detector_log_likelihood(
                 interferometer=interferometer,
                 residuals=residuals,
                 parameters=parameters,
+            )
+            noise_log_likelihood = self._compute_detector_log_likelihood(
+                interferometer=interferometer,
+                residuals=self._data_time_domain(interferometer),
+                parameters=parameters,
+            )
+            parameters[f"{interferometer.name}_log_likelihood"] = float(
+                signal_log_likelihood - noise_log_likelihood
             )
         return parameters.copy()
 
 
 class _StudentTTimeDomainNoiseOnlyLikelihood(Likelihood):
     def __init__(self, student_likelihood):
-        super().__init__(parameters=student_likelihood._get_default_nu_parameter_dict())
+        super().__init__()
         self.student_likelihood = student_likelihood
 
-    def log_likelihood(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
+    def log_likelihood(self, parameters):
         return self.student_likelihood._noise_log_likelihood_from_parameters(parameters)
 
     def noise_log_likelihood(self):
@@ -1127,6 +1290,7 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
             likelihood_method=likelihood_method,
             time_bands=time_bands,
             time_band_boundaries=time_band_boundaries,
+            detector_dependent_noise=detector_dependent_noise,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -1153,18 +1317,6 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         if not self._valid_nu_values(self._fixed_nu):
             raise ValueError("All nu values must be positive and finite")
 
-        if self.infer_nu:
-            if not self.detector_dependent_noise:
-                for key, value in zip(self.nu_parameter_keys, self._fixed_nu):
-                    self._parameters.setdefault(key, float(value))
-            else:
-                for detector_index, detector_name in enumerate(self._detector_names):
-                    for band_index in range(self._number_of_time_bands):
-                        self._parameters.setdefault(
-                            self._detector_nu_parameter_key(detector_name, band_index),
-                            float(self._fixed_nu[detector_index, band_index]),
-                        )
-
     @property
     def meta_data(self):
         meta_data = super().meta_data
@@ -1181,22 +1333,25 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
     def noise_parameter_keys(self):
         if not self.infer_nu:
             return []
-        return list(self.nu_parameter_keys)
+        keys = list(self.nu_parameter_keys)
+        if "nu" not in keys:
+            keys.insert(0, "nu")
+        return keys
 
     @property
     def nu_parameter_keys(self):
         if not self.detector_dependent_noise:
             if self._number_of_time_bands == 1:
                 return ["nu"]
-            return [f"nu_{index}" for index in range(1, self._number_of_time_bands + 1)]
+            return [f"nu_{suffix}" for suffix in self._time_band_suffixes()]
 
         if self._number_of_time_bands == 1:
             return [f"nu_{detector_name}" for detector_name in self._detector_names]
 
         return [
-            f"nu_{detector_name}_{index}"
+            f"nu_{detector_name}_{suffix}"
             for detector_name in self._detector_names
-            for index in range(1, self._number_of_time_bands + 1)
+            for suffix in self._time_band_suffixes(detector_name)
         ]
 
     def _use_time_band_cache(self):
@@ -1248,13 +1403,14 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
     def _detector_nu_parameter_key(self, detector_name, band_index):
         if self._number_of_time_bands == 1:
             return f"nu_{detector_name}"
-        return f"nu_{detector_name}_{band_index + 1}"
+        suffix = self._time_band_suffixes(detector_name)[band_index]
+        return f"nu_{detector_name}_{suffix}"
 
     def _get_nu_values(self, parameters):
         if not self.infer_nu:
             return self._fixed_nu
 
-        if "nu" in parameters and not self.detector_dependent_noise:
+        if "nu" in parameters:
             return self._coerce_nu_array(parameters["nu"])
 
         if not self.detector_dependent_noise:
@@ -1277,18 +1433,6 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
             ]
         )
 
-    def _store_nu_values(self, nu_values):
-        if not self.detector_dependent_noise:
-            for key, value in zip(self.nu_parameter_keys, nu_values):
-                self._parameters[key] = float(value)
-            return
-
-        for detector_index, detector_name in enumerate(self._detector_names):
-            for band_index in range(self._number_of_time_bands):
-                self._parameters[
-                    self._detector_nu_parameter_key(detector_name, band_index)
-                ] = float(nu_values[detector_index, band_index])
-
     def _band_nu(self, parameters, interferometer_name, band_index):
         nu_values = self._get_nu_values(parameters)
         if not self.detector_dependent_noise:
@@ -1296,13 +1440,14 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         detector_index = self._detector_names.index(interferometer_name)
         return float(nu_values[detector_index, band_index])
 
-    def _get_active_nu_values(self, parameters, update_state=False):
+    def _get_active_nu_values(self, parameters):
         nu_values = self._get_nu_values(parameters)
-        if update_state and self.infer_nu:
-            self._store_nu_values(nu_values)
         if not self._valid_nu_values(nu_values):
             return None
         return nu_values
+
+    def _validate_active_noise_parameters(self, parameters):
+        return self._get_active_nu_values(parameters) is not None
 
     def _log_likelihood_from_inner_product(
         self, residuals_inner_product, cache, dimension, interferometer_name, band_index, parameters
@@ -1315,23 +1460,22 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
             nu=nu,
         )
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
-        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
         return super().log_likelihood(parameters=parameters)
 
     def _noise_log_likelihood_from_parameters(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        nu_values = self._get_active_nu_values(parameters, update_state=False)
+        nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
         return super()._noise_log_likelihood_from_parameters(parameters)
 
     def _get_default_nu_parameter_dict(self):
-        parameters = self._parameters.copy() if self._parameters is not None else dict()
-        nu_values = self._get_nu_values(parameters)
+        nu_values = self._get_nu_values(dict())
         return {
             key: float(value)
             for key, value in zip(self.nu_parameter_keys, np.ravel(nu_values))
@@ -1345,12 +1489,33 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
 
         default_nu_parameters = self._get_default_nu_parameter_dict()
         noise_priors = PriorDict()
+
+        if "nu" not in default_nu_parameters and "nu" in priors:
+            conflicting_keys = [
+                key for key in default_nu_parameters if key in priors
+            ]
+            if conflicting_keys:
+                raise ValueError(
+                    "Specify either the shared nu prior or per-band/per-detector "
+                    "nu priors, not both"
+                )
+            noise_priors["nu"] = deepcopy(priors["nu"])
+            return noise_priors
+
         for key, value in default_nu_parameters.items():
             if key in priors:
                 noise_priors[key] = deepcopy(priors[key])
             else:
                 noise_priors[key] = DeltaFunction(peak=value, name=key)
         return noise_priors
+
+    def _get_noise_evidence_parameter_dict(self, noise_priors):
+        parameters = self._get_default_nu_parameter_dict()
+        for key in noise_priors.fixed_keys:
+            parameters[key] = float(noise_priors[key].peak)
+        if "nu" in noise_priors and "nu" not in parameters:
+            parameters["nu"] = float(np.ravel(self._fixed_nu)[0])
+        return parameters
 
     def _build_noise_parameter_blocks(self):
         blocks = dict()
@@ -1415,7 +1580,20 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         return float(log_likelihood)
 
     def _noise_log_evidence_by_quadrature(self, noise_priors):
-        base_parameters = self._get_default_nu_parameter_dict()
+        base_parameters = self._get_noise_evidence_parameter_dict(noise_priors)
+        if "nu" in noise_priors:
+            return _factorized_noise_log_evidence_by_quadrature(
+                blocks=[dict(keys=("nu",))],
+                noise_priors=noise_priors,
+                base_parameters=base_parameters,
+                block_log_likelihood=lambda block, parameters: (
+                    self._noise_log_likelihood_from_parameters(parameters)
+                ),
+                epsabs=self._NOISE_EVIDENCE_QUADRATURE_EPSABS,
+                epsrel=self._NOISE_EVIDENCE_QUADRATURE_EPSREL,
+                limit=self._NOISE_EVIDENCE_QUADRATURE_LIMIT,
+                error_label="Student-t",
+            )
         return _factorized_noise_log_evidence_by_quadrature(
             blocks=self._build_noise_parameter_blocks(),
             noise_priors=noise_priors,
@@ -1452,20 +1630,13 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
         )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
-        if priors is None:
-            sampled_parameters = []
-        elif isinstance(priors, PriorDict):
-            sampled_parameters = priors.non_fixed_keys
-        else:
-            sampled_parameters = PriorDict(priors).non_fixed_keys
-
-        if not self.has_parameter_dependent_noise_likelihood(sampled_parameters):
+        if not self.infer_nu:
             return self.noise_log_likelihood()
 
         noise_priors = self._get_noise_evidence_priors(priors)
         if len(noise_priors.non_fixed_keys) == 0:
             return self._noise_log_likelihood_from_parameters(
-                self._get_default_nu_parameter_dict()
+                self._get_noise_evidence_parameter_dict(noise_priors)
             )
 
         if self.noise_evidence_method == "quadrature":
@@ -1478,11 +1649,9 @@ class StudentTTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTr
 class _HyperbolicTimeDomainNoiseOnlyLikelihood(Likelihood):
     def __init__(self, hyperbolic_likelihood):
         super().__init__()
-        self._parameters.update(hyperbolic_likelihood._get_default_shape_parameter_dict())
         self.hyperbolic_likelihood = hyperbolic_likelihood
 
-    def log_likelihood(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
+    def log_likelihood(self, parameters):
         return self.hyperbolic_likelihood._noise_log_likelihood_from_parameters(parameters)
 
     def noise_log_likelihood(self):
@@ -1531,6 +1700,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             likelihood_method=likelihood_method,
             time_bands=time_bands,
             time_band_boundaries=time_band_boundaries,
+            detector_dependent_noise=detector_dependent_noise,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -1561,29 +1731,6 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         if not self._valid_positive_values(self._fixed_delta):
             raise ValueError("All delta values must be positive and finite")
 
-        if self.infer_alpha:
-            if not self.detector_dependent_noise:
-                for key, value in zip(self.alpha_parameter_keys, self._fixed_alpha):
-                    self._parameters.setdefault(key, float(value))
-            else:
-                for detector_index, detector_name in enumerate(self._detector_names):
-                    for band_index in range(self._number_of_time_bands):
-                        self._parameters.setdefault(
-                            self._detector_parameter_key("alpha", detector_name, band_index),
-                            float(self._fixed_alpha[detector_index, band_index]),
-                        )
-        if self.infer_delta:
-            if not self.detector_dependent_noise:
-                for key, value in zip(self.delta_parameter_keys, self._fixed_delta):
-                    self._parameters.setdefault(key, float(value))
-            else:
-                for detector_index, detector_name in enumerate(self._detector_names):
-                    for band_index in range(self._number_of_time_bands):
-                        self._parameters.setdefault(
-                            self._detector_parameter_key("delta", detector_name, band_index),
-                            float(self._fixed_delta[detector_index, band_index]),
-                        )
-
     @property
     def meta_data(self):
         meta_data = super().meta_data
@@ -1612,13 +1759,13 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         if not self.detector_dependent_noise:
             if self._number_of_time_bands == 1:
                 return ["alpha"]
-            return [f"alpha_{index}" for index in range(1, self._number_of_time_bands + 1)]
+            return [f"alpha_{suffix}" for suffix in self._time_band_suffixes()]
         if self._number_of_time_bands == 1:
             return [f"alpha_{detector_name}" for detector_name in self._detector_names]
         return [
-            f"alpha_{detector_name}_{index}"
+            f"alpha_{detector_name}_{suffix}"
             for detector_name in self._detector_names
-            for index in range(1, self._number_of_time_bands + 1)
+            for suffix in self._time_band_suffixes(detector_name)
         ]
 
     @property
@@ -1626,13 +1773,13 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         if not self.detector_dependent_noise:
             if self._number_of_time_bands == 1:
                 return ["delta"]
-            return [f"delta_{index}" for index in range(1, self._number_of_time_bands + 1)]
+            return [f"delta_{suffix}" for suffix in self._time_band_suffixes()]
         if self._number_of_time_bands == 1:
             return [f"delta_{detector_name}" for detector_name in self._detector_names]
         return [
-            f"delta_{detector_name}_{index}"
+            f"delta_{detector_name}_{suffix}"
             for detector_name in self._detector_names
-            for index in range(1, self._number_of_time_bands + 1)
+            for suffix in self._time_band_suffixes(detector_name)
         ]
 
     def _use_time_band_cache(self):
@@ -1684,7 +1831,8 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
     def _detector_parameter_key(self, parameter_name, detector_name, band_index):
         if self._number_of_time_bands == 1:
             return f"{parameter_name}_{detector_name}"
-        return f"{parameter_name}_{detector_name}_{band_index + 1}"
+        suffix = self._time_band_suffixes(detector_name)[band_index]
+        return f"{parameter_name}_{detector_name}_{suffix}"
 
     def _get_parameter_values(self, parameters, parameter_name, infer_flag, fixed_values):
         if not infer_flag:
@@ -1719,19 +1867,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             parameter_name,
         )
 
-    def _store_parameter_values(self, parameter_name, parameter_keys, parameter_values):
-        if not self.detector_dependent_noise:
-            for key, value in zip(parameter_keys, parameter_values):
-                self._parameters[key] = float(value)
-            return
-
-        for detector_index, detector_name in enumerate(self._detector_names):
-            for band_index in range(self._number_of_time_bands):
-                self._parameters[
-                    self._detector_parameter_key(parameter_name, detector_name, band_index)
-                ] = float(parameter_values[detector_index, band_index])
-
-    def _get_active_shape_parameters(self, parameters, update_state=False):
+    def _get_active_shape_parameters(self, parameters):
         alpha_values = self._get_parameter_values(
             parameters, "alpha", self.infer_alpha, self._fixed_alpha
         )
@@ -1739,21 +1875,21 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             parameters, "delta", self.infer_delta, self._fixed_delta
         )
 
-        if update_state:
-            if self.infer_alpha:
-                self._store_parameter_values("alpha", self.alpha_parameter_keys, alpha_values)
-            if self.infer_delta:
-                self._store_parameter_values("delta", self.delta_parameter_keys, delta_values)
-
         if not self._valid_positive_values(alpha_values):
             return None, None
         if not self._valid_positive_values(delta_values):
             return None, None
         return alpha_values, delta_values
 
+    def _validate_active_noise_parameters(self, parameters):
+        alpha_values, delta_values = self._get_active_shape_parameters(
+            parameters
+        )
+        return alpha_values is not None and delta_values is not None
+
     def _band_shape_parameters(self, parameters, interferometer_name, band_index):
         alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=False
+            parameters
         )
         if alpha_values is None or delta_values is None:
             return None, None
@@ -1779,10 +1915,10 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             delta=delta,
         )
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
         alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=True
+            parameters
         )
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
@@ -1791,14 +1927,14 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
     def _noise_log_likelihood_from_parameters(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
         alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=False
+            parameters
         )
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
         return super()._noise_log_likelihood_from_parameters(parameters)
 
     def _get_default_shape_parameter_dict(self):
-        parameters = self._parameters.copy() if self._parameters is not None else dict()
+        parameters = dict()
         shape_parameters = dict()
         alpha_values = self._get_parameter_values(
             parameters, "alpha", self.infer_alpha, self._fixed_alpha
@@ -1836,6 +1972,12 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
             else:
                 noise_priors[key] = DeltaFunction(peak=value, name=key)
         return noise_priors
+
+    def _get_noise_evidence_parameter_dict(self, noise_priors):
+        parameters = self._get_default_shape_parameter_dict()
+        for key in noise_priors.fixed_keys:
+            parameters[key] = float(noise_priors[key].peak)
+        return parameters
 
     def _build_noise_parameter_blocks(self):
         blocks = dict()
@@ -1918,7 +2060,7 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         return float(log_likelihood)
 
     def _noise_log_evidence_by_quadrature(self, noise_priors):
-        base_parameters = self._get_default_shape_parameter_dict()
+        base_parameters = self._get_noise_evidence_parameter_dict(noise_priors)
         return _factorized_noise_log_evidence_by_quadrature(
             blocks=self._build_noise_parameter_blocks(),
             noise_priors=noise_priors,
@@ -1955,20 +2097,13 @@ class HyperbolicTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWave
         )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
-        if priors is None:
-            sampled_parameters = []
-        elif isinstance(priors, PriorDict):
-            sampled_parameters = priors.non_fixed_keys
-        else:
-            sampled_parameters = PriorDict(priors).non_fixed_keys
-
-        if not self.has_parameter_dependent_noise_likelihood(sampled_parameters):
+        if not (self.infer_alpha or self.infer_delta):
             return self.noise_log_likelihood()
 
         noise_priors = self._get_noise_evidence_priors(priors)
         if len(noise_priors.non_fixed_keys) == 0:
             return self._noise_log_likelihood_from_parameters(
-                self._get_default_shape_parameter_dict()
+                self._get_noise_evidence_parameter_dict(noise_priors)
             )
 
         if self.noise_evidence_method == "quadrature":
@@ -2019,6 +2154,7 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             likelihood_method=likelihood_method,
             time_bands=time_bands,
             time_band_boundaries=time_band_boundaries,
+            detector_dependent_noise=detector_dependent_noise,
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -2079,12 +2215,16 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             likelihood_class=StudentTTimeDomainGravitationalWaveTransient,
             interferometers=interferometers,
             waveform_generator=waveform_generator,
-            nu=nu,
+            nu=self._subset_detector_values(nu, self.student_t_detector_names),
             infer_nu=infer_nu,
             detector_dependent_noise=detector_dependent_noise,
             likelihood_method=likelihood_method,
-            time_bands=time_bands,
-            time_band_boundaries=time_band_boundaries,
+            time_bands=self._subset_time_band_specification(
+                self.time_bands, self.student_t_detector_names
+            ),
+            time_band_boundaries=self._subset_time_band_specification(
+                self.time_band_boundaries, self.student_t_detector_names
+            ),
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -2108,14 +2248,22 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             likelihood_class=HyperbolicTimeDomainGravitationalWaveTransient,
             interferometers=interferometers,
             waveform_generator=waveform_generator,
-            alpha=alpha,
-            delta=delta,
+            alpha=self._subset_detector_values(
+                alpha, self.hyperbolic_detector_names
+            ),
+            delta=self._subset_detector_values(
+                delta, self.hyperbolic_detector_names
+            ),
             infer_alpha=infer_alpha,
             infer_delta=infer_delta,
             detector_dependent_noise=detector_dependent_noise,
             likelihood_method=likelihood_method,
-            time_bands=time_bands,
-            time_band_boundaries=time_band_boundaries,
+            time_bands=self._subset_time_band_specification(
+                self.time_bands, self.hyperbolic_detector_names
+            ),
+            time_band_boundaries=self._subset_time_band_specification(
+                self.time_band_boundaries, self.hyperbolic_detector_names
+            ),
             prefer_time_domain_waveform=prefer_time_domain_waveform,
             time_marginalization=time_marginalization,
             distance_marginalization=distance_marginalization,
@@ -2145,15 +2293,6 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             for detector_name in self._detector_names
         }
 
-        for family_likelihood in [
-            self._student_t_likelihood,
-            self._hyperbolic_likelihood,
-        ]:
-            if family_likelihood is None:
-                continue
-            for key in family_likelihood.noise_parameter_keys:
-                self._parameters.setdefault(key, family_likelihood._parameters[key])
-
     @property
     def meta_data(self):
         meta_data = super().meta_data
@@ -2166,11 +2305,53 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
 
     @staticmethod
     def _subset_interferometers(interferometers, detector_names):
-        return [
-            interferometer
-            for interferometer in interferometers
-            if interferometer.name in detector_names
+        return InterferometerList(
+            [
+                interferometer
+                for interferometer in interferometers
+                if interferometer.name in detector_names
+            ]
+        )
+
+    def _subset_detector_values(self, values, detector_names):
+        if not self.detector_dependent_noise:
+            return values
+
+        values = np.asarray(values)
+        detector_indices = [
+            self._detector_names.index(detector_name)
+            for detector_name in detector_names
         ]
+        if values.ndim == 2 and values.shape[0] == len(self._detector_names):
+            return values[detector_indices]
+        if (
+            self._number_of_time_bands == 1
+            and values.ndim == 1
+            and values.shape == (len(self._detector_names),)
+        ):
+            return values[detector_indices]
+        return values
+
+    @staticmethod
+    def _subset_time_band_specification(time_band_specification, detector_names):
+        if _is_detector_time_band_map(time_band_specification):
+            return {
+                detector_name: time_band_specification[detector_name]
+                for detector_name in detector_names
+            }
+        return time_band_specification
+
+    def _get_default_noise_parameter_dict(self):
+        parameters = dict()
+        if self._student_t_likelihood is not None:
+            parameters.update(
+                self._student_t_likelihood._get_default_nu_parameter_dict()
+            )
+        if self._hyperbolic_likelihood is not None:
+            parameters.update(
+                self._hyperbolic_likelihood._get_default_shape_parameter_dict()
+            )
+        return parameters
 
     def _build_family_likelihood(
         self,
@@ -2201,17 +2382,17 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
             keys.extend(self._hyperbolic_likelihood.noise_parameter_keys)
         return keys
 
-    def _validate_active_noise_parameters(self, parameters, update_state):
+    def _validate_active_noise_parameters(self, parameters):
         if self._student_t_likelihood is not None:
             nu_values = self._student_t_likelihood._get_active_nu_values(
-                parameters, update_state=update_state
+                parameters
             )
             if nu_values is None:
                 return False
         if self._hyperbolic_likelihood is not None:
             alpha_values, delta_values = (
                 self._hyperbolic_likelihood._get_active_shape_parameters(
-                    parameters, update_state=update_state
+                    parameters
                 )
             )
             if alpha_values is None or delta_values is None:
@@ -2229,17 +2410,13 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
 
     def _noise_log_likelihood_from_parameters(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        if not self._validate_active_noise_parameters(
-            parameters, update_state=False
-        ):
+        if not self._validate_active_noise_parameters(parameters):
             return np.nan_to_num(-np.inf)
         return super()._noise_log_likelihood_from_parameters(parameters)
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
-        if not self._validate_active_noise_parameters(
-            parameters, update_state=True
-        ):
+        if not self._validate_active_noise_parameters(parameters):
             return np.nan_to_num(-np.inf)
 
         waveform_polarizations = self._waveform_polarizations_frequency_domain(parameters)
@@ -2261,13 +2438,13 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
         return float(log_likelihood)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
+        return self._noise_log_likelihood_from_parameters(
+            self._get_default_noise_parameter_dict()
+        )
 
-    def compute_per_detector_log_likelihood(self, parameters=None):
+    def compute_per_detector_log_likelihood(self, parameters):
         parameters = self._resolve_signal_likelihood_parameters(parameters)
-        if not self._validate_active_noise_parameters(
-            parameters, update_state=True
-        ):
+        if not self._validate_active_noise_parameters(parameters):
             for interferometer in self.interferometers:
                 parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(
                     -np.inf
@@ -2288,12 +2465,18 @@ class MixedTimeDomainGravitationalWaveTransient(TimeDomainGravitationalWaveTrans
                 parameters=parameters,
                 waveform_polarizations=waveform_polarizations,
             )
-            parameters[f"{interferometer.name}_log_likelihood"] = (
-                self._compute_detector_log_likelihood(
-                    interferometer=interferometer,
-                    residuals=residuals,
-                    parameters=parameters,
-                )
+            signal_log_likelihood = self._compute_detector_log_likelihood(
+                interferometer=interferometer,
+                residuals=residuals,
+                parameters=parameters,
+            )
+            noise_log_likelihood = self._compute_detector_log_likelihood(
+                interferometer=interferometer,
+                residuals=self._data_time_domain(interferometer),
+                parameters=parameters,
+            )
+            parameters[f"{interferometer.name}_log_likelihood"] = float(
+                signal_log_likelihood - noise_log_likelihood
             )
         return parameters.copy()
 

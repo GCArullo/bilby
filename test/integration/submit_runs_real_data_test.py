@@ -205,7 +205,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
     assert (
         "luminosity_distance =  bilby.gw.prior.UniformSourceFrame("
-        "name='luminosity_distance', cosmology=Planck15, maximum=15000.0, "
+        "name='luminosity_distance', cosmology=Planck15, maximum=20000.0, "
         "minimum=10, unit='Mpc')"
     ) in prior_text
     assert (

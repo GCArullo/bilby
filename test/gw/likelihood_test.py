@@ -1358,6 +1358,33 @@ class TestHyperbolicGWTransient(unittest.TestCase):
 
         self.assertNotEqual(logl_split, logl_swapped)
 
+    def test_calculate_snrs_applies_delta_over_alpha_scaling(self):
+        gaussian = bilby.gw.likelihood.GravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+        )
+        pols = self.waveform_generator.frequency_domain_strain(self.parameters)
+        ifo = self.interferometers[0]
+        raw = gaussian.calculate_snrs(
+            pols, ifo, parameters=self.parameters.copy()
+        ).optimal_snr_squared.real
+
+        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=10.0,
+            delta=2.0,
+            infer_alpha=True,
+            infer_delta=True,
+        )
+        parameters = self.parameters.copy()
+        parameters.update(alpha=3.0, delta=7.0)
+        corrected = likelihood.calculate_snrs(
+            pols, ifo, parameters=parameters
+        ).optimal_snr_squared.real
+
+        self.assertAlmostEqual(corrected / raw, 3.0 / 7.0, places=12)
+
     def test_initialization_works_when_parameters_as_state_is_disabled(self):
         previous_level = bilby.core.likelihood.PARAMETERS_AS_STATE
         try:

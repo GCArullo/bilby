@@ -25,3 +25,4 @@ examples/gw_examples/data_examples/GW231123_initial_experiments/
 examples/gw_examples/data_examples/Cluster_runs_and_utils/Priors/
 examples/gw_examples/data_examples/Cluster_runs_and_utils/ini_files/
 examples/gw_examples/data_examples/Cluster_runs_and_utils/GWTC_catalog_configs/*/glitch_data/
+uv.lock

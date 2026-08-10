@@ -13,6 +13,8 @@ from bilby.core.result import ResultError, FileLoadError
 from bilby.core.utils import logger
 
 
+@pytest.mark.array_backend
+@pytest.mark.usefixtures("xp_class")
 class TestJson(unittest.TestCase):
 
     def setUp(self):
@@ -28,12 +30,12 @@ class TestJson(unittest.TestCase):
         self.assertTrue(np.all(data["x"] == decoded["x"]))
 
     def test_array_encoding(self):
-        data = dict(x=np.array([1, 2, 3.4]))
+        data = dict(x=self.xp.asarray([1, 2, 3.4]))
         encoded = json.dumps(data, cls=self.encoder)
         decoded = json.loads(encoded, object_hook=self.decoder)
         self.assertEqual(data.keys(), decoded.keys())
         self.assertEqual(type(data["x"]), type(decoded["x"]))
-        self.assertTrue(np.all(data["x"] == decoded["x"]))
+        self.assertTrue(self.xp.all(data["x"] == decoded["x"]))
 
     def test_complex_encoding(self):
         data = dict(x=1 + 3j)
@@ -801,11 +803,11 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
 
         class SimpleLikelihood(bilby.Likelihood):
             def __init__(self):
-                super().__init__(parameters={"x": None})
+                super().__init__()
                 self.meta_data = {"likelihood_class": "SimpleLikelihood"}
                 self.print_gaussian_limit_diagnostic = MagicMock()
 
-            def log_likelihood(self, parameters=None):
+            def log_likelihood(self, parameters):
                 return -1.0
 
         class FakeSampler:
@@ -873,10 +875,10 @@ class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
 
         class DeferredNoiseLikelihood(bilby.Likelihood):
             def __init__(self):
-                super().__init__(parameters={"x": None})
+                super().__init__()
                 self.meta_data = {"likelihood_class": "DeferredNoiseLikelihood"}
 
-            def log_likelihood(self, parameters=None):
+            def log_likelihood(self, parameters):
                 return -1.0
 
             def noise_log_likelihood(self):
@@ -1316,6 +1318,8 @@ class TestReweight(unittest.TestCase):
         self.assertNotEqual(new.log_evidence, self.result.log_evidence)
 
 
+@pytest.mark.array_backend
+@pytest.mark.usefixtures("xp_class")
 class TestResultSaveAndRead(unittest.TestCase):
 
     @pytest.fixture(autouse=True)
@@ -1341,7 +1345,11 @@ class TestResultSaveAndRead(unittest.TestCase):
             search_parameter_keys=["x", "y"],
             fixed_parameter_keys=["c", "d"],
             priors=priors,
-            sampler_kwargs=dict(test="test", func=lambda x: x),
+            sampler_kwargs=dict(
+                test="test",
+                func=lambda x: x,
+                some_array=self.xp.ones((5, 5)),
+            ),
             injection_parameters=dict(x=0.5, y=0.5),
             meta_data=dict(test="test"),
             sampling_time=100.0,

@@ -1,5 +1,6 @@
 import numpy as np
 
+from ..detector import InterferometerList
 from .base import GravitationalWaveTransient
 from .hyperbolic import HyperbolicGravitationalWaveTransient
 from .studentt import StudentTGravitationalWaveTransient
@@ -166,7 +167,11 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
         ]
 
     def _subset_interferometers(self, detector_names):
-        return [self._interferometers_by_name[name] for name in detector_names]
+        # An InterferometerList, not a plain list, so the base class can read
+        # array_backend off it when it builds the sub-likelihood.
+        return InterferometerList(
+            [self._interferometers_by_name[name] for name in detector_names]
+        )
 
     def _subset_detector_values(self, values, detector_names, num_frequency_bands):
         """Select fixed detector-dependent values from a full network array."""

@@ -500,10 +500,19 @@ def maximum_frequency_for_pesummary(maximum_frequency):
     return maximum_frequency
 
 
+def restrict_to_detectors(mapping, detectors):
+    """Drop the entries of detectors that this run does not analyse."""
+    if detectors is None or not isinstance(mapping, dict):
+        return mapping
+    names = {str(name) for name in detectors}
+    return {key: value for key, value in mapping.items() if key in names}
+
+
 def build_pesummary_arguments(
     template_settings: dict[str, object],
     *,
     page_label: str,
+    detectors: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
     # pesummary names its outputs '<label>_<label>_<parameter>.html' and
@@ -523,10 +532,10 @@ def build_pesummary_arguments(
     )
     calibration = template_settings["spline_calibration_envelope_dict"]
     if calibration not in (None, "None"):
-        arguments["calibration"] = calibration
+        arguments["calibration"] = restrict_to_detectors(calibration, detectors)
     psd_dict = template_settings.get("psd_dict")
     if psd_dict not in (None, "None"):
-        arguments["psd"] = psd_dict
+        arguments["psd"] = restrict_to_detectors(psd_dict, detectors)
     return arguments
 
 
@@ -642,6 +651,7 @@ def render_ini(
             build_pesummary_arguments(
                 template_settings,
                 page_label=Path(outdir).name,
+                detectors=detectors,
             )
         ),
     )

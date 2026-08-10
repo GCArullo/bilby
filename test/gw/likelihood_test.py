@@ -142,9 +142,9 @@ class TestStudentTGWTransient(unittest.TestCase):
             waveform_generator=self.waveform_generator,
             nu=8.0,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -172,9 +172,9 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=band_nus,
             num_frequency_bands=len(band_nus),
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -219,7 +219,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=nu,
             joint=True,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         signal_quadratic_form = 0.0
@@ -264,33 +264,15 @@ class TestStudentTGWTransient(unittest.TestCase):
         )
 
         self.assertAlmostEqual(
-            likelihood.log_likelihood(), float(manual_signal), 7
+            likelihood.log_likelihood(parameters), float(manual_signal), 7
         )
         self.assertAlmostEqual(
             likelihood.noise_log_likelihood(), float(manual_noise), 7
         )
         self.assertAlmostEqual(
-            likelihood.log_likelihood_ratio(),
+            likelihood.log_likelihood_ratio(parameters),
             float(manual_signal - manual_noise),
             7,
-        )
-
-    def test_initialization_does_not_query_deprecated_parameters_property(self):
-        with warnings.catch_warnings(record=True) as caught_warnings:
-            warnings.simplefilter("always")
-            bilby.gw.likelihood.StudentTGravitationalWaveTransient(
-                interferometers=self.interferometers,
-                waveform_generator=self.waveform_generator,
-                nu=[6.0, 12.0],
-                infer_nu=True,
-                num_frequency_bands=2,
-            )
-
-        self.assertFalse(
-            any(
-                "Parameter attribute queried" in str(warning.message)
-                for warning in caught_warnings
-            )
         )
 
     def test_large_nu_matches_gaussian_absolute_likelihood(self):
@@ -349,15 +331,15 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        self.assertIn("nu", likelihood.parameters)
+        self.assertIn("nu", likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
-        self.assertEqual(likelihood.nu, 5.0)
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
+        self.assertEqual(likelihood.nu(parameters), 5.0)
 
-        logl_nu5 = likelihood.log_likelihood()
-        likelihood.parameters["nu"] = 30.0
-        logl_nu30 = likelihood.log_likelihood()
+        logl_nu5 = likelihood.log_likelihood(parameters)
+        parameters["nu"] = 30.0
+        logl_nu30 = likelihood.log_likelihood(parameters)
         self.assertNotEqual(logl_nu5, logl_nu30)
 
     def test_infer_nu_uses_per_band_parameters(self):
@@ -368,19 +350,19 @@ class TestStudentTGWTransient(unittest.TestCase):
             infer_nu=True,
             num_frequency_bands=2,
         )
-        self.assertIn("nu_1", likelihood.parameters)
-        self.assertIn("nu_2", likelihood.parameters)
+        self.assertIn("nu_1", likelihood.noise_parameter_keys)
+        self.assertIn("nu_2", likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu_1"] = 4.0
-        likelihood.parameters["nu_2"] = 30.0
+        parameters = self.parameters.copy()
+        parameters["nu_1"] = 4.0
+        parameters["nu_2"] = 30.0
 
-        np.testing.assert_allclose(likelihood.nu, np.array([4.0, 30.0]))
+        np.testing.assert_allclose(likelihood.nu(parameters), np.array([4.0, 30.0]))
 
-        logl_split = likelihood.log_likelihood()
-        likelihood.parameters["nu_1"] = 30.0
-        likelihood.parameters["nu_2"] = 4.0
-        logl_swapped = likelihood.log_likelihood()
+        logl_split = likelihood.log_likelihood(parameters)
+        parameters["nu_1"] = 30.0
+        parameters["nu_2"] = 4.0
+        logl_swapped = likelihood.log_likelihood(parameters)
 
         self.assertNotEqual(logl_split, logl_swapped)
 
@@ -430,10 +412,10 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = -1
+        parameters = self.parameters.copy()
+        parameters["nu"] = -1
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
     def test_invalid_per_band_nu_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
@@ -443,11 +425,11 @@ class TestStudentTGWTransient(unittest.TestCase):
             infer_nu=True,
             num_frequency_bands=2,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu_1"] = 8.0
-        likelihood.parameters["nu_2"] = -1.0
+        parameters = self.parameters.copy()
+        parameters["nu_1"] = 8.0
+        parameters["nu_2"] = -1.0
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
     def test_noise_log_evidence_defaults_to_quadrature_for_sampled_nu(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
@@ -456,8 +438,8 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
         priors = bilby.core.prior.PriorDict(
             dict(nu=bilby.core.prior.Uniform(2.1, 50.0, name="nu"))
         )
@@ -484,8 +466,8 @@ class TestStudentTGWTransient(unittest.TestCase):
             infer_nu=True,
             noise_evidence_method="nested",
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
         priors = bilby.core.prior.PriorDict(
             dict(nu=bilby.core.prior.Uniform(2.1, 50.0, name="nu"))
         )
@@ -513,8 +495,8 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
         priors = bilby.core.prior.PriorDict(
             dict(nu=bilby.core.prior.DeltaFunction(peak=5.0, name="nu"))
         )
@@ -535,8 +517,8 @@ class TestStudentTGWTransient(unittest.TestCase):
             noise_evidence_nlive=256,
             dlogz_noise=0.03,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
         priors = bilby.core.prior.PriorDict(
             dict(nu=bilby.core.prior.Uniform(2.1, 50.0, name="nu"))
         )
@@ -557,9 +539,9 @@ class TestStudentTGWTransient(unittest.TestCase):
             infer_nu=True,
             num_frequency_bands=2,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu_1"] = 5.0
-        likelihood.parameters["nu_2"] = 10.0
+        parameters = self.parameters.copy()
+        parameters["nu_1"] = 5.0
+        parameters["nu_2"] = 10.0
         priors = bilby.core.prior.PriorDict(
             dict(
                 nu_1=bilby.core.prior.Uniform(2.1, 50.0, name="nu_1"),
@@ -594,10 +576,10 @@ class TestStudentTGWTransient(unittest.TestCase):
             infer_nu=True,
             num_frequency_bands=3,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu_1"] = 5.0
-        likelihood.parameters["nu_2"] = 10.0
-        likelihood.parameters["nu_3"] = 20.0
+        parameters = self.parameters.copy()
+        parameters["nu_1"] = 5.0
+        parameters["nu_2"] = 10.0
+        parameters["nu_3"] = 20.0
         priors = bilby.core.prior.PriorDict(
             dict(
                 nu_1=bilby.core.prior.Uniform(2.1, 50.0, name="nu_1"),
@@ -710,48 +692,6 @@ class TestStudentTGWTransient(unittest.TestCase):
             7,
         )
 
-    def test_log_likelihood_uses_stored_sky_parameters_as_fallback(self):
-        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
-            interferometers=self.interferometers,
-            waveform_generator=self.waveform_generator,
-            nu=8.0,
-        )
-        likelihood.parameters = self.parameters.copy()
-
-        sampled_parameters = {
-            key: value
-            for key, value in self.parameters.items()
-            if key not in {"ra", "dec", "geocent_time"}
-        }
-
-        self.assertEqual(
-            likelihood.log_likelihood(sampled_parameters),
-            likelihood.log_likelihood(self.parameters),
-        )
-
-    def test_log_likelihood_fallback_avoids_deprecated_parameter_query_warning(self):
-        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
-            interferometers=self.interferometers,
-            waveform_generator=self.waveform_generator,
-            nu=8.0,
-        )
-        likelihood._parameters = self.parameters.copy()
-
-        with warnings.catch_warnings(record=True) as caught_warnings:
-            warnings.simplefilter("always")
-            likelihood.log_likelihood()
-
-        warning_messages = [str(warning.message) for warning in caught_warnings]
-        self.assertTrue(
-            any(
-                "No parameters provided in likelihood call" in message
-                for message in warning_messages
-            )
-        )
-        self.assertFalse(
-            any("Parameter attribute queried" in message for message in warning_messages)
-        )
-
     def test_log_likelihood_ratio_matches_noise_subtraction_and_per_detector_output(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
@@ -759,13 +699,22 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
 
-        log_likelihood = likelihood.log_likelihood()
-        noise_log_likelihood = likelihood.noise_log_likelihood()
-        log_likelihood_ratio = likelihood.log_likelihood_ratio()
-        per_detector = likelihood.compute_per_detector_log_likelihood(self.parameters.copy())
+        # noise_log_likelihood() takes no parameters, so it is evaluated at the
+        # nu fixed at initialisation. The noise term subtracted by
+        # log_likelihood_ratio is the one at the sampled nu instead.
+        sampled_nu_likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=5.0,
+        )
+
+        log_likelihood = likelihood.log_likelihood(parameters)
+        noise_log_likelihood = sampled_nu_likelihood.noise_log_likelihood()
+        log_likelihood_ratio = likelihood.log_likelihood_ratio(parameters)
+        per_detector = likelihood.compute_per_detector_log_likelihood(parameters)
 
         self.assertAlmostEqual(
             log_likelihood - noise_log_likelihood, log_likelihood_ratio, 7
@@ -787,9 +736,9 @@ class TestStudentTGWTransient(unittest.TestCase):
             num_frequency_bands=2,
             detector_dependent_noise=True,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -837,23 +786,23 @@ class TestStudentTGWTransient(unittest.TestCase):
         )
 
         for key in ["nu_H1_1", "nu_H1_2", "nu_L1_1", "nu_L1_2"]:
-            self.assertIn(key, likelihood.parameters)
+            self.assertIn(key, likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters.update(
+        parameters = self.parameters.copy()
+        parameters.update(
             {"nu_H1_1": 4.0, "nu_H1_2": 30.0, "nu_L1_1": 8.0, "nu_L1_2": 15.0}
         )
 
         np.testing.assert_allclose(
-            likelihood.nu,
+            likelihood.nu(parameters),
             np.array([[4.0, 30.0], [8.0, 15.0]]),
         )
 
-        logl_a = likelihood.log_likelihood()
-        likelihood.parameters.update(
+        logl_a = likelihood.log_likelihood(parameters)
+        parameters.update(
             {"nu_H1_1": 30.0, "nu_H1_2": 4.0, "nu_L1_1": 8.0, "nu_L1_2": 15.0}
         )
-        logl_b = likelihood.log_likelihood()
+        logl_b = likelihood.log_likelihood(parameters)
 
         self.assertNotEqual(logl_a, logl_b)
 
@@ -870,10 +819,10 @@ class TestStudentTGWTransient(unittest.TestCase):
             num_frequency_bands=2,
         )
 
-        self.assertIn("nu_1", likelihood.parameters)
-        self.assertIn("nu_2", likelihood.parameters)
-        self.assertNotIn("nu_H1_1", likelihood.parameters)
-        self.assertNotIn("nu_L1_1", likelihood.parameters)
+        self.assertIn("nu_1", likelihood.noise_parameter_keys)
+        self.assertIn("nu_2", likelihood.noise_parameter_keys)
+        self.assertNotIn("nu_H1_1", likelihood.noise_parameter_keys)
+        self.assertNotIn("nu_L1_1", likelihood.noise_parameter_keys)
 
     def test_gw231123_style_student_t_injection_prefers_student_model(self):
         duration = 8.0
@@ -1042,9 +991,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             alpha=alpha,
             delta=delta,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -1076,9 +1025,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             delta=band_deltas,
             num_frequency_bands=len(band_alphas),
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -1128,10 +1077,11 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             delta=band_deltas,
             frequency_band_edges=equal_width._frequency_band_edges,
         )
-        equal_width.parameters = self.parameters.copy()
-        explicit.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
         self.assertEqual(explicit.num_frequency_bands, 2)
-        self.assertEqual(equal_width.log_likelihood(), explicit.log_likelihood())
+        self.assertEqual(
+            equal_width.log_likelihood(parameters), explicit.log_likelihood(parameters)
+        )
 
         network = bilby.gw.detector.InterferometerList(["H1", "L1"])
         network.set_strain_data_from_power_spectral_densities(
@@ -1181,9 +1131,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             delta=delta,
             joint=True,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         network_frequencies = np.unique(
@@ -1235,9 +1185,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             alpha=alpha,
             delta=delta,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -1283,7 +1233,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             likelihood.noise_log_likelihood(), float(manual_noise), 7
         )
         self.assertAlmostEqual(
-            likelihood.log_likelihood_ratio(),
+            likelihood.log_likelihood_ratio(parameters),
             float(manual - manual_noise),
             7,
         )
@@ -1295,15 +1245,15 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             alpha=10.0,
             infer_alpha=True,
         )
-        self.assertIn("alpha", likelihood.parameters)
+        self.assertIn("alpha", likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = 4.0
-        self.assertEqual(likelihood.alpha, 4.0)
+        parameters = self.parameters.copy()
+        parameters["alpha"] = 4.0
+        self.assertEqual(likelihood.alpha(parameters), 4.0)
 
-        logl_alpha4 = likelihood.log_likelihood()
-        likelihood.parameters["alpha"] = 40.0
-        logl_alpha40 = likelihood.log_likelihood()
+        logl_alpha4 = likelihood.log_likelihood(parameters)
+        parameters["alpha"] = 40.0
+        logl_alpha40 = likelihood.log_likelihood(parameters)
         self.assertNotEqual(logl_alpha4, logl_alpha40)
 
     def test_infer_delta_uses_parameter_dict(self):
@@ -1314,15 +1264,15 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             delta=1.0,
             infer_delta=True,
         )
-        self.assertIn("delta", likelihood.parameters)
+        self.assertIn("delta", likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["delta"] = 0.5
-        self.assertEqual(likelihood.delta, 0.5)
+        parameters = self.parameters.copy()
+        parameters["delta"] = 0.5
+        self.assertEqual(likelihood.delta(parameters), 0.5)
 
-        logl_delta05 = likelihood.log_likelihood()
-        likelihood.parameters["delta"] = 2.5
-        logl_delta25 = likelihood.log_likelihood()
+        logl_delta05 = likelihood.log_likelihood(parameters)
+        parameters["delta"] = 2.5
+        logl_delta25 = likelihood.log_likelihood(parameters)
         self.assertNotEqual(logl_delta05, logl_delta25)
 
     def test_infer_alpha_and_delta_use_per_band_parameters(self):
@@ -1335,26 +1285,26 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_delta=True,
             num_frequency_bands=2,
         )
-        self.assertIn("alpha_1", likelihood.parameters)
-        self.assertIn("alpha_2", likelihood.parameters)
-        self.assertIn("delta_1", likelihood.parameters)
-        self.assertIn("delta_2", likelihood.parameters)
+        self.assertIn("alpha_1", likelihood.noise_parameter_keys)
+        self.assertIn("alpha_2", likelihood.noise_parameter_keys)
+        self.assertIn("delta_1", likelihood.noise_parameter_keys)
+        self.assertIn("delta_2", likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha_1"] = 4.0
-        likelihood.parameters["alpha_2"] = 40.0
-        likelihood.parameters["delta_1"] = 0.5
-        likelihood.parameters["delta_2"] = 2.5
+        parameters = self.parameters.copy()
+        parameters["alpha_1"] = 4.0
+        parameters["alpha_2"] = 40.0
+        parameters["delta_1"] = 0.5
+        parameters["delta_2"] = 2.5
 
-        np.testing.assert_allclose(likelihood.alpha, np.array([4.0, 40.0]))
-        np.testing.assert_allclose(likelihood.delta, np.array([0.5, 2.5]))
+        np.testing.assert_allclose(likelihood.alpha(parameters), np.array([4.0, 40.0]))
+        np.testing.assert_allclose(likelihood.delta(parameters), np.array([0.5, 2.5]))
 
-        logl_split = likelihood.log_likelihood()
-        likelihood.parameters["alpha_1"] = 40.0
-        likelihood.parameters["alpha_2"] = 4.0
-        likelihood.parameters["delta_1"] = 2.5
-        likelihood.parameters["delta_2"] = 0.5
-        logl_swapped = likelihood.log_likelihood()
+        logl_split = likelihood.log_likelihood(parameters)
+        parameters["alpha_1"] = 40.0
+        parameters["alpha_2"] = 4.0
+        parameters["delta_1"] = 2.5
+        parameters["delta_2"] = 0.5
+        logl_swapped = likelihood.log_likelihood(parameters)
 
         self.assertNotEqual(logl_split, logl_swapped)
 
@@ -1385,40 +1335,35 @@ class TestHyperbolicGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(corrected / raw, 3.0 / 7.0, places=12)
 
-    def test_initialization_works_when_parameters_as_state_is_disabled(self):
-        previous_level = bilby.core.likelihood.PARAMETERS_AS_STATE
-        try:
-            bilby.core.likelihood.set_parameters_as_state("FALSE")
-            likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
-                interferometers=self.interferometers,
-                waveform_generator=self.waveform_generator,
-                alpha=[10.0, 12.0],
-                delta=[1.0, 1.5],
-                infer_alpha=True,
-                infer_delta=True,
-                num_frequency_bands=2,
-                noise_evidence_method="nested",
+    def test_noise_evidence_uses_shape_parameters_fixed_at_initialization(self):
+        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            alpha=[10.0, 12.0],
+            delta=[1.0, 1.5],
+            infer_alpha=True,
+            infer_delta=True,
+            num_frequency_bands=2,
+            noise_evidence_method="nested",
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                alpha_1=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_1"),
+                alpha_2=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_2"),
+                delta_1=bilby.core.prior.Uniform(0.5, 5.0, name="delta_1"),
+                delta_2=bilby.core.prior.Uniform(0.5, 5.0, name="delta_2"),
             )
-            priors = bilby.core.prior.PriorDict(
-                dict(
-                    alpha_1=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_1"),
-                    alpha_2=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_2"),
-                    delta_1=bilby.core.prior.Uniform(0.5, 5.0, name="delta_1"),
-                    delta_2=bilby.core.prior.Uniform(0.5, 5.0, name="delta_2"),
-                )
-            )
-            with patch(
-                "bilby.core.sampler.run_sampler",
-                return_value=MagicMock(log_evidence=-10.0),
-            ):
-                noise_log_evidence = likelihood.noise_log_evidence(priors=priors)
-        finally:
-            bilby.core.likelihood.set_parameters_as_state(previous_level)
+        )
+        with patch(
+            "bilby.core.sampler.run_sampler",
+            return_value=MagicMock(log_evidence=-10.0),
+        ):
+            noise_log_evidence = likelihood.noise_log_evidence(priors=priors)
 
-        self.assertEqual(likelihood._parameters["alpha_1"], 10.0)
-        self.assertEqual(likelihood._parameters["alpha_2"], 12.0)
-        self.assertEqual(likelihood._parameters["delta_1"], 1.0)
-        self.assertEqual(likelihood._parameters["delta_2"], 1.5)
+        self.assertEqual(
+            likelihood._get_default_shape_parameter_dict(),
+            dict(alpha_1=10.0, alpha_2=12.0, delta_1=1.0, delta_2=1.5),
+        )
         self.assertEqual(noise_log_evidence, -10.0)
 
     def test_meta_data_includes_hyperbolic_configuration(self):
@@ -1483,9 +1428,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             num_frequency_bands=2,
             detector_dependent_noise=True,
         )
-        likelihood.parameters = self.parameters.copy()
+        parameters = self.parameters.copy()
 
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -1546,10 +1491,10 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             "delta_L1_1",
             "delta_L1_2",
         ]:
-            self.assertIn(key, likelihood.parameters)
+            self.assertIn(key, likelihood.noise_parameter_keys)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters.update(
+        parameters = self.parameters.copy()
+        parameters.update(
             {
                 "alpha_H1_1": 4.0,
                 "alpha_H1_2": 40.0,
@@ -1563,16 +1508,16 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         )
 
         np.testing.assert_allclose(
-            likelihood.alpha,
+            likelihood.alpha(parameters),
             np.array([[4.0, 40.0], [8.0, 15.0]]),
         )
         np.testing.assert_allclose(
-            likelihood.delta,
+            likelihood.delta(parameters),
             np.array([[0.5, 2.5], [1.0, 1.8]]),
         )
 
-        logl_a = likelihood.log_likelihood()
-        likelihood.parameters.update(
+        logl_a = likelihood.log_likelihood(parameters)
+        parameters.update(
             {
                 "alpha_H1_1": 40.0,
                 "alpha_H1_2": 4.0,
@@ -1580,7 +1525,7 @@ class TestHyperbolicGWTransient(unittest.TestCase):
                 "delta_H1_2": 0.5,
             }
         )
-        logl_b = likelihood.log_likelihood()
+        logl_b = likelihood.log_likelihood(parameters)
 
         self.assertNotEqual(logl_a, logl_b)
 
@@ -1591,10 +1536,10 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             alpha=10.0,
             infer_alpha=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = -1.0
+        parameters = self.parameters.copy()
+        parameters["alpha"] = -1.0
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
     def test_invalid_delta_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
@@ -1604,10 +1549,10 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             delta=1.0,
             infer_delta=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["delta"] = -1.0
+        parameters = self.parameters.copy()
+        parameters["delta"] = -1.0
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
     def test_invalid_per_band_alpha_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
@@ -1617,11 +1562,11 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_alpha=True,
             num_frequency_bands=2,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha_1"] = 10.0
-        likelihood.parameters["alpha_2"] = -1.0
+        parameters = self.parameters.copy()
+        parameters["alpha_1"] = 10.0
+        parameters["alpha_2"] = -1.0
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
     def test_invalid_per_band_delta_returns_negative_infinity(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
@@ -1632,11 +1577,11 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_delta=True,
             num_frequency_bands=2,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["delta_1"] = 1.0
-        likelihood.parameters["delta_2"] = -1.0
+        parameters = self.parameters.copy()
+        parameters["delta_1"] = 1.0
+        parameters["delta_2"] = -1.0
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
     def test_noise_log_evidence_defaults_to_2d_quadrature_for_sampled_shape_parameters(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
@@ -1647,9 +1592,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_alpha=True,
             infer_delta=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = 8.0
-        likelihood.parameters["delta"] = 1.5
+        parameters = self.parameters.copy()
+        parameters["alpha"] = 8.0
+        parameters["delta"] = 1.5
         priors = bilby.core.prior.PriorDict(
             dict(
                 alpha=bilby.core.prior.Uniform(2.0, 20.0, name="alpha"),
@@ -1688,9 +1633,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_delta=True,
             noise_evidence_method="nested",
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = 8.0
-        likelihood.parameters["delta"] = 1.5
+        parameters = self.parameters.copy()
+        parameters["alpha"] = 8.0
+        parameters["delta"] = 1.5
         priors = bilby.core.prior.PriorDict(
             dict(
                 alpha=bilby.core.prior.Uniform(2.0, 20.0, name="alpha"),
@@ -1724,9 +1669,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_alpha=True,
             infer_delta=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = 8.0
-        likelihood.parameters["delta"] = 1.5
+        parameters = self.parameters.copy()
+        parameters["alpha"] = 8.0
+        parameters["delta"] = 1.5
         priors = bilby.core.prior.PriorDict(
             dict(
                 alpha=bilby.core.prior.DeltaFunction(peak=8.0, name="alpha"),
@@ -1752,9 +1697,9 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             noise_evidence_nlive=192,
             dlogZ_noise=0.02,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = 8.0
-        likelihood.parameters["delta"] = 1.5
+        parameters = self.parameters.copy()
+        parameters["alpha"] = 8.0
+        parameters["delta"] = 1.5
         priors = bilby.core.prior.PriorDict(
             dict(
                 alpha=bilby.core.prior.Uniform(2.0, 20.0, name="alpha"),
@@ -1780,11 +1725,11 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_delta=True,
             num_frequency_bands=2,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha_1"] = 8.0
-        likelihood.parameters["alpha_2"] = 9.0
-        likelihood.parameters["delta_1"] = 1.5
-        likelihood.parameters["delta_2"] = 2.0
+        parameters = self.parameters.copy()
+        parameters["alpha_1"] = 8.0
+        parameters["alpha_2"] = 9.0
+        parameters["delta_1"] = 1.5
+        parameters["delta_2"] = 2.0
         priors = bilby.core.prior.PriorDict(
             dict(
                 alpha_1=bilby.core.prior.Uniform(2.0, 20.0, name="alpha_1"),
@@ -1899,26 +1844,6 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             7,
         )
 
-    def test_log_likelihood_uses_stored_sky_parameters_as_fallback(self):
-        likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
-            interferometers=self.interferometers,
-            waveform_generator=self.waveform_generator,
-            alpha=10.0,
-            delta=1.0,
-        )
-        likelihood.parameters = self.parameters.copy()
-
-        sampled_parameters = {
-            key: value
-            for key, value in self.parameters.items()
-            if key not in {"ra", "dec", "geocent_time"}
-        }
-
-        self.assertEqual(
-            likelihood.log_likelihood(sampled_parameters),
-            likelihood.log_likelihood(self.parameters),
-        )
-
     def test_log_likelihood_ratio_matches_noise_subtraction_and_per_detector_output(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
             interferometers=self.interferometers,
@@ -1928,14 +1853,26 @@ class TestHyperbolicGWTransient(unittest.TestCase):
             infer_alpha=True,
             infer_delta=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["alpha"] = 8.0
-        likelihood.parameters["delta"] = 1.5
+        parameters = self.parameters.copy()
+        parameters["alpha"] = 8.0
+        parameters["delta"] = 1.5
 
-        log_likelihood = likelihood.log_likelihood()
-        noise_log_likelihood = likelihood.noise_log_likelihood()
-        log_likelihood_ratio = likelihood.log_likelihood_ratio()
-        per_detector = likelihood.compute_per_detector_log_likelihood(self.parameters.copy())
+        # noise_log_likelihood() takes no parameters, so it is evaluated at the
+        # alpha and delta fixed at initialisation. The noise term subtracted by
+        # log_likelihood_ratio is the one at the sampled values instead.
+        sampled_shape_likelihood = (
+            bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(
+                interferometers=self.interferometers,
+                waveform_generator=self.waveform_generator,
+                alpha=8.0,
+                delta=1.5,
+            )
+        )
+
+        log_likelihood = likelihood.log_likelihood(parameters)
+        noise_log_likelihood = sampled_shape_likelihood.noise_log_likelihood()
+        log_likelihood_ratio = likelihood.log_likelihood_ratio(parameters)
+        per_detector = likelihood.compute_per_detector_log_likelihood(parameters)
 
         self.assertAlmostEqual(
             log_likelihood - noise_log_likelihood, log_likelihood_ratio, 7

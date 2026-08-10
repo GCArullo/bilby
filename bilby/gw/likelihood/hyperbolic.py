@@ -5,7 +5,7 @@ from math import factorial
 import numpy as np
 from scipy.integrate import quad
 
-from ...core.likelihood import Likelihood, _fallback_to_parameters
+from ...core.likelihood import Likelihood
 from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .. import utils as gwutils
@@ -18,13 +18,9 @@ class _HyperbolicNoiseOnlyLikelihood(Likelihood):
 
     def __init__(self, hyperbolic_likelihood):
         super().__init__()
-        self._parameters.update(
-            hyperbolic_likelihood._get_default_shape_parameter_dict()
-        )
         self.hyperbolic_likelihood = hyperbolic_likelihood
 
-    def log_likelihood(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
+    def log_likelihood(self, parameters):
         return self.hyperbolic_likelihood._noise_log_likelihood_from_parameters(parameters)
 
     def noise_log_likelihood(self):
@@ -199,33 +195,6 @@ class HyperbolicGravitationalWaveTransient(
         if not self._valid_positive_values(self._fixed_delta):
             raise ValueError("All delta values must be positive and finite")
 
-        if self.infer_alpha:
-            if not self.detector_dependent_noise:
-                for key, value in zip(self.alpha_parameter_keys, self._fixed_alpha):
-                    self._parameters.setdefault(key, float(value))
-            else:
-                for detector_index, detector_name in enumerate(self._detector_names):
-                    for band_index in range(self.num_frequency_bands):
-                        self._parameters.setdefault(
-                            self._detector_parameter_key(
-                                "alpha", detector_name, band_index
-                            ),
-                            float(self._fixed_alpha[detector_index, band_index]),
-                        )
-        if self.infer_delta:
-            if not self.detector_dependent_noise:
-                for key, value in zip(self.delta_parameter_keys, self._fixed_delta):
-                    self._parameters.setdefault(key, float(value))
-            else:
-                for detector_index, detector_name in enumerate(self._detector_names):
-                    for band_index in range(self.num_frequency_bands):
-                        self._parameters.setdefault(
-                            self._detector_parameter_key(
-                                "delta", detector_name, band_index
-                            ),
-                            float(self._fixed_delta[detector_index, band_index]),
-                        )
-
         if (
             self.time_marginalization
             or self.distance_marginalization
@@ -237,9 +206,9 @@ class HyperbolicGravitationalWaveTransient(
                 "the Gaussian likelihood and may be inconsistent for hyperbolic noise."
             )
 
-    @property
-    def alpha(self):
-        values = self._get_alpha_values(self._parameters)
+    def alpha(self, parameters):
+        """Tail parameter for this call, sampled or fixed at initialisation."""
+        values = self._get_alpha_values(parameters)
         if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
                 return float(values[0])
@@ -248,9 +217,9 @@ class HyperbolicGravitationalWaveTransient(
             return values[:, 0].copy()
         return values.copy()
 
-    @property
-    def delta(self):
-        values = self._get_delta_values(self._parameters)
+    def delta(self, parameters):
+        """Scale parameter for this call, sampled or fixed at initialisation."""
+        values = self._get_delta_values(parameters)
         if not self.detector_dependent_noise:
             if self.num_frequency_bands == 1:
                 return float(values[0])
@@ -662,30 +631,6 @@ class HyperbolicGravitationalWaveTransient(
             "delta",
         )
 
-    def _store_alpha_values(self, alpha_values):
-        if not self.detector_dependent_noise:
-            for key, value in zip(self.alpha_parameter_keys, alpha_values):
-                self._parameters[key] = float(value)
-            return
-
-        for detector_index, detector_name in enumerate(self._detector_names):
-            for band_index in range(self.num_frequency_bands):
-                self._parameters[
-                    self._detector_parameter_key("alpha", detector_name, band_index)
-                ] = float(alpha_values[detector_index, band_index])
-
-    def _store_delta_values(self, delta_values):
-        if not self.detector_dependent_noise:
-            for key, value in zip(self.delta_parameter_keys, delta_values):
-                self._parameters[key] = float(value)
-            return
-
-        for detector_index, detector_name in enumerate(self._detector_names):
-            for band_index in range(self.num_frequency_bands):
-                self._parameters[
-                    self._detector_parameter_key("delta", detector_name, band_index)
-                ] = float(delta_values[detector_index, band_index])
-
     def _get_interferometer_parameter_values(self, interferometer, parameter_values):
         if not self.detector_dependent_noise:
             return parameter_values
@@ -778,26 +723,14 @@ class HyperbolicGravitationalWaveTransient(
 
         return log_terms
 
-    def _resolve_likelihood_parameters(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self._parameters:
-            parameters = parameters.copy()
-        else:
-            merged_parameters = self._parameters.copy()
-            merged_parameters.update(parameters)
-            parameters = merged_parameters
+    def _resolve_likelihood_parameters(self, parameters):
+        parameters = parameters.copy()
         parameters.update(self.get_sky_frame_parameters(parameters))
         return parameters
 
-    def _get_active_shape_parameters(self, parameters, update_state=False):
+    def _get_active_shape_parameters(self, parameters):
         alpha_values = self._get_alpha_values(parameters)
         delta_values = self._get_delta_values(parameters)
-
-        if update_state:
-            if self.infer_alpha:
-                self._store_alpha_values(alpha_values)
-            if self.infer_delta:
-                self._store_delta_values(delta_values)
 
         if not self._valid_positive_values(alpha_values):
             return None, None
@@ -1006,9 +939,7 @@ class HyperbolicGravitationalWaveTransient(
                 "SNRs with time or calibration marginalization"
             )
 
-        alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=False,
-        )
+        alpha_values, delta_values = self._get_active_shape_parameters(parameters)
         if alpha_values is None or delta_values is None:
             raise ValueError(
                 "Invalid alpha or delta values encountered while computing SNRs"
@@ -1048,9 +979,7 @@ class HyperbolicGravitationalWaveTransient(
         )
 
     def _noise_log_likelihood_from_parameters(self, parameters):
-        alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=False
-        )
+        alpha_values, delta_values = self._get_active_shape_parameters(parameters)
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
 
@@ -1064,10 +993,9 @@ class HyperbolicGravitationalWaveTransient(
         return float(logl)
 
     def _get_default_shape_parameter_dict(self):
-        if self._parameters is None:
-            parameters = dict()
-        else:
-            parameters = self._parameters.copy()
+        # With no sampled values supplied, the getters below fall back to the
+        # alpha and delta fixed at initialisation.
+        parameters = dict()
 
         shape_parameters = dict()
         alpha_values = self._get_alpha_values(parameters)
@@ -1225,11 +1153,9 @@ class HyperbolicGravitationalWaveTransient(
             resume=False,
         )
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=True
-        )
+        alpha_values, delta_values = self._get_active_shape_parameters(parameters)
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
 
@@ -1249,7 +1175,9 @@ class HyperbolicGravitationalWaveTransient(
         return float(logl)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
+        return self._noise_log_likelihood_from_parameters(
+            self._get_default_shape_parameter_dict()
+        )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
         if priors is None:
@@ -1279,11 +1207,9 @@ class HyperbolicGravitationalWaveTransient(
         noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
         return float(noise_result.log_evidence)
 
-    def log_likelihood_ratio(self, parameters=None):
+    def log_likelihood_ratio(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=True
-        )
+        alpha_values, delta_values = self._get_active_shape_parameters(parameters)
         if alpha_values is None or delta_values is None:
             return np.nan_to_num(-np.inf)
 
@@ -1309,11 +1235,9 @@ class HyperbolicGravitationalWaveTransient(
             return np.nan_to_num(-np.inf)
         return float(signal_logl - noise_logl)
 
-    def compute_per_detector_log_likelihood(self, parameters=None):
+    def compute_per_detector_log_likelihood(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        alpha_values, delta_values = self._get_active_shape_parameters(
-            parameters, update_state=True
-        )
+        alpha_values, delta_values = self._get_active_shape_parameters(parameters)
         if alpha_values is None or delta_values is None:
             for interferometer in self.interferometers:
                 parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(-np.inf)

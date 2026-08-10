@@ -1,6 +1,5 @@
 import numpy as np
 
-from ...core.likelihood import _fallback_to_parameters
 from .base import GravitationalWaveTransient
 from .hyperbolic import HyperbolicGravitationalWaveTransient
 from .studentt import StudentTGravitationalWaveTransient
@@ -160,11 +159,6 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
             noise_evidence_method=noise_evidence_method,
         )
 
-        for likelihood in [self._student_likelihood, self._hyperbolic_likelihood]:
-            if likelihood is not None:
-                for key in likelihood.noise_parameter_keys:
-                    self._parameters.setdefault(key, likelihood._parameters[key])
-
     def _detectors_with_likelihood(self, likelihood_name):
         return [
             name for name in self._detector_names
@@ -254,14 +248,21 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
             )
         return meta_data
 
-    def _resolve_likelihood_parameters(self, parameters=None, include_sky=True):
-        parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self._parameters:
-            parameters = parameters.copy()
-        else:
-            merged_parameters = self._parameters.copy()
-            merged_parameters.update(parameters)
-            parameters = merged_parameters
+    def _get_default_noise_parameter_dict(self):
+        """Noise-shape parameters fixed at initialisation, from each sub-likelihood."""
+        parameters = dict()
+        if self._student_likelihood is not None:
+            parameters.update(
+                self._student_likelihood._get_default_nu_parameter_dict()
+            )
+        if self._hyperbolic_likelihood is not None:
+            parameters.update(
+                self._hyperbolic_likelihood._get_default_shape_parameter_dict()
+            )
+        return parameters
+
+    def _resolve_likelihood_parameters(self, parameters, include_sky=True):
+        parameters = parameters.copy()
         if include_sky:
             parameters.update(self.get_sky_frame_parameters(parameters))
         return parameters
@@ -287,19 +288,17 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
         quadratic_form = (residual.real ** 2 + residual.imag ** 2) / scale2
         return float(-np.sum(np.log(2 * np.pi * scale2) + quadratic_form / 2.0))
 
-    def _active_noise_parameters(self, parameters, update_state):
+    def _active_noise_parameters(self, parameters):
         nu_values = None
         alpha_values = None
         delta_values = None
         if self._student_likelihood is not None:
-            nu_values = self._student_likelihood._get_active_nu_values(
-                parameters, update_state=update_state
-            )
+            nu_values = self._student_likelihood._get_active_nu_values(parameters)
             if nu_values is None:
                 return None
         if self._hyperbolic_likelihood is not None:
             alpha_values, delta_values = self._hyperbolic_likelihood._get_active_shape_parameters(
-                parameters, update_state=update_state
+                parameters
             )
             if alpha_values is None or delta_values is None:
                 return None
@@ -344,9 +343,7 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _noise_log_likelihood_from_parameters(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters, include_sky=False)
-        noise_parameters = self._active_noise_parameters(
-            parameters, update_state=False
-        )
+        noise_parameters = self._active_noise_parameters(parameters)
         if noise_parameters is None:
             return np.nan_to_num(-np.inf)
         return self._mixed_log_likelihood(
@@ -355,11 +352,9 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
             noise_parameters=noise_parameters,
         )
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        noise_parameters = self._active_noise_parameters(
-            parameters, update_state=True
-        )
+        noise_parameters = self._active_noise_parameters(parameters)
         if noise_parameters is None:
             return np.nan_to_num(-np.inf)
         waveform_polarizations = self.waveform_generator.frequency_domain_strain(
@@ -374,13 +369,13 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
         )
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
-
-    def log_likelihood_ratio(self, parameters=None):
-        parameters = self._resolve_likelihood_parameters(parameters)
-        noise_parameters = self._active_noise_parameters(
-            parameters, update_state=True
+        return self._noise_log_likelihood_from_parameters(
+            self._get_default_noise_parameter_dict()
         )
+
+    def log_likelihood_ratio(self, parameters):
+        parameters = self._resolve_likelihood_parameters(parameters)
+        noise_parameters = self._active_noise_parameters(parameters)
         if noise_parameters is None:
             return np.nan_to_num(-np.inf)
         waveform_polarizations = self.waveform_generator.frequency_domain_strain(
@@ -398,11 +393,9 @@ class MixedGravitationalWaveTransient(GravitationalWaveTransient):
             return np.nan_to_num(-np.inf)
         return float(signal_log_likelihood - noise_log_likelihood)
 
-    def compute_per_detector_log_likelihood(self, parameters=None):
+    def compute_per_detector_log_likelihood(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
-        noise_parameters = self._active_noise_parameters(
-            parameters, update_state=True
-        )
+        noise_parameters = self._active_noise_parameters(parameters)
         if noise_parameters is None:
             for interferometer in self.interferometers:
                 parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(-np.inf)

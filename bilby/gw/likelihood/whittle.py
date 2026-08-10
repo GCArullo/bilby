@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy.integrate import quad
 
-from ...core.likelihood import Likelihood, _fallback_to_parameters
+from ...core.likelihood import Likelihood
 from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .base import GravitationalWaveTransient
@@ -15,11 +15,9 @@ class _WhittleNoiseOnlyLikelihood(Likelihood):
 
     def __init__(self, whittle_likelihood):
         super().__init__()
-        self._parameters.update(whittle_likelihood._get_default_psd_parameter_dict())
         self.whittle_likelihood = whittle_likelihood
 
-    def log_likelihood(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
+    def log_likelihood(self, parameters):
         return self.whittle_likelihood._noise_log_likelihood_from_parameters(
             parameters
         )
@@ -142,16 +140,11 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         if not self._valid_log_psd_scale_values(self._fixed_log_psd_scale):
             raise ValueError("All log_psd_scale values must give finite positive scales")
 
-        if self.infer_log_psd_scale:
-            for key, value in zip(
-                self.log_psd_scale_parameter_keys,
-                self._fixed_log_psd_scale,
-            ):
-                self._parameters.setdefault(key, float(value))
-
-    @property
-    def log_psd_scale(self):
-        values = self._get_log_psd_scale_values(self._parameters)
+    def log_psd_scale(self, parameters=None):
+        """PSD scale for the given parameters, or the fixed defaults."""
+        values = self._get_log_psd_scale_values(
+            parameters if parameters is not None else {}
+        )
         if self.num_psd_frequency_bands == 1:
             return float(values[0])
         return values.copy()
@@ -319,28 +312,13 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             ]
         )
 
-    def _store_log_psd_scale_values(self, log_psd_scale_values):
-        for key, value in zip(
-            self.log_psd_scale_parameter_keys,
-            log_psd_scale_values,
-        ):
-            self._parameters[key] = float(value)
-
-    def _resolve_likelihood_parameters(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self._parameters:
-            parameters = parameters.copy()
-        else:
-            merged_parameters = self._parameters.copy()
-            merged_parameters.update(parameters)
-            parameters = merged_parameters
+    def _resolve_likelihood_parameters(self, parameters):
+        parameters = parameters.copy()
         parameters.update(self.get_sky_frame_parameters(parameters))
         return parameters
 
-    def _get_active_log_psd_scale_values(self, parameters, update_state=False):
+    def _get_active_log_psd_scale_values(self, parameters):
         log_psd_scale_values = self._get_log_psd_scale_values(parameters)
-        if update_state and self.infer_log_psd_scale:
-            self._store_log_psd_scale_values(log_psd_scale_values)
         if not self._valid_log_psd_scale_values(log_psd_scale_values):
             return None
         return log_psd_scale_values
@@ -392,7 +370,6 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
     def _noise_log_likelihood_from_parameters(self, parameters):
         log_psd_scale_values = self._get_active_log_psd_scale_values(
             parameters,
-            update_state=False,
         )
         if log_psd_scale_values is None:
             return np.nan_to_num(-np.inf)
@@ -409,12 +386,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def _get_default_psd_parameter_dict(self):
-        if self._parameters is None:
-            parameters = dict()
-        else:
-            parameters = self._parameters.copy()
-
-        log_psd_scale_values = self._get_log_psd_scale_values(parameters)
+        log_psd_scale_values = self._get_log_psd_scale_values(dict())
         if not self.infer_log_psd_scale:
             return dict()
         return {
@@ -564,11 +536,10 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             resume=False,
         )
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
         log_psd_scale_values = self._get_active_log_psd_scale_values(
             parameters,
-            update_state=True,
         )
         if log_psd_scale_values is None:
             return np.nan_to_num(-np.inf)
@@ -591,7 +562,9 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
+        return self._noise_log_likelihood_from_parameters(
+            self._get_default_psd_parameter_dict()
+        )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
         if priors is None:
@@ -621,11 +594,10 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
         return float(noise_result.log_evidence)
 
-    def log_likelihood_ratio(self, parameters=None):
+    def log_likelihood_ratio(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
         log_psd_scale_values = self._get_active_log_psd_scale_values(
             parameters,
-            update_state=True,
         )
         if log_psd_scale_values is None:
             return np.nan_to_num(-np.inf)
@@ -657,11 +629,10 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
             noise_logl += detector_noise_logl
         return float(signal_logl - noise_logl)
 
-    def compute_per_detector_log_likelihood(self, parameters=None):
+    def compute_per_detector_log_likelihood(self, parameters):
         parameters = self._resolve_likelihood_parameters(parameters)
         log_psd_scale_values = self._get_active_log_psd_scale_values(
             parameters,
-            update_state=True,
         )
         if log_psd_scale_values is None:
             for interferometer in self.interferometers:

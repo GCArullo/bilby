@@ -16,6 +16,7 @@ MANIFEST
 **/outdir
 .idea/*
 bilby/_version.py
+uv.lock
 .DS_Store
 examples/gw_examples/data_examples/Runs/
 examples/gw_examples/injection_examples/Runs/

@@ -6,3 +6,4 @@ from .likelihood import (
     StudentTGravitationalWaveTransient,
 )
 from .detector import calibration
+from . import compat

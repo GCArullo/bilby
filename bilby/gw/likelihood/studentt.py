@@ -5,7 +5,7 @@ import numpy as np
 from scipy.integrate import quad
 from scipy.special import gammaln
 
-from ...core.likelihood import Likelihood, _fallback_to_parameters
+from ...core.likelihood import Likelihood
 from ...core.prior import DeltaFunction, PriorDict
 from ...core.utils import logger
 from .base import GravitationalWaveTransient
@@ -15,11 +15,10 @@ class _StudentTNoiseOnlyLikelihood(Likelihood):
     """Auxiliary likelihood for marginalizing the Student-t noise evidence."""
 
     def __init__(self, student_likelihood):
-        super().__init__(parameters=student_likelihood._get_default_nu_parameter_dict())
+        super().__init__()
         self.student_likelihood = student_likelihood
 
-    def log_likelihood(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
+    def log_likelihood(self, parameters):
         return self.student_likelihood._noise_log_likelihood_from_parameters(parameters)
 
     def noise_log_likelihood(self):
@@ -140,18 +139,6 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         if not self._valid_nu_values(self._fixed_nu): raise ValueError("All nu values must be positive and finite")
 
-        if self.infer_nu:
-            if not self.detector_dependent_nu:
-                for key, value in zip(self.nu_parameter_keys, self._fixed_nu):
-                    self._parameters.setdefault(key, float(value))
-            else:
-                for detector_index, detector_name in enumerate(self._detector_names):
-                    for band_index in range(self.num_frequency_bands):
-                        self._parameters.setdefault(
-                            self._detector_nu_parameter_key(detector_name, band_index),
-                            float(self._fixed_nu[detector_index, band_index]),
-                        )
-
         if (
             self.time_marginalization
             or self.distance_marginalization
@@ -163,10 +150,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 "the Gaussian likelihood and may be inconsistent for Student-t noise."
             )
 
-    @property
-    def nu(self):
-
-        values = self._get_nu_values(self._parameters)
+    def nu(self, parameters=None):
+        """Degrees of freedom for the given parameters, or the fixed defaults."""
+        values = self._get_nu_values(parameters if parameters is not None else {})
         if not self.detector_dependent_nu:
             if self.num_frequency_bands == 1:
                 return float(values[0])
@@ -356,19 +342,6 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             ]
         )
 
-    def _store_nu_values(self, nu_values):
-
-        if not self.detector_dependent_nu:
-            for key, value in zip(self.nu_parameter_keys, nu_values):
-                self._parameters[key] = float(value)
-            return
-
-        for detector_index, detector_name in enumerate(self._detector_names):
-            for band_index in range(self.num_frequency_bands):
-                self._parameters[
-                    self._detector_nu_parameter_key(detector_name, band_index)
-                ] = float(nu_values[detector_index, band_index])
-
     def _detector_nu_parameter_key(self, detector_name, band_index):
 
         if self.num_frequency_bands == 1:
@@ -388,23 +361,15 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         return band_masks
 
-    def _resolve_likelihood_parameters(self, parameters=None):
+    def _resolve_likelihood_parameters(self, parameters):
 
-        parameters = _fallback_to_parameters(self, parameters)
-        if parameters is self._parameters:
-            parameters = parameters.copy()
-        else:
-            merged_parameters = self._parameters.copy()
-            merged_parameters.update(parameters)
-            parameters = merged_parameters
+        parameters = parameters.copy()
         parameters.update(self.get_sky_frame_parameters(parameters))
         return parameters
 
-    def _get_active_nu_values(self, parameters, update_state=False):
+    def _get_active_nu_values(self, parameters):
 
         nu_values = self._get_nu_values(parameters)
-        if update_state and self.infer_nu:
-            self._store_nu_values(nu_values)
         if not self._valid_nu_values(nu_values):
             return None
         return nu_values
@@ -472,7 +437,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _noise_log_likelihood_from_parameters(self, parameters):
 
-        nu_values = self._get_active_nu_values(parameters, update_state=False)
+        nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
 
@@ -490,12 +455,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _get_default_nu_parameter_dict(self):
 
-        if self._parameters is None:
-            parameters = dict()
-        else:
-            parameters = self._parameters.copy()
-
-        nu_values = self._get_nu_values(parameters)
+        nu_values = self._get_nu_values(dict())
         return {
             key: float(value)
             for key, value in zip(self.nu_parameter_keys, np.ravel(nu_values))
@@ -641,10 +601,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             resume=False,
         )
 
-    def log_likelihood(self, parameters=None):
+    def log_likelihood(self, parameters):
 
         parameters = self._resolve_likelihood_parameters(parameters)
-        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
 
@@ -668,7 +628,9 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         return float(logl)
 
     def noise_log_likelihood(self):
-        return self._noise_log_likelihood_from_parameters(self._parameters.copy())
+        return self._noise_log_likelihood_from_parameters(
+            self._get_default_nu_parameter_dict()
+        )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
 
@@ -699,10 +661,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
         return float(noise_result.log_evidence)
 
-    def log_likelihood_ratio(self, parameters=None):
+    def log_likelihood_ratio(self, parameters):
 
         parameters = self._resolve_likelihood_parameters(parameters)
-        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             return np.nan_to_num(-np.inf)
 
@@ -730,10 +692,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
         return float(signal_logl - noise_logl)
 
-    def compute_per_detector_log_likelihood(self, parameters=None):
+    def compute_per_detector_log_likelihood(self, parameters):
 
         parameters = self._resolve_likelihood_parameters(parameters)
-        nu_values = self._get_active_nu_values(parameters, update_state=True)
+        nu_values = self._get_active_nu_values(parameters)
         if nu_values is None:
             for interferometer in self.interferometers:
                 parameters[f"{interferometer.name}_log_likelihood"] = np.nan_to_num(-np.inf)

@@ -127,4 +127,4 @@ class TestMixedGWTransient(unittest.TestCase):
             detector_dependent_noise=True,
         )
 
-        self.assertEqual(likelihood.noise_parameter_keys, ["nu_H1"])
+        self.assertEqual(likelihood.noise_parameter_keys, ["nu", "nu_H1"])

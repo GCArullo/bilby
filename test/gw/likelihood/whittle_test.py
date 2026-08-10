@@ -112,7 +112,7 @@ class TestWhittleGWTransient(unittest.TestCase):
 
         self.assertEqual(
             likelihood.noise_parameter_keys,
-            ["log_psd_scale_1", "log_psd_scale_2"],
+            ["log_psd_scale", "log_psd_scale_1", "log_psd_scale_2"],
         )
         self.assertAlmostEqual(likelihood.log_likelihood(parameters), manual, 7)
 
@@ -168,6 +168,7 @@ class TestWhittleGWTransient(unittest.TestCase):
         self.assertEqual(
             likelihood.noise_parameter_keys,
             [
+                "log_psd_scale",
                 "log_psd_scale_H1_1",
                 "log_psd_scale_H1_2",
                 "log_psd_scale_L1_1",
@@ -202,6 +203,30 @@ class TestWhittleGWTransient(unittest.TestCase):
             np.log(integral),
             7,
         )
+
+    def test_noise_log_evidence_uses_fixed_psd_scale_prior(self):
+        likelihood = bilby.gw.likelihood.WhittleGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_log_psd_scale=True,
+            num_psd_frequency_bands=2,
+        )
+        likelihood._noise_log_likelihood_from_parameters = (
+            lambda parameters: np.sum(
+                likelihood._get_log_psd_scale_values(parameters)
+            )
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                log_psd_scale=bilby.core.prior.DeltaFunction(
+                    0.25,
+                    name="log_psd_scale",
+                )
+            )
+        )
+
+        self.assertIn("log_psd_scale", likelihood.noise_parameter_keys)
+        self.assertEqual(likelihood.noise_log_evidence(priors=priors), 0.5)
 
 
 if __name__ == "__main__":

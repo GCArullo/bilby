@@ -302,38 +302,30 @@ class TestCBCPlusSineGaussianDefaultConversion(unittest.TestCase):
         )
 
     def test_default_parameter_conversion_bundles_sine_gaussian_parameters(self):
-        waveform_generator = bilby.gw.waveform_generator.LALCBCWaveformGenerator(
-            duration=4,
-            sampling_frequency=1024,
-            frequency_domain_source_model=bilby.gw.source.cbc_plus_sine_gaussians,
-            waveform_arguments=dict(
-                minimum_frequency=20.0,
-                reference_frequency=20.0,
-                waveform_approximant="SEOBNRv3",
-            ),
-        )
-        waveform_generator.parameters = dict(
-            chirp_mass=30.0,
-            mass_ratio=0.9,
-            luminosity_distance=1000.0,
-            a_1=0.0,
-            a_2=0.0,
-            tilt_1=0.0,
-            tilt_2=0.0,
-            phi_12=0.0,
-            phi_jl=0.0,
-            theta_jn=0.0,
-            phase=0.0,
-            sine_gaussian_0_hrss=1e-22,
-            sine_gaussian_0_Q=30.0,
-            sine_gaussian_0_frequency=100.0,
-            sine_gaussian_0_time_offset=0.01,
-            sine_gaussian_0_phase_offset=0.1,
+        parameters = bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters_dict(
+            dict(
+                chirp_mass=30.0,
+                mass_ratio=0.9,
+                luminosity_distance=1000.0,
+                a_1=0.0,
+                a_2=0.0,
+                tilt_1=0.0,
+                tilt_2=0.0,
+                phi_12=0.0,
+                phi_jl=0.0,
+                theta_jn=0.0,
+                phase=0.0,
+                sine_gaussian_0_hrss=1e-22,
+                sine_gaussian_0_Q=30.0,
+                sine_gaussian_0_frequency=100.0,
+                sine_gaussian_0_time_offset=0.01,
+                sine_gaussian_0_phase_offset=0.1,
+            )
         )
 
-        self.assertIn("sine_gaussian_parameters", waveform_generator.parameters)
-        self.assertEqual(len(waveform_generator.parameters["sine_gaussian_parameters"]), 1)
-        self.assertNotIn("sine_gaussian_0_hrss", waveform_generator.parameters)
+        self.assertIn("sine_gaussian_parameters", parameters)
+        self.assertEqual(len(parameters["sine_gaussian_parameters"]), 1)
+        self.assertNotIn("sine_gaussian_0_hrss", parameters)
 
 
 @pytest.mark.array_backend

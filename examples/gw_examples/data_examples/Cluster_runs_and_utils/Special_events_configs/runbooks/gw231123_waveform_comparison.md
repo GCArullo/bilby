@@ -76,6 +76,21 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
   --num-sine-gaussians 1 --sine-gaussian-mode coherent-independent
 ```
 
+## IMRPhenomXPHM with SpinTaylor precession
+
+LALSuite has no standalone SpinTaylor approximant: the SpinTaylor precession
+prescription is an option on IMRPhenomXPHM, selected through
+`PhenomXPrecVersion`. Passing `IMRPhenomXPHM_SpinTaylor` sets
+`waveform-approximant=IMRPhenomXPHM` and
+`waveform-arguments-dict={'PhenomXPrecVersion': 320}`, while keeping the full
+name in labels and directories so the run cannot be confused with a default
+IMRPhenomXPHM one (which uses the MSA prescription, version 223).
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPHM_SpinTaylor \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent
+```
+
 ## IMRPhenomXPNR
 
 Gaussian + 1 SG (coherent):

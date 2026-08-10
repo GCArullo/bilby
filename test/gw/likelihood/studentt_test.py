@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import bilby
 import numpy as np
+from scipy.integrate import quad
 from scipy.special import gammaln
 
 
@@ -307,6 +308,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             interferometers=self.interferometers,
             waveform_generator=self.waveform_generator,
             infer_nu=True,
+            num_frequency_bands=2,
         )
         priors = bilby.core.prior.PriorDict(
             dict(nu=bilby.core.prior.Uniform(2.1, 1000.0, name="nu"))
@@ -403,24 +405,88 @@ class TestStudentTGWTransient(unittest.TestCase):
             "_StudentTNoiseOnlyLikelihood",
         )
 
-    def test_noise_log_evidence_uses_conditional_value_when_nu_is_not_sampled(self):
+    def test_noise_log_evidence_uses_fixed_nu_prior(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
             interferometers=self.interferometers,
             waveform_generator=self.waveform_generator,
             nu=8.0,
             infer_nu=True,
+            num_frequency_bands=2,
         )
-        parameters = self.parameters.copy()
-        parameters["nu"] = 5.0
+        likelihood._noise_log_likelihood_from_parameters = (
+            lambda parameters: -np.sum(
+                likelihood._get_nu_values(parameters) ** 2
+            )
+        )
         priors = bilby.core.prior.PriorDict(
-            dict(nu=bilby.core.prior.DeltaFunction(peak=5.0, name="nu"))
+            dict(nu=bilby.core.prior.DeltaFunction(5.0, name="nu"))
         )
 
-        with patch("bilby.core.sampler.run_sampler") as mock_run_sampler:
-            noise_log_evidence = likelihood.noise_log_evidence(priors=priors)
+        self.assertIn("nu", likelihood.noise_parameter_keys)
+        self.assertEqual(likelihood.noise_log_evidence(priors=priors), -50.0)
 
-        self.assertAlmostEqual(noise_log_evidence, likelihood.noise_log_likelihood(), 7)
-        mock_run_sampler.assert_not_called()
+    def test_noise_log_evidence_uses_fixed_nu_in_quadrature(self):
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            nu=8.0,
+            infer_nu=True,
+            num_frequency_bands=2,
+        )
+        likelihood._noise_log_likelihood_from_parameters = lambda parameters: (
+            -parameters["nu_1"] ** 2 - parameters["nu_2"] ** 2
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(
+                nu_1=bilby.core.prior.DeltaFunction(5.0, name="nu_1"),
+                nu_2=bilby.core.prior.Uniform(0.0, 1.0, name="nu_2"),
+            )
+        )
+        integral, _ = quad(lambda value: np.exp(-value ** 2), 0.0, 1.0)
+
+        self.assertAlmostEqual(
+            likelihood.noise_log_evidence(priors=priors),
+            -25.0 + np.log(integral),
+            7,
+        )
+
+    def test_frequency_bands_cover_all_interferometer_analysis_bins(self):
+        interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
+        interferometers.set_strain_data_from_zero_noise(
+            sampling_frequency=128,
+            duration=2,
+        )
+        interferometers[0].minimum_frequency = 30
+        interferometers[0].maximum_frequency = 40
+        interferometers[1].minimum_frequency = 20
+        interferometers[1].maximum_frequency = 50
+        waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
+            duration=2,
+            sampling_frequency=128,
+            frequency_domain_source_model=bilby.gw.source.lal_binary_black_hole,
+        )
+        likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
+            interferometers=interferometers,
+            waveform_generator=waveform_generator,
+            nu=8.0,
+            num_frequency_bands=2,
+        )
+
+        np.testing.assert_allclose(
+            likelihood._frequency_band_edges,
+            [20.0, 35.0, 50.0],
+        )
+        for interferometer in interferometers:
+            coverage = np.sum(
+                likelihood._get_interferometer_frequency_band_masks(
+                    interferometer
+                ),
+                axis=0,
+            )
+            np.testing.assert_array_equal(
+                coverage,
+                np.ones(np.sum(interferometer.frequency_mask), dtype=int),
+            )
 
     def test_noise_log_evidence_uses_custom_sampler_controls_for_studentt(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
@@ -617,17 +683,10 @@ class TestStudentTGWTransient(unittest.TestCase):
         parameters = self.parameters.copy()
         parameters["nu"] = 5.0
 
-        # noise_log_likelihood() takes no parameters, so it is evaluated at the
-        # nu fixed at initialisation. The noise term subtracted by
-        # log_likelihood_ratio is the one at the sampled nu instead.
-        sampled_nu_likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(
-            interferometers=self.interferometers,
-            waveform_generator=self.waveform_generator,
-            nu=5.0,
-        )
-
         log_likelihood = likelihood.log_likelihood(parameters)
-        noise_log_likelihood = sampled_nu_likelihood.noise_log_likelihood()
+        noise_log_likelihood = likelihood._noise_log_likelihood_from_parameters(
+            parameters
+        )
         log_likelihood_ratio = likelihood.log_likelihood_ratio(parameters)
         per_detector = likelihood.compute_per_detector_log_likelihood(parameters)
 

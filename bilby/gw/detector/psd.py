@@ -421,7 +421,12 @@ class PowerSpectralDensity(object):
         return nu_values
 
     def get_student_t_noise_realisation(
-        self, sampling_frequency, duration, nu, num_frequency_bands=1
+        self,
+        sampling_frequency,
+        duration,
+        nu,
+        num_frequency_bands=1,
+        frequency_band_edges=None,
     ):
         """
         Generate frequency-domain Student-t noise scaled to the power spectral density.
@@ -438,6 +443,9 @@ class PowerSpectralDensity(object):
         num_frequency_bands: int
             Number of contiguous frequency bands. If greater than one, `nu`
             may be provided with one entry per band.
+        frequency_band_edges: array-like, optional
+            Explicit analysis-grid band edges. Frequencies outside the first
+            and last edges use the nearest outer band's `nu`.
 
         Returns
         =======
@@ -448,6 +456,18 @@ class PowerSpectralDensity(object):
             nu=nu, num_frequency_bands=num_frequency_bands
         )
         num_frequency_bands = len(nu_per_band)
+        if frequency_band_edges is not None:
+            frequency_band_edges = np.asarray(frequency_band_edges, dtype=float)
+            if frequency_band_edges.shape != (num_frequency_bands + 1,):
+                raise ValueError(
+                    "frequency_band_edges must have one more entry than nu"
+                )
+            if not np.all(np.isfinite(frequency_band_edges)) or np.any(
+                np.diff(frequency_band_edges) <= 0
+            ):
+                raise ValueError(
+                    "frequency_band_edges must be finite and strictly increasing"
+                )
 
         # Draw Student-t noise as a Gaussian scale mixture in each frequency bin:
         #   z_k ~ N_C(0, 1),   u_k ~ chi^2_nu / nu,
@@ -468,20 +488,19 @@ class PowerSpectralDensity(object):
 
         active_frequencies = frequencies[active_mask]
         if len(active_frequencies) > 0:
-            frequency_band_edges = np.linspace(
-                active_frequencies[0],
-                active_frequencies[-1],
-                num_frequency_bands + 1,
+            if frequency_band_edges is None:
+                frequency_band_edges = np.linspace(
+                    active_frequencies[0],
+                    active_frequencies[-1],
+                    num_frequency_bands + 1,
+                )
+            band_indices = np.digitize(
+                frequencies,
+                frequency_band_edges[1:-1],
             )
-            for index, (lower, upper) in enumerate(
-                zip(frequency_band_edges[:-1], frequency_band_edges[1:])
-            ):
-                if index == num_frequency_bands - 1:
-                    band_mask = active_mask & (frequencies >= lower) & (frequencies <= upper)
-                else:
-                    band_mask = active_mask & (frequencies >= lower) & (frequencies < upper)
+            for index, band_nu in enumerate(nu_per_band):
+                band_mask = active_mask & (band_indices == index)
                 if np.any(band_mask):
-                    band_nu = nu_per_band[index]
                     mixing[band_mask] = np.sqrt(
                         utils.random.rng.chisquare(df=band_nu, size=np.sum(band_mask))
                         / band_nu

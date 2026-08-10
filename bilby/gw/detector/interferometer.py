@@ -177,7 +177,7 @@ class Interferometer(object):
 
     def set_strain_data_from_power_spectral_density_student_t(
             self, sampling_frequency, duration, nu, start_time=0,
-            num_frequency_bands=1):
+            num_frequency_bands=1, frequency_band_edges=None):
         """ Set the `Interferometer.strain_data` from a Student-t power spectral density draw
 
         Parameters
@@ -192,6 +192,8 @@ class Interferometer(object):
             The GPS start-time of the data
         num_frequency_bands: int
             Number of contiguous frequency bands for the Student-t noise model.
+        frequency_band_edges: array-like, optional
+            Explicit frequency-band edges defined on the analysis grid.
         """
         self.strain_data.set_from_power_spectral_density_student_t(
             self.power_spectral_density,
@@ -200,6 +202,7 @@ class Interferometer(object):
             nu=nu,
             start_time=start_time,
             num_frequency_bands=num_frequency_bands,
+            frequency_band_edges=frequency_band_edges,
         )
 
     def set_strain_data_from_frame_file(
@@ -402,7 +405,7 @@ class Interferometer(object):
             independent_dec = parameters['independent_sine_gaussian_dec']
             independent_psi = parameters['independent_sine_gaussian_psi']
             independent_signal = sum(
-                waveform_polarizations[mode] * mask * self.antenna_response(
+                waveform_polarizations[mode] * self.antenna_response(
                     independent_ra,
                     independent_dec,
                     antenna_time,
@@ -410,16 +413,17 @@ class Interferometer(object):
                     independent_sine_gaussian_modes[mode],
                 )
                 for mode in independent_modes
-            )
+            ) * mask
             independent_time_shift = self.time_delay_from_geocenter(
                 independent_ra,
                 independent_dec,
                 parameters['geocent_time'],
             )
             independent_dt = dt_geocent + independent_time_shift
-            signal_ifo = signal_ifo + independent_signal * xp.exp(
+            independent_signal = independent_signal * xp.exp(
                 -1j * 2 * np.pi * independent_dt * frequencies
             )
+            signal_ifo = signal_ifo + independent_signal
 
         signal_ifo = signal_ifo * self.calibration_model.get_calibration_factor(
             frequencies, prefix=f'recalib_{self.name}_', xp=xp, **parameters

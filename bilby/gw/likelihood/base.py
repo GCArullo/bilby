@@ -427,7 +427,8 @@ class GravitationalWaveTransient(Likelihood):
                 * self.waveform_generator.duration
                 / 4.0
             )
-            log_l -= np.sum(np.log(2 * np.pi * scale2))
+            xp = aac.array_namespace(scale2)
+            log_l -= xp.sum(xp.log(2 * np.pi * scale2))
             log_l -= abs(noise_weighted_inner_product(
                 interferometer.frequency_domain_strain[mask],
                 interferometer.frequency_domain_strain[mask],

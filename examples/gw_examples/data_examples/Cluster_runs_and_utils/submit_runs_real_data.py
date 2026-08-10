@@ -42,6 +42,7 @@ DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
 SPIN_TAYLOR_SUFFIX = "_SpinTaylor"
 SPIN_TAYLOR_PREC_VERSION = 320
+TUNED_ANGLE_MODELS = {"IMRPhenomXPNR"}
 DEFAULT_CONTAINER_IMAGES_FILE = (
     Path(__file__).resolve().parent / "container_creation" / "container_images.json"
 )
@@ -92,7 +93,7 @@ DEFAULT_LOG_PSD_SCALE_MIN = -1.0
 DEFAULT_LOG_PSD_SCALE_MAX = 1.0
 DEFAULT_NU_MIN = 2.1
 DEFAULT_NU_MAX = 1000
-DEFAULT_REQUEST_CPUS = 16
+DEFAULT_REQUEST_CPUS = 8
 DEFAULT_REQUEST_MEMORY_GB = 24.0
 WORKING_DIRECTORY_PLACEHOLDER = "__WORKING_DIRECTORY__"
 NOISE_ONLY_DEFAULT_PRIOR = "bilby.core.prior.PriorDict"
@@ -1522,8 +1523,6 @@ def render_ini(
         WORKING_DIRECTORY_PLACEHOLDER: str(working_directory),
     }
     rendered = ini_template
-    for placeholder, value in replacements.items():
-        rendered = rendered.replace(placeholder, value)
     rendered = replace_line(rendered, "accounting-user", accounting_user)
     rendered = replace_or_append_line(
         rendered,
@@ -1725,6 +1724,10 @@ def render_ini(
         sine_gaussian_config,
         replace_line=replace_line,
     )
+    # Substituted last: lines written above (summarypages-arguments in
+    # particular) carry template placeholders through from template_settings.
+    for placeholder, value in replacements.items():
+        rendered = rendered.replace(placeholder, value)
     return rendered
 
 
@@ -2120,7 +2123,11 @@ def main() -> int:
         min_freq = template_settings["minimum_frequency"]
         if isinstance(min_freq, dict):
             detector_freqs = [v for k, v in min_freq.items() if k != "waveform"]
-            min_freq = dict(min_freq, waveform=min(detector_freqs) if detector_freqs else 20.0)
+            waveform_freq = min(detector_freqs) if detector_freqs else 20.0
+            if lal_approximant in TUNED_ANGLE_MODELS:
+                # PNR tuned angles require f_min <= f_ref.
+                waveform_freq = min(waveform_freq, template_settings["reference_frequency"])
+            min_freq = dict(min_freq, waveform=waveform_freq)
         template_settings = dict(
             template_settings,
             waveform_approximant=lal_approximant,

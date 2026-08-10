@@ -134,6 +134,34 @@ class InterferometerList(list):
             Number of contiguous frequency bands used when drawing Student-t
             noise in each detector.
         """
+        frequencies = np.asarray(
+            utils.create_frequency_series(sampling_frequency, duration)
+        )
+        active_frequencies = []
+        for interferometer in self:
+            maximum_frequency = min(
+                interferometer.strain_data._maximum_frequency,
+                sampling_frequency / 2,
+            )
+            analysis_mask = (
+                (frequencies >= interferometer.minimum_frequency)
+                & (frequencies <= maximum_frequency)
+            )
+            for notch in interferometer.strain_data.notch_list:
+                analysis_mask[notch.get_idxs(frequencies)] = False
+            if np.any(analysis_mask):
+                active_frequencies.append(frequencies[analysis_mask])
+        if len(active_frequencies) == 0:
+            raise ValueError(
+                "No active frequencies available to construct Student-t bands"
+            )
+        analysis_frequencies = np.unique(np.concatenate(active_frequencies))
+        frequency_band_edges = np.linspace(
+            analysis_frequencies[0],
+            analysis_frequencies[-1],
+            int(num_frequency_bands) + 1,
+        )
+
         for interferometer in self:
             if isinstance(nu, dict):
                 detector_nu = nu[interferometer.name]
@@ -145,6 +173,7 @@ class InterferometerList(list):
                 nu=detector_nu,
                 start_time=start_time,
                 num_frequency_bands=num_frequency_bands,
+                frequency_band_edges=frequency_band_edges,
             )
 
     def set_strain_data_from_zero_noise(

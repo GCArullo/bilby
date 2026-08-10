@@ -426,7 +426,7 @@ def test_gw190521_lvk_nrsur_profile_generates_released_setup(
         "additional-transfer-paths="
         "[/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5]\n"
     ) in ini_text
-    assert "minimum=70.0, maximum=150.0" in prior_text
+    assert "minimum=70.0, maximum=231.21615942439638" in prior_text
     assert "minimum=0.17, maximum=1.0" in prior_text
     assert "total_mass = Constraint(name='total_mass', minimum=200.0" in prior_text
     assert (
@@ -878,7 +878,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
     assert "distance-marginalization=False\n" in ini_text
-    assert "request-cpus=16\n" in ini_text
+    assert "request-cpus=8\n" in ini_text
     assert "request-memory=24.0\n" in ini_text
     assert "request-memory-generation=24.0\n" in ini_text
     assert "transfer-files=True\n" in ini_text
@@ -900,7 +900,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
     assert (
         "luminosity_distance =  bilby.gw.prior.UniformSourceFrame("
-        "name='luminosity_distance', cosmology=Planck15, maximum=15000.0, "
+        "name='luminosity_distance', cosmology=Planck15, maximum=20000.0, "
         "minimum=10, unit='Mpc')"
     ) in prior_text
     assert (
@@ -1067,13 +1067,14 @@ def test_render_ini_writes_per_run_submission_controls():
     assert "time-reference=L1" in lines
     assert "waveform-arguments-dict={'PhenomXPrecVersion': 320}" in lines
     assert "__WORKING_DIRECTORY__" not in rendered
+    assert "/base/dir/psds/L1.dat" in rendered
 
 
 def test_resolve_spin_taylor_approximant_maps_to_prec_version():
     module = load_submit_runs_real_data_module()
 
-    assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM") == (
-        "IMRPhenomXPHM",
+    assert module.resolve_spin_taylor_approximant("IMRPhenomXPNR") == (
+        "IMRPhenomXPNR",
         None,
     )
     assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM_SpinTaylor") == (

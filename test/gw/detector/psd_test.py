@@ -366,6 +366,24 @@ class TestStudentTNoiseRealisation(unittest.TestCase):
         self.assertGreater(np.mean(low_band_power), np.mean(high_band_power))
         self.assertGreater(np.quantile(low_band_power, 0.995), np.quantile(high_band_power, 0.995))
 
+    @mock.patch.object(bilby.core.utils.random.Generator, "rng")
+    def test_explicit_band_edges_are_extended_over_psd_support(self, rng):
+        rng.normal.return_value = np.ones((2, 17))
+        rng.chisquare.side_effect = lambda df, size: np.full(size, df)
+
+        self.psd.get_student_t_noise_realisation(
+            sampling_frequency=16,
+            duration=2,
+            nu=[3.0, 40.0],
+            num_frequency_bands=2,
+            frequency_band_edges=[2.0, 4.0, 6.0],
+        )
+
+        self.assertEqual(
+            rng.chisquare.call_args_list,
+            [mock.call(df=3.0, size=7), mock.call(df=40.0, size=8)],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

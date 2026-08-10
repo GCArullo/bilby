@@ -230,7 +230,10 @@ class StudentTGravitationalWaveTransient(
     def noise_parameter_keys(self):
         if not self.infer_nu:
             return []
-        return list(self.nu_parameter_keys)
+        keys = list(self.nu_parameter_keys)
+        if "nu" not in keys:
+            keys.insert(0, "nu")
+        return keys
 
     @staticmethod
     def _gaussian_limit_statistics(nu, dimension=2):
@@ -256,6 +259,9 @@ class StudentTGravitationalWaveTransient(
     def print_gaussian_limit_diagnostic(self, priors):
         """Print the closest Gaussian limit available within the nu priors."""
         fixed_nus = dict(zip(self.nu_parameter_keys, np.ravel(self._fixed_nu)))
+        noise_priors = (
+            self._get_noise_evidence_priors(priors) if self.infer_nu else None
+        )
         rows = []
         dimensions_by_band = [
             np.array([2], dtype=int)
@@ -277,7 +283,11 @@ class StudentTGravitationalWaveTransient(
 
         for parameter_index, key in enumerate(self.nu_parameter_keys):
             if self.infer_nu:
-                prior = priors[key]
+                prior = (
+                    noise_priors["nu"]
+                    if "nu" in noise_priors
+                    else noise_priors[key]
+                )
                 source = "fixed prior" if prior.is_fixed else "prior max"
                 nu = float(prior.maximum)
             else:
@@ -476,26 +486,21 @@ class StudentTGravitationalWaveTransient(
     def _valid_nu_values(values): return np.all(np.isfinite(values)) and np.all(values > 0)
 
     def _create_frequency_band_edges(self):
-
-        if self.joint:
-            active_frequencies = [
-                interferometer.frequency_array[interferometer.frequency_mask]
-                for interferometer in self.interferometers
-                if np.any(interferometer.frequency_mask)
-            ]
-            if len(active_frequencies) == 0:
-                raise ValueError(
-                    "No active frequencies available to construct Student-t bands"
-                )
-            frequencies = np.unique(np.concatenate(active_frequencies))
-        else:
-            frequencies = self.interferometers[0].frequency_array[
-                self.interferometers[0].frequency_mask
-            ]
-
-        if len(frequencies) == 0: raise ValueError("No active frequencies available to construct Student-t bands")
-        
-        return np.linspace(frequencies[0], frequencies[-1], self.num_frequency_bands + 1)
+        active_frequencies = [
+            interferometer.frequency_array[interferometer.frequency_mask]
+            for interferometer in self.interferometers
+            if np.any(interferometer.frequency_mask)
+        ]
+        if len(active_frequencies) == 0:
+            raise ValueError(
+                "No active frequencies available to construct Student-t bands"
+            )
+        frequencies = np.unique(np.concatenate(active_frequencies))
+        return np.linspace(
+            frequencies[0],
+            frequencies[-1],
+            self.num_frequency_bands + 1,
+        )
 
     def _get_nu_values(self, parameters):
 
@@ -830,6 +835,18 @@ class StudentTGravitationalWaveTransient(
         default_nu_parameters = self._get_default_nu_parameter_dict()
         noise_priors = PriorDict()
 
+        if "nu" not in default_nu_parameters and "nu" in priors:
+            conflicting_keys = [
+                key for key in default_nu_parameters if key in priors
+            ]
+            if conflicting_keys:
+                raise ValueError(
+                    "Specify either the shared nu prior or per-band/per-detector "
+                    "nu priors, not both"
+                )
+            noise_priors["nu"] = deepcopy(priors["nu"])
+            return noise_priors
+
         for key, value in default_nu_parameters.items():
             if key in priors:
                 noise_priors[key] = deepcopy(priors[key])
@@ -837,6 +854,12 @@ class StudentTGravitationalWaveTransient(
                 noise_priors[key] = DeltaFunction(peak=value, name=key)
 
         return noise_priors
+
+    def _get_noise_evidence_parameter_dict(self, noise_priors):
+        parameters = self._get_default_nu_parameter_dict()
+        for key in noise_priors.fixed_keys:
+            parameters[key] = float(noise_priors[key].peak)
+        return parameters
 
     @staticmethod
     def _get_noise_evidence_quadrature_points():
@@ -865,7 +888,7 @@ class StudentTGravitationalWaveTransient(
                 "sampled noise parameters"
             )
 
-        base_parameters = self._get_default_nu_parameter_dict()
+        base_parameters = self._get_noise_evidence_parameter_dict(noise_priors)
         reference_points = self._get_noise_evidence_quadrature_points()
 
         candidate_logls = [
@@ -1002,21 +1025,13 @@ class StudentTGravitationalWaveTransient(
         )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
-
-        if priors is None:
-            sampled_parameters = []
-        elif isinstance(priors, PriorDict):
-            sampled_parameters = priors.non_fixed_keys
-        else:
-            sampled_parameters = PriorDict(priors).non_fixed_keys
-
-        if not self.has_parameter_dependent_noise_likelihood(sampled_parameters):
+        if not self.infer_nu:
             return self.noise_log_likelihood()
 
         noise_priors = self._get_noise_evidence_priors(priors)
         if len(noise_priors.non_fixed_keys) == 0:
             return self._noise_log_likelihood_from_parameters(
-                self._get_default_nu_parameter_dict()
+                self._get_noise_evidence_parameter_dict(noise_priors)
             )
 
         if self.noise_evidence_method == "quadrature":

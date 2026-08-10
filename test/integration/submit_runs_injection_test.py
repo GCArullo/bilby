@@ -410,7 +410,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in gaussian_ini
     assert "queue=None\n" in gaussian_ini
-    assert "request-cpus=16\n" in gaussian_ini
+    assert "request-cpus=8\n" in gaussian_ini
     assert "request-memory=24.0\n" in gaussian_ini
     assert "request-memory-generation=24.0\n" in gaussian_ini
     assert "transfer-files=True\n" in gaussian_ini

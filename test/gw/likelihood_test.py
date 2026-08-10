@@ -178,9 +178,7 @@ class TestStudentTGWTransient(unittest.TestCase):
             waveform_generator=self.waveform_generator,
             nu=8.0,
         )
-        likelihood.parameters = self.parameters.copy()
-
-        calculated = likelihood.log_likelihood()
+        calculated = likelihood.log_likelihood(self.parameters)
 
         pols = self.waveform_generator.frequency_domain_strain(self.parameters)
         manual = 0.0
@@ -207,15 +205,13 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        self.assertIn("nu", likelihood.parameters)
+        parameters = self.parameters.copy()
+        parameters["nu"] = 5.0
+        self.assertEqual(likelihood.nu(parameters), 5.0)
 
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = 5.0
-        self.assertEqual(likelihood.nu, 5.0)
-
-        logl_nu5 = likelihood.log_likelihood()
-        likelihood.parameters["nu"] = 30.0
-        logl_nu30 = likelihood.log_likelihood()
+        logl_nu5 = likelihood.log_likelihood(parameters)
+        parameters["nu"] = 30.0
+        logl_nu30 = likelihood.log_likelihood(parameters)
         self.assertNotEqual(logl_nu5, logl_nu30)
 
     def test_invalid_nu_returns_negative_infinity(self):
@@ -225,10 +221,10 @@ class TestStudentTGWTransient(unittest.TestCase):
             nu=8.0,
             infer_nu=True,
         )
-        likelihood.parameters = self.parameters.copy()
-        likelihood.parameters["nu"] = -1
+        parameters = self.parameters.copy()
+        parameters["nu"] = -1
 
-        self.assertEqual(likelihood.log_likelihood(), np.nan_to_num(-np.inf))
+        self.assertEqual(likelihood.log_likelihood(parameters), np.nan_to_num(-np.inf))
 
 
 @pytest.mark.array_backend

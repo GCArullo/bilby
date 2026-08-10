@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.special import gammaln
 
-from ...core.likelihood import _fallback_to_parameters
 from ...core.utils import logger
 from .base import GravitationalWaveTransient
 
@@ -38,9 +37,6 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         if self._fixed_nu <= 0:
             raise ValueError("nu must be positive")
 
-        if self.infer_nu and "nu" not in self.parameters:
-            self.parameters["nu"] = self._fixed_nu
-
         if (
             self.time_marginalization
             or self.distance_marginalization
@@ -52,19 +48,14 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 "the Gaussian likelihood and may be inconsistent for Student-t noise."
             )
 
-    @property
-    def nu(self):
+    def nu(self, parameters):
+        """Degrees of freedom for this call, sampled or fixed at initialisation."""
         if self.infer_nu:
-            return float(self.parameters["nu"])
+            return float(parameters["nu"])
         return self._fixed_nu
 
-    def log_likelihood(self, parameters=None):
-        parameters = _fallback_to_parameters(self, parameters)
-
-        if self.infer_nu and "nu" in parameters:
-            self.parameters["nu"] = parameters["nu"]
-
-        nu = self.nu
+    def log_likelihood(self, parameters):
+        nu = self.nu(parameters)
         if nu <= 0 or not np.isfinite(nu):
             return np.nan_to_num(-np.inf)
 

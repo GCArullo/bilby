@@ -663,7 +663,8 @@ class InterferometerStrainData(object):
 
     def set_from_power_spectral_density_student_t(
             self, power_spectral_density, sampling_frequency, duration,
-            nu, start_time=0, num_frequency_bands=1):
+            nu, start_time=0, num_frequency_bands=1,
+            frequency_band_edges=None):
         """ Set the `frequency_domain_strain` using a Student-t noise realization
 
         Parameters
@@ -680,11 +681,25 @@ class InterferometerStrainData(object):
             The GPS start-time of the data
         num_frequency_bands: int
             Number of contiguous frequency bands for the Student-t noise model.
+        frequency_band_edges: array-like, optional
+            Explicit frequency-band edges defined on the analysis grid.
         """
 
         self._times_and_frequencies = CoupledTimeAndFrequencySeries(
             duration=duration, sampling_frequency=sampling_frequency, start_time=start_time
         )
+        self._frequency_mask_updated = False
+        if frequency_band_edges is None:
+            analysis_frequencies = self.frequency_array[self.frequency_mask]
+            if len(analysis_frequencies) == 0:
+                raise ValueError(
+                    "No active frequencies available to construct Student-t bands"
+                )
+            frequency_band_edges = np.linspace(
+                analysis_frequencies[0],
+                analysis_frequencies[-1],
+                int(num_frequency_bands) + 1,
+            )
         logger.debug(
             "Setting data using Student-t noise realization from provided"
             " power_spectral_density"
@@ -695,6 +710,7 @@ class InterferometerStrainData(object):
                 self.duration,
                 nu=nu,
                 num_frequency_bands=num_frequency_bands,
+                frequency_band_edges=frequency_band_edges,
             )
         )
 

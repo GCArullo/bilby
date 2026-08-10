@@ -77,6 +77,31 @@ class TestInterferometerStrainData(unittest.TestCase):
         idxs = (freqs > 100) * (freqs < 101)
         self.assertTrue(len(freqs[idxs]) == 0)
 
+    def test_student_t_noise_uses_analysis_frequency_bands(self):
+        self.ifosd.minimum_frequency = 10.1
+        self.ifosd.maximum_frequency = 20.1
+        frequencies = bilby.core.utils.create_frequency_series(64, 2)
+        power_spectral_density = mock.Mock()
+        power_spectral_density.get_student_t_noise_realisation.return_value = (
+            np.zeros(len(frequencies), dtype=complex),
+            frequencies,
+        )
+
+        self.ifosd.set_from_power_spectral_density_student_t(
+            power_spectral_density=power_spectral_density,
+            sampling_frequency=64,
+            duration=2,
+            nu=[5.0, 9.0],
+            num_frequency_bands=2,
+        )
+
+        np.testing.assert_allclose(
+            power_spectral_density.get_student_t_noise_realisation.call_args.kwargs[
+                "frequency_band_edges"
+            ],
+            [10.5, 15.25, 20.0],
+        )
+
     def test_set_data_fails(self):
         with mock.patch("bilby.core.utils.create_frequency_series") as m:
             m.return_value = [1, 2, 3]

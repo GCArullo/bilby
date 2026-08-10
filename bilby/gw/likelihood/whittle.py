@@ -160,7 +160,10 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
     def noise_parameter_keys(self):
         if not self.infer_log_psd_scale:
             return []
-        return list(self.log_psd_scale_parameter_keys)
+        keys = list(self.log_psd_scale_parameter_keys)
+        if "log_psd_scale" not in keys:
+            keys.insert(0, "log_psd_scale")
+        return keys
 
     @property
     def meta_data(self):
@@ -403,12 +406,36 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
 
         default_psd_parameters = self._get_default_psd_parameter_dict()
         noise_priors = PriorDict()
+
+        if (
+            "log_psd_scale" not in default_psd_parameters
+            and "log_psd_scale" in priors
+        ):
+            conflicting_keys = [
+                key for key in default_psd_parameters if key in priors
+            ]
+            if conflicting_keys:
+                raise ValueError(
+                    "Specify either the shared log_psd_scale prior or per-band "
+                    "log_psd_scale priors, not both"
+                )
+            noise_priors["log_psd_scale"] = deepcopy(
+                priors["log_psd_scale"]
+            )
+            return noise_priors
+
         for key, value in default_psd_parameters.items():
             if key in priors:
                 noise_priors[key] = deepcopy(priors[key])
             else:
                 noise_priors[key] = DeltaFunction(peak=value, name=key)
         return noise_priors
+
+    def _get_noise_evidence_parameter_dict(self, noise_priors):
+        parameters = self._get_default_psd_parameter_dict()
+        for key in noise_priors.fixed_keys:
+            parameters[key] = float(noise_priors[key].peak)
+        return parameters
 
     @staticmethod
     def _get_noise_evidence_quadrature_points():
@@ -441,7 +468,7 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
                 "sampled PSD parameters"
             )
 
-        base_parameters = self._get_default_psd_parameter_dict()
+        base_parameters = self._get_noise_evidence_parameter_dict(noise_priors)
         reference_points = self._get_noise_evidence_quadrature_points()
 
         candidate_logls = [
@@ -565,20 +592,13 @@ class WhittleGravitationalWaveTransient(GravitationalWaveTransient):
         )
 
     def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
-        if priors is None:
-            sampled_parameters = []
-        elif isinstance(priors, PriorDict):
-            sampled_parameters = priors.non_fixed_keys
-        else:
-            sampled_parameters = PriorDict(priors).non_fixed_keys
-
-        if not self.has_parameter_dependent_noise_likelihood(sampled_parameters):
+        if not self.infer_log_psd_scale:
             return self.noise_log_likelihood()
 
         noise_priors = self._get_noise_evidence_priors(priors)
         if len(noise_priors.non_fixed_keys) == 0:
             return self._noise_log_likelihood_from_parameters(
-                self._get_default_psd_parameter_dict()
+                self._get_noise_evidence_parameter_dict(noise_priors)
             )
 
         if self.noise_evidence_method == "quadrature":

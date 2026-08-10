@@ -177,7 +177,7 @@ class Interferometer(object):
 
     def set_strain_data_from_power_spectral_density_student_t(
             self, sampling_frequency, duration, nu, start_time=0,
-            num_frequency_bands=1):
+            num_frequency_bands=1, frequency_band_edges=None):
         """ Set the `Interferometer.strain_data` from a Student-t power spectral density draw
 
         Parameters
@@ -192,6 +192,8 @@ class Interferometer(object):
             The GPS start-time of the data
         num_frequency_bands: int
             Number of contiguous frequency bands for the Student-t noise model.
+        frequency_band_edges: array-like, optional
+            Explicit frequency-band edges defined on the analysis grid.
         """
         self.strain_data.set_from_power_spectral_density_student_t(
             self.power_spectral_density,
@@ -200,6 +202,7 @@ class Interferometer(object):
             nu=nu,
             start_time=start_time,
             num_frequency_bands=num_frequency_bands,
+            frequency_band_edges=frequency_band_edges,
         )
 
     def set_strain_data_from_frame_file(

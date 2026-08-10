@@ -2,6 +2,9 @@
 # The Student-t prior block below is filled in automatically.
 # Single-detector L1 variant: the mass bounds are widened relative to
 # GW231123_template.prior because L1 alone favours a heavier source.
+# Since Mchirp = M eta^(3/5) and eta <= 1/4, the total_mass <= 700
+# constraint caps the effective chirp-mass support at 304.693 Msun, despite
+# the nominal chirp_mass maximum below.
 
 chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=68.25578738484073, maximum=350, unit='$M_{\{\odot\}}')
 mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.16666667, maximum=1.0)

@@ -62,7 +62,7 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    "LAL_DATA_PATH": "/scratch/lalsimulation",
+    "LAL_DATA_PATH": "/scratch/lalsimulation:/opt/lalsimulation-data",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,

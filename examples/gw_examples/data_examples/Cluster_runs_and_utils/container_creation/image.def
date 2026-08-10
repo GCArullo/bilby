@@ -5,6 +5,7 @@ From: ubuntu:26.04
     # set up environment for when using the container
     . /opt/conda/etc/profile.d/conda.sh
     conda activate bilby
+    export LAL_DATA_PATH="/opt/lalsimulation-data${LAL_DATA_PATH:+:${LAL_DATA_PATH}}"
 
 %post
     # base os
@@ -36,6 +37,23 @@ From: ubuntu:26.04
 
     # install PESummary from the selected pesummary_GC ref
     pip install "pesummary @ git+https://git.ligo.org/gregorio.carullo/pesummary_GC.git@{{ PESUMMARY_REF }}"
+
+    # LALSuite >= 7.25 ships surrogate data separately from the library.
+    # NRSur7dq4 analyses need the waveform surrogate and PESummary's NRSur_fits
+    # needs the remnant surrogate. The cluster copies under
+    # /scratch/lalsimulation exist on CIT nodes only, so carry both files in
+    # the image for jobs that land on OSG sites.
+    mkdir -p /opt/lalsimulation-data
+    GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 \
+        https://git.ligo.org/waveforms/software/lalsuite-waveform-data.git \
+        /tmp/lalsuite-waveform-data
+    cd /tmp/lalsuite-waveform-data
+    git lfs pull --include "waveform_data/NRSur7dq4_v1.0.h5,waveform_data/NRSur7dq4Remnant_v1.0.h5"
+    mv waveform_data/NRSur7dq4_v1.0.h5 \
+        waveform_data/NRSur7dq4Remnant_v1.0.h5 \
+        /opt/lalsimulation-data/
+    cd /
+    rm -rf /tmp/lalsuite-waveform-data
 
     # cleanup
     apt-get clean -y

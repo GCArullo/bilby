@@ -8,8 +8,9 @@ configurations imported from the `hyp` branch:
 - `source_configs/` contains released source configurations.
 - `runbooks/` contains the commands and supporting inputs for each event.
 
-The GW190521 LVK NRSur7dq4 profile uses the official PSD and calibration
-products released in LIGO-P2000158-v4. Run
+The GW190521 LVK-informed NRSur7dq4 profile uses the official PSD and
+calibration products released in LIGO-P2000158-v4, with deliberately widened
+chirp-mass and distance upper bounds. Run
 `prepare_gw190521_030229_lvk_nrsur7dq4.py` before submitting it.
 Its embedded LALInference configuration is stored in
 `source_configs/GW190521_030229_LVK_NRSur7dq4.ini`; the executable Bilby

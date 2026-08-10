@@ -53,6 +53,9 @@ pesummary_commit.txt: temp_image.sif
 
 validate: temp_image.sif
 	apptainer exec temp_image.sif python -c 'from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator; gwsignal_get_waveform_generator("SEOBNRv5PHM")'
+	apptainer exec --cleanenv temp_image.sif python -c 'import os; files={"NRSur7dq4_v1.0.h5": 10**7, "NRSur7dq4Remnant_v1.0.h5": 10**8}; bad={name: os.path.getsize("/opt/lalsimulation-data/" + name) for name, minimum in files.items() if os.path.getsize("/opt/lalsimulation-data/" + name) <= minimum}; assert not bad, "git-lfs left pointer or truncated files: {}".format(bad)'
+	apptainer exec --cleanenv temp_image.sif python -c 'import lal, lalsimulation as ls, numpy as np; hp,hc=ls.SimInspiralChooseTDWaveform(80*lal.MSUN_SI,60*lal.MSUN_SI,0.,0.,0.,0.,0.,0.,500e6*lal.PC_SI,0.4,0.,0.,0.,0.,1/4096.,20.,20.,lal.CreateDict(),ls.NRSur7dq4); assert hp.data.length == hc.data.length > 0 and all(np.isfinite(h.data.data).all() and np.any(h.data.data) for h in (hp,hc))'
+	apptainer exec --cleanenv temp_image.sif python -c 'import lal, lalsimulation as ls, numpy as np; mf=float(ls.NRSur7dq4Remnant(4./3.,0.,0.,0.,0.,0.,0.,"mf",lal.CreateDict()).data[0]); assert np.isfinite(mf) and 0. < mf < 1.'
 
 image: validate bilby_version.txt bilby_commit.txt bilby_pipe_version.txt bilby_pipe_commit.txt pesummary_version.txt pesummary_commit.txt
 	cp temp_image.sif $(IMAGE)

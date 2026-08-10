@@ -21,6 +21,7 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
 MONITOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/monitor_runs.py"
 SG_JSON="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/runbooks/injected_sine_gaussian_values.json"
+L1_PRIOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Prior_templates/GW231123_L1_template.prior"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
 BASE="$HOME/public_html/GW231123/t_Student/Runs_injections_gw231123_sine_gaussians"
 MAXMCMC=5000
@@ -161,7 +162,7 @@ submissions are needed whenever a single-detector run wants its own bounds.
 GW231123 NRsur in L1 only:
 
 ```
-python "$REAL" --event GW231123 --likelihood gaussian --detectors L1 --maxmcmc "$MAXMCMC"
+python "$REAL" --event GW231123 --likelihood gaussian --detectors L1 --prior-template "$L1_PRIOR" --maxmcmc "$MAXMCMC"
 ```
 
 GW231123 NRsur + 1 SG (coherent) in H1 only:
@@ -170,8 +171,8 @@ GW231123 NRsur + 1 SG (coherent) in H1 only:
 python "$REAL" --event GW231123 --likelihood gaussian --detectors H1 --num-sine-gaussians 1 --sine-gaussian-mode coherent --maxmcmc "$MAXMCMC"
 ```
 
-To give a single-detector run different mass bounds, point `--prior-template` at
-a dedicated template, for example `Prior_templates/GW231123_L1_template.prior`.
+The L1-only command uses the dedicated `GW231123_L1_template.prior`, whose mass
+bounds are wider than the network prior.
 
 ## Injections
 

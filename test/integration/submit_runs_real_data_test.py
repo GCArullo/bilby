@@ -342,6 +342,54 @@ def test_resolve_spin_taylor_approximant_maps_to_prec_version():
     )
 
 
+@pytest.mark.parametrize(
+    ("approximant", "expected_waveform_minimum"),
+    [("IMRPhenomXPNR", 10.0), ("IMRPhenomXPHM", 20.0)],
+)
+def test_tuned_angle_model_clamps_waveform_minimum_frequency(
+    monkeypatch,
+    tmp_path,
+    approximant,
+    expected_waveform_minimum,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "gaussian",
+            "--waveform-approximant",
+            approximant,
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(tmp_path / "prior"),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    minimum_frequency = ast.literal_eval(
+        next(
+            line.split("=", 1)[1]
+            for line in ini_text.splitlines()
+            if line.startswith("minimum-frequency=")
+        )
+    )
+    assert minimum_frequency["waveform"] == expected_waveform_minimum
+    assert minimum_frequency["H1"] == 20
+    assert minimum_frequency["L1"] == 20
+
+
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
     monkeypatch, tmp_path
 ):

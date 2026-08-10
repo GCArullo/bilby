@@ -127,8 +127,10 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
 
 - No manual prior changes are needed; the launcher adds the independent SG sky
   priors and the CBC mass/spin priors are approximant-agnostic.
-- SEOBNRv5PHM and IMRPhenomXPHM are both in LALSuite; no additional data files
-  need to be transferred (`additional-transfer-paths` is only required for NRSur7dq4).
+- The managed container carries both NRSur7dq4 HDF5 files under
+  `/opt/lalsimulation-data`; no additional waveform data need to be transferred.
+  Use the container outside CIT; the launcher's `--no-container` configuration
+  searches the CIT-only `/scratch/lalsimulation` copy instead.
 - SEOBNRv5PHM (and SEOBNRv5HM) sine-Gaussian runs: `bilby.gw.source.cbc_plus_sine_gaussians`
   auto-detects these approximants and evaluates the CBC baseline through gwsignal's
   `GenerateFDWaveform` instead of the standard lalsimulation path. No extra flags are

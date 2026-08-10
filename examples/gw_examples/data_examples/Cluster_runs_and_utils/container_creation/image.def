@@ -32,6 +32,16 @@ From: ubuntu:26.04
     pip install "bilby[gw] @ git+https://github.com/GCArullo/bilby.git@{{ BILBY_BRANCH }}"
     pip install "bilby_pipe @ git+https://git.ligo.org/gregorio.carullo/bilby-pipe-gc.git@{{ BILBY_PIPE_BRANCH }}"
     pip install bilby_tgr
+
+    # pygsl_lite, a pyseobnr dependency, calls distutils' spawn() with
+    # positional arguments. setuptools 84.0.0 made them keyword-only, so the
+    # wheel build fails with 'spawn() takes 1 positional argument but 3 were
+    # given'. PIP_CONSTRAINT does not reach pip's isolated build environment,
+    # so build pygsl_lite against a pinned setuptools instead and supply its
+    # other build dependencies by hand. pyseobnr then finds it already
+    # installed. Drop this once pygsl_lite stops using the old signature.
+    pip install "setuptools<84" setuptools_scm wheel
+    pip install --no-build-isolation pygsl_lite
     pip install pyseobnr
 
     # install PESummary from the selected pesummary_GC ref

@@ -383,7 +383,7 @@ def test_special_event_submission_disables_distance_marginalization(
     assert "distance-marginalization=False\n" in ini_text
 
 
-def test_gw190521_lvk_nrsur_profile_generates_released_setup(
+def test_gw190521_lvk_nrsur_profile_generates_widened_setup(
     monkeypatch,
     tmp_path,
 ):
@@ -422,11 +422,9 @@ def test_gw190521_lvk_nrsur_profile_generates_released_setup(
     assert (
         "minimum-frequency={'H1': 11.0, 'L1': 11.0, 'V1': 11.0, 'waveform': 11.0}\n"
     ) in ini_text
-    assert (
-        "additional-transfer-paths="
-        "[/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5]\n"
-    ) in ini_text
+    assert "additional-transfer-paths=None\n" in ini_text
     assert "minimum=70.0, maximum=231.21615942439638" in prior_text
+    assert "minimum=10, maximum=13333.333333333332" in prior_text
     assert "minimum=0.17, maximum=1.0" in prior_text
     assert "total_mass = Constraint(name='total_mass', minimum=200.0" in prior_text
     assert (
@@ -480,10 +478,7 @@ def test_gw200129_hannam_profile_generates_nrsur_reproduction(monkeypatch, tmp_p
         "mode-array=[[2, -2], [2, -1], [2, 0], [2, 1], [2, 2], "
         "[3, -3], [3, -2], [3, -1], [3, 0], [3, 1], [3, 2], [3, 3]]\n"
     ) in ini_text
-    assert (
-        "additional-transfer-paths="
-        "[/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5]\n"
-    ) in ini_text
+    assert "additional-transfer-paths=None\n" in ini_text
     assert "minimum=14.5, maximum=49.0" in prior_text
     assert "total_mass = Constraint(minimum=68, maximum=500" in prior_text
     assert "mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(" in prior_text
@@ -1081,6 +1076,54 @@ def test_resolve_spin_taylor_approximant_maps_to_prec_version():
         "IMRPhenomXPHM",
         {"PhenomXPrecVersion": 320},
     )
+
+
+@pytest.mark.parametrize(
+    ("approximant", "expected_waveform_minimum"),
+    [("IMRPhenomXPNR", 10.0), ("IMRPhenomXPHM", 20.0)],
+)
+def test_tuned_angle_model_clamps_waveform_minimum_frequency(
+    monkeypatch,
+    tmp_path,
+    approximant,
+    expected_waveform_minimum,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW231123",
+            "--likelihood",
+            "gaussian",
+            "--waveform-approximant",
+            approximant,
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(tmp_path / "prior"),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    minimum_frequency = ast.literal_eval(
+        next(
+            line.split("=", 1)[1]
+            for line in ini_text.splitlines()
+            if line.startswith("minimum-frequency=")
+        )
+    )
+    assert minimum_frequency["waveform"] == expected_waveform_minimum
+    assert minimum_frequency["H1"] == 20
+    assert minimum_frequency["L1"] == 20
 
 
 @pytest.mark.parametrize(

@@ -1962,27 +1962,6 @@ def read_config_value(text: str, key: str) -> str:
     raise ValueError(f"Unable to find config key '{key}' in config")
 
 
-def pin_pesummary_to_cit(submit_path: Path) -> None:
-    """Keep summarypages on CIT.
-
-    The NRSur_fits conversion loads NRSur7dq4.h5 and NRSur7dq4Remnant.h5 from
-    LAL_DATA_PATH=/scratch/lalsimulation, which is a CIT mount. bilby_pipe only
-    passes DESIRED_Sites to analysis nodes, so pesummary is left with the
-    deprecated (ignored) MY.flock_local and flocks to OSG, where the data is
-    absent and the fit dies with an I/O error.
-    """
-    text = submit_path.read_text(encoding="utf-8")
-    if "MY.flock_local = True" not in text:
-        raise ValueError(f"Unable to find flocking line in '{submit_path}'")
-    submit_path.write_text(
-        text.replace(
-            "MY.flock_local = True",
-            'MY.DESIRED_Sites = "nogrid"\nMY.POOLS = "CIT"',
-        ),
-        encoding="utf-8",
-    )
-
-
 def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
     ini_text = ini_path.read_text(encoding="utf-8")
     validate_submission_local_paths(ini_text, base_directory=submit_directory)
@@ -1993,7 +1972,6 @@ def submit_run(ini_path: Path, *, submit_directory: Path) -> None:
     )
     label = read_config_value(ini_text, "label")
     dag_directory = submit_directory / read_config_value(ini_text, "outdir") / "submit"
-    pin_pesummary_to_cit(dag_directory / f"{label}_pesummary.submit")
     subprocess.run(
         ["condor_submit_dag", str(dag_directory / f"dag_{label}.submit")],
         check=True,

@@ -1,5 +1,8 @@
 # This special-event prior is consumed by submit_job.py.
 # The Student-t prior block below is filled in automatically.
+# Since Mchirp = M eta^(3/5) and eta <= 1/4, the total_mass <= 500
+# constraint caps the effective chirp-mass support at 217.638 Msun, despite
+# the nominal chirp_mass maximum below.
 
 chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=68.25578738484073, maximum=300, unit='$M_{\{\odot\}}')
 mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.16666667, maximum=1.0)

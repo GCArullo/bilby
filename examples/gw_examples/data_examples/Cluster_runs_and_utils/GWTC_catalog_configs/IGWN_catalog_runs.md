@@ -193,22 +193,17 @@ the argument string from the `VARS ..._pesummary_arg_0` line of
 `web/` aside first, otherwise stale files from the failed attempt are left
 alongside the new ones.
 
-### NRSur remnant fits off site
+### NRSur data off site
 
-`NRSur_fits` evaluates the remnant surrogate, which reads
-`NRSur7dq4Remnant_v1.0.h5` through `LAL_DATA_PATH=/scratch/lalsimulation`. That
-directory exists on CIT nodes only, so a results page that flocks to an OSG site
-fails with
+NRSur7dq4 waveform generation reads `NRSur7dq4_v1.0.h5`, while `NRSur_fits`
+reads `NRSur7dq4Remnant_v1.0.h5`. The managed container carries both under
+`/opt/lalsimulation-data`, and generated jobs search the CIT copy in
+`/scratch/lalsimulation` first and the container copy second. Container
+validation generates an NRSur7dq4 waveform and evaluates the remnant fit, so an
+image with Git LFS pointer files cannot be published.
 
-```
-XLAL Error - NRSurRemnant_LoadH5File (LALSimNRSurRemnantUtils.c:76): I/O error
-```
-
-The file is 124 MB and `additional-transfer-paths` is applied to every node of
-the DAG, including each parallel analysis job, so it is deliberately not
-transferred by default. When a page hits this, resubmit it with the file
-appended to `transfer_input_files` and `LAL_DATA_PATH=.:/scratch/lalsimulation`
-so the job scratch is searched first.
+Use the managed container outside CIT. The launchers' `--no-container`
+configuration searches the CIT-only `/scratch/lalsimulation` copy instead.
 
 ### Comparison pages
 

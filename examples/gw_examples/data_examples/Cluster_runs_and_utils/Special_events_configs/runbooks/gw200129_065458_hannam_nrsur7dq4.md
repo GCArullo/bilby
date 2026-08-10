@@ -32,13 +32,9 @@ Download the GWTC-3 de-glitched frames before the first run:
 python "$GWTC3/download_glitch_data.py"
 ```
 
-The template also transfers the surrogate data file from:
-
-```
-/home/pe.o4/GWTC4-fogg/NRSur7dq4_v1.0.h5
-```
-
-Confirm that this shared path is readable from the submit host.
+The managed container carries the NRSur7dq4 waveform and remnant HDF5 files.
+Use it outside CIT. The launcher's `--no-container` configuration searches the
+CIT-only `/scratch/lalsimulation` copy instead.
 
 ## Gaussian reproduction
 

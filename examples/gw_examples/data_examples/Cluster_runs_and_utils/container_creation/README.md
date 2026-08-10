@@ -46,9 +46,11 @@ Here, we dissect the steps implied by the command above.
 
 The `image` target force-rebuilds the temporary image from the requested Bilby,
 bilby-pipe, and `pesummary_GC` refs, reads their installed versions and commits,
-checks that the SEOBNRv5PHM gwsignal generator loads, and copies the image to
-its timestamped final name. The image includes `pyseobnr` and its GSL/SWIG
-build dependencies. The equivalent expanded build command for the defaults is:
+and validates the waveform stack before copying the image to its timestamped
+final name. Validation loads the SEOBNRv5PHM gwsignal generator, generates an
+NRSur7dq4 waveform, and evaluates the NRSur7dq4 remnant fit. The image includes
+`pyseobnr`, its GSL/SWIG build dependencies, and both NRSur7dq4 HDF5 data files.
+The equivalent expanded build command for the defaults is:
 
 ```
 apptainer build --force \

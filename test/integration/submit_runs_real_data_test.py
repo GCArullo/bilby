@@ -214,6 +214,74 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     ) in prior_text
 
 
+@pytest.mark.parametrize(
+    ("event", "extra_args", "waveform_generator", "source_model"),
+    [
+        (
+            "GW231123",
+            ["--waveform-approximant", "SEOBNRv5PHM"],
+            "bilby.gw.waveform_generator.GWSignalWaveformGenerator",
+            "bilby.gw.source.lal_binary_black_hole",
+        ),
+        (
+            "GW231123",
+            [
+                "--waveform-approximant",
+                "SEOBNRv5PHM",
+                "--num-sine-gaussians",
+                "1",
+                "--sine-gaussian-mode",
+                "coherent",
+            ],
+            "bilby.gw.waveform_generator.WaveformGenerator",
+            "bilby.gw.source.cbc_plus_sine_gaussians",
+        ),
+        (
+            "GW230814",
+            [],
+            "bilby.gw.waveform_generator.WaveformGenerator",
+            "bilby_tgr.pseob.source.gwsignal_binary_black_hole",
+        ),
+    ],
+)
+def test_main_selects_direct_generator_only_for_standard_seob(
+    monkeypatch,
+    tmp_path,
+    event,
+    extra_args,
+    waveform_generator,
+    source_model,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            event,
+            "--likelihood",
+            "gaussian",
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+            *extra_args,
+        ],
+    )
+
+    assert module.main() == 0
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    assert f"waveform-generator={waveform_generator}\n" in ini_text
+    assert f"frequency-domain-source-model={source_model}\n" in ini_text
+
+
 def test_render_ini_writes_maxmcmc_override():
     module = load_submit_runs_real_data_module()
     ini_template = "\n".join(

@@ -131,12 +131,13 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
   `/opt/lalsimulation-data`; no additional waveform data need to be transferred.
   Use the container outside CIT; the launcher's `--no-container` configuration
   searches the CIT-only `/scratch/lalsimulation` copy instead.
-- SEOBNRv5PHM (and SEOBNRv5HM) sine-Gaussian runs: `bilby.gw.source.cbc_plus_sine_gaussians`
-  auto-detects these approximants and evaluates the CBC baseline through gwsignal's
-  `GenerateFDWaveform` instead of the standard lalsimulation path. No extra flags are
-  required; `waveform-generator` must remain `bilby.gw.waveform_generator.WaveformGenerator`
-  (already handled by this script) since `GWSignalWaveformGenerator` would bypass
-  `frequency-domain-source-model` entirely.
+- Plain SEOBNRv5PHM and SEOBNRv5HM runs use
+  `bilby.gw.waveform_generator.GWSignalWaveformGenerator` directly.
+- For sine-Gaussian runs with either SEOB model,
+  `bilby.gw.source.cbc_plus_sine_gaussians` evaluates the CBC baseline through
+  gwsignal's `GenerateFDWaveform`. The launcher retains the generic
+  `WaveformGenerator` in this case because `GWSignalWaveformGenerator` would
+  bypass the composite source model and omit the sine-Gaussian signal.
 - If distance marginalisation is ever enabled, the lookup table
   (`distance-marginalization-lookup-table`) must be regenerated for the new
   approximant — the NRSur7dq4 table in the template cannot be reused.

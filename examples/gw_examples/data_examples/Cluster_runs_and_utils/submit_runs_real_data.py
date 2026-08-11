@@ -698,20 +698,32 @@ def render_ini(
         repr(template_settings["minimum_frequency"]),
     )
     GW_SIGNAL_MODELS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
-    if template_settings["waveform_approximant"] in GW_SIGNAL_MODELS:
-        # waveform generator now calls the correct waveform generation function depending on the flag.
+    if (
+        template_settings["waveform_approximant"] in GW_SIGNAL_MODELS
+        and not template_settings["frequency_domain_source_model"].startswith(
+            "bilby_tgr.pseob."
+        )
+    ):
+        # The direct generator bypasses custom source functions, so an
+        # SEOB+sine-Gaussian run must keep the generic generator.
+        waveform_generator = (
+            "bilby.gw.waveform_generator.WaveformGenerator"
+            if sine_gaussian_config.enabled
+            else "bilby.gw.waveform_generator.GWSignalWaveformGenerator"
+        )
         rendered = replace_line(
             rendered,
             "waveform-generator",
-            "bilby.gw.waveform_generator.WaveformGenerator",
+            waveform_generator,
         )
         # Sine-Gaussian runs override this below via cbc_plus_sine_gaussians,
-        # which auto-detects these approximants; without sine-Gaussians, route
-        # the CBC baseline through gwsignal directly.
+        # which auto-detects these approximants. For direct GWSignal generation,
+        # this BBH source lets bilby_pipe infer its conversion and generation
+        # defaults; the direct generator does not evaluate it.
         rendered = replace_line(
             rendered,
             "frequency-domain-source-model",
-            "bilby.gw.source.gwsignal_binary_black_hole",
+            "bilby.gw.source.lal_binary_black_hole",
         )
     rendered = apply_sine_gaussian_waveform_settings(
         rendered,

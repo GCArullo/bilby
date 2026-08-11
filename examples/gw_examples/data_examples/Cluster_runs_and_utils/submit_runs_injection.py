@@ -316,7 +316,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Base nested-sampler live points written into sampler-kwargs before "
             "the automatic sine-Gaussian uplift: +500 for one recovered SG, "
-            "+1000 for two or more. Defaults to "
+            "+1000 for two or more, plus a further +500 for "
+            "coherent-independent recovery. Defaults to "
             f"{TEST_INJECTION_NLIVE} for --test-injection and "
             f"{DEFAULT_NLIVE} otherwise."
         ),

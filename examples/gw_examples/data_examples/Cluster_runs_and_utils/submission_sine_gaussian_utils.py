@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 NLIVE_ONE_SINE_GAUSSIAN_UPLIFT = 500
 NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT = 1000
+NLIVE_COHERENT_INDEPENDENT_UPLIFT = 500
 SINE_GAUSSIAN_HRSS_BOUNDS = (1e-24, 1e-20)
 SINE_GAUSSIAN_Q_BOUNDS = (0.1, 30.0)
 SINE_GAUSSIAN_TIME_OFFSET_BOUNDS = (-0.15, 0.15)
@@ -528,8 +529,12 @@ def effective_nlive(base_nlive: int, config: SineGaussianConfiguration) -> int:
     if config.total_components <= 0:
         return base_nlive
     if config.total_components == 1:
-        return base_nlive + NLIVE_ONE_SINE_GAUSSIAN_UPLIFT
-    return base_nlive + NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT
+        uplift = NLIVE_ONE_SINE_GAUSSIAN_UPLIFT
+    else:
+        uplift = NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT
+    if config.mode == "coherent-independent":
+        uplift += NLIVE_COHERENT_INDEPENDENT_UPLIFT
+    return base_nlive + uplift
 
 
 def sine_gaussian_frequency_bounds(minimum_frequency, maximum_frequency) -> tuple[float, float]:

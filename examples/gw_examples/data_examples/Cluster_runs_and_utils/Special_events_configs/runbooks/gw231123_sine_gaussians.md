@@ -51,10 +51,11 @@ set this explicitly with `--maxmcmc "$MAXMCMC"`. Run and web outputs are written
 below `$HOME/public_html/GW231123/Runs` by default, with each summary in
 `<run-name>/web`.
 
-The generated recovery configs use `nlive=2000` for the baseline CBC run,
-`nlive=2500` for one recovered SG, and `nlive=3000` for two or more recovered
-SGs in total. This includes `coherent-independent` runs and incoherent
-`H1=1 L1=1`.
+The generated recovery configs use `nlive=2000` for the baseline CBC run.
+Coherent and incoherent configurations use `nlive=2500` for one recovered SG
+and `nlive=3000` for two or more. A `coherent-independent` configuration adds
+a further 500 live points, giving `nlive=3000` for one recovered SG and
+`nlive=3500` for two or more.
 
 Pass `--condor-job-priority N` to set `condor-job-priority` in the generated
 configs. Larger values are matched first among your own idle jobs; it has no

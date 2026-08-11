@@ -199,16 +199,24 @@ def test_special_event_templates_and_priors_are_grouped_together():
 
 
 @pytest.mark.parametrize(
-    ("event", "source_model", "deviation_prior", "model_directory"),
+    (
+        "event",
+        "waveform_generator",
+        "source_model",
+        "deviation_prior",
+        "model_directory",
+    ),
     [
         (
             "GW241127_SEOB",
-            "bilby.gw.source.gwsignal_binary_black_hole",
+            "bilby.gw.waveform_generator.GWSignalWaveformGenerator",
+            "bilby.gw.source.lal_binary_black_hole",
             None,
             "SEOB",
         ),
         (
             "GW241127_pSEOB",
+            "bilby.gw.waveform_generator.WaveformGenerator",
             "bilby_tgr.pseob.source.gwsignal_binary_black_hole",
             "domega220 = Uniform(name='domega220', minimum=-0.8, maximum=2.0)",
             "pSEOB",
@@ -219,6 +227,7 @@ def test_gw241127_seob_profiles_generate_released_setup(
     monkeypatch,
     tmp_path,
     event,
+    waveform_generator,
     source_model,
     deviation_prior,
     model_directory,
@@ -255,6 +264,7 @@ def test_gw241127_seob_profiles_generate_released_setup(
     assert "detectors=['H1', 'L1', 'V1']\n" in ini_text
     assert "trigger-time=1416723026.229858\n" in ini_text
     assert "waveform-approximant=SEOBNRv5PHM\n" in ini_text
+    assert f"waveform-generator={waveform_generator}\n" in ini_text
     assert f"frequency-domain-source-model={source_model}\n" in ini_text
     assert (
         "minimum-frequency={'H1': 20, 'L1': 30, 'V1': 20, 'waveform': 13.33}\n"
@@ -852,6 +862,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             "1",
             "--sine-gaussian-mode",
             "coherent",
+            "--waveform-approximant",
+            "SEOBNRv5PHM",
             "--dry-run",
             "--ini-dir",
             str(ini_dir),
@@ -868,6 +880,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert list(prior_dir.glob("*.prior"))
 
     ini_text = ini_paths[0].read_text(encoding="utf-8")
+    assert (
+        "waveform-generator=bilby.gw.waveform_generator.WaveformGenerator\n"
+        in ini_text
+    )
     assert (
         "frequency-domain-source-model="
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
@@ -1644,6 +1660,8 @@ def test_main_noise_only_inference_writes_zero_waveform_student_run(
             "--noise-only-inference",
             "--num-frequency-bands",
             "2",
+            "--waveform-approximant",
+            "SEOBNRv5PHM",
             "--dry-run",
             "--ini-dir",
             str(ini_dir),
@@ -1670,6 +1688,10 @@ def test_main_noise_only_inference_writes_zero_waveform_student_run(
     prior_text = prior_paths[0].read_text(encoding="utf-8")
 
     assert "default-prior=bilby.core.prior.PriorDict\n" in student_ini
+    assert (
+        "waveform-generator=bilby.gw.waveform_generator.WaveformGenerator\n"
+        in student_ini
+    )
     assert "frequency-domain-source-model=bilby.gw.source.zero_waveform\n" in student_ini
     assert "create-summary=False\n" in student_ini
     assert "calibration-model=None\n" in student_ini

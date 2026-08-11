@@ -1705,20 +1705,28 @@ def render_ini(
             "bilby_tgr.pseob."
         )
     ):
-        # waveform generator now calls the correct waveform generation function depending on the flag.
+        # The direct generator bypasses custom source functions, so zero-waveform
+        # and SEOB+sine-Gaussian runs must keep the generic generator.
+        waveform_generator = (
+            "bilby.gw.waveform_generator.WaveformGenerator"
+            if noise_only_inference or sine_gaussian_config.enabled
+            else "bilby.gw.waveform_generator.GWSignalWaveformGenerator"
+        )
         rendered = replace_line(
             rendered,
             "waveform-generator",
-            "bilby.gw.waveform_generator.WaveformGenerator",
+            waveform_generator,
         )
         # Sine-Gaussian runs override this below via cbc_plus_sine_gaussians,
-        # which auto-detects these approximants; without sine-Gaussians, route
-        # the CBC baseline through gwsignal directly.
-        rendered = replace_line(
-            rendered,
-            "frequency-domain-source-model",
-            "bilby.gw.source.gwsignal_binary_black_hole",
-        )
+        # which auto-detects these approximants. For direct GWSignal generation,
+        # this BBH source lets bilby_pipe infer its conversion and generation
+        # defaults; the direct generator does not evaluate it.
+        if not noise_only_inference:
+            rendered = replace_line(
+                rendered,
+                "frequency-domain-source-model",
+                "bilby.gw.source.lal_binary_black_hole",
+            )
     rendered = apply_sine_gaussian_waveform_settings(
         rendered,
         sine_gaussian_config,

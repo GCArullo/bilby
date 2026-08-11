@@ -62,7 +62,9 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    "LAL_DATA_PATH": "/scratch/lalsimulation:/opt/lalsimulation-data",
+    # The container prepends its portable /opt/lalsimulation-data copy. Keep
+    # this value free of ':' because bilby_pipe treats it as a dict separator.
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,

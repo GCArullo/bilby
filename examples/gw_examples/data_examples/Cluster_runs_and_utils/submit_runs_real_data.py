@@ -103,11 +103,9 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    # The cluster copy is searched first so that CIT nodes keep reading it, and
-    # the container copy is the fallback for jobs that land on OSG sites, where
-    # /scratch/lalsimulation does not exist. PESummary's NRSur_fits needs the
-    # remnant surrogate wherever the results page runs.
-    "LAL_DATA_PATH": "/scratch/lalsimulation:/opt/lalsimulation-data",
+    # The container prepends its portable /opt/lalsimulation-data copy. Keep
+    # this value free of ':' because bilby_pipe treats it as a dict separator.
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,

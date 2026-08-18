@@ -391,6 +391,12 @@ def test_special_event_submission_disables_distance_marginalization(
     assert module.main() == 0
     ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
     assert "distance-marginalization=False\n" in ini_text
+    summary_line = next(
+        line for line in ini_text.splitlines()
+        if line.startswith("summarypages-arguments=")
+    )
+    summary_arguments = ast.literal_eval(summary_line.split("=", 1)[1])
+    assert isinstance(summary_arguments["f_final"], (int, float))
 
 
 def test_gw190521_lvk_nrsur_profile_generates_widened_setup(

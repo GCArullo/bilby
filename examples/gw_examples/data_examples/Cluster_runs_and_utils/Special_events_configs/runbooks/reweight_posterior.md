@@ -128,3 +128,44 @@ inside a chunk with margin.
 
 **`--max-samples` thins randomly**, not by stride, because posterior files are
 ordered by the sampler rather than randomly. Use `--seed` for reproducibility.
+
+## Choosing the region automatically
+
+`suggest_likelihood.py` scans frequency bands, time chunks and joint tiles,
+applies the diagnostic order of `notes/robust_likelihood_regimes.tex`, and prints
+the `reweight_posterior.py` command line for the best candidate.
+
+```bash
+python suggest_likelihood.py \
+  --posterior pseob_posterior.npz \
+  --data gw191109_analysis_data_raw.npz \
+  --deglitched-data gw191109_analysis_data.npz \
+  --approximant SEOBNRv5PHM \
+  --frequency-domain-source-model bilby_tgr.pseob.source.gwsignal_binary_black_hole \
+  --reference-frame H1L1 --start-time 1257296853.216458 \
+  --parameters domega220 chi_eff
+```
+
+`--deglitched-data` is optional; when given, the artefact is measured directly as
+the difference between the two datasets instead of being inferred from the
+residual.
+
+On GW191109 raw data it picks out the H1 artefact as a tile at 0.5--1 s and
+20--45 Hz with `Lambda = 16.3` and a `+251%` excess, recommends `psd-scale`
+because the excess is dense rather than sparse, and then warns that the region
+carries `0.0%` of the signal information -- so removing it will change the
+evidence and not the posterior. That is the whole lesson of the event in one
+output: **detectability is not relevance.**
+
+Two columns to read alongside `Lambda`:
+
+- `f_sig`, the fraction of signal information in the region. Near zero means the
+  artefact biases nothing; near one means downweighting will inflate the
+  parameter variance badly and only coherent subtraction will help.
+- `sparse`, the fraction of excess power in the loudest 5% of bins. High favours
+  a heavy tail, low favours a free scale.
+
+The scan excludes `--taper-seconds` at each segment edge. The Tukey window
+suppresses the data there, which shows up as a large *deficit*: on GW191109 the
+edge chunks reach `Lambda ~ 80` at `-60%` excess purely from the window. Only a
+positive excess is something a robust likelihood can act on.

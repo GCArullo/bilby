@@ -54,6 +54,37 @@ On GW191109 in 20-45 Hz the tool gives `Lambda = 11.9` for H1 on raw data and
 This is exactly the pathological case the note describes: the artefact the model
 can see is the one that does not matter.
 
+### Shape: is it a tail, or just the wrong PSD?
+
+`Lambda` responds to the overall level, so it cannot tell a genuinely
+heavy-tailed region from one where the PSD is merely mis-estimated. The tool
+therefore also reports
+
+    kappa = <q^2> / <q>^2 ,
+
+which for Gaussian noise equals **exactly 2 whatever the PSD normalisation** --
+rescaling `q -> c q` leaves the ratio bit-identically unchanged. Its null scatter
+is `sigma = 2/sqrt(n)` (delta method, confirmed by simulation to better than 1%
+for `n >= 100`), so `z = (kappa - 2) / sigma`.
+
+| `Lambda` | `kappa` | interpretation |
+|---|---|---|
+| high | `~ 2` | PSD mis-estimated: use a free scale |
+| high | `> 2` | genuine heavy tail: use Student-t or hyperbolic |
+| low | `> 2` | a tail carrying no excess power |
+| low | `~ 2` | nothing an amplitude model can model |
+
+This is what picks the family in `suggest_likelihood.py`. On raw GW191109 in
+20--45 Hz, H1 has `Lambda = 11.9` but `kappa = 2.02` (`z = +0.1`): the artefact
+raises the level by 57% and leaves the shape exactly Gaussian, so a free scale is
+the right model and a heavy tail would only duplicate it. That agrees with the
+direct measurement that the hyperbolic and free-scale profile likelihoods differ
+by 0.003 nats there, but `kappa` reaches it from a statistic that never sees the
+level at all.
+
+`kappa` is biased low for small `n` (1.96 at `n = 50`, 1.86 at `n = 13`), which
+makes `z` conservative for detecting non-Gaussianity in small tiles.
+
 ## Regions
 
 One tool covers all three branches, because the residual is whitened once with

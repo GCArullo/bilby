@@ -126,6 +126,7 @@ def analyse(arguments):
                     implied_artefact_snr=stats["implied_artefact_snr"],
                     signal_information_fraction=fraction,
                     sparsity=sparsity(q),
+                    kappa=stats["kappa"], kappa_z=stats["kappa_z"],
                 )
                 if artefact is not None:
                     a = region_quadratic_forms(
@@ -169,13 +170,21 @@ def recommend(records, arguments):
         return record["lambda_profile"] * (1.0 - record["signal_information_fraction"])
 
     best = max(engaged, key=score)
-    family = "hyperbolic" if best["sparsity"] > arguments.sparsity_threshold \
-        else "psd-scale"
+
+    # kappa = <q^2>/<q>^2 is 2 for Gaussian noise whatever the PSD
+    # normalisation, so it separates a genuine tail from a level error in a way
+    # Lambda cannot.  It, not the ad-hoc sparsity descriptor, picks the family.
+    heavy_tailed = best["kappa_z"] >= arguments.kappa_threshold
+    family = "hyperbolic" if heavy_tailed else "psd-scale"
     reason = (
-        "the excess is carried by a few bins, so a heavy tail suits it"
-        if family == "hyperbolic"
-        else "the excess is dense across the region, so a free scale suits it "
-             "and a heavy tail would add nothing"
+        f"kappa = {best['kappa']:.2f} against the Gaussian value of 2 "
+        f"(z = {best['kappa_z']:+.1f}), so the excess is not a level error and a "
+        "free scale cannot absorb it: use a heavy tail"
+        if heavy_tailed else
+        f"kappa = {best['kappa']:.2f} against the Gaussian value of 2 "
+        f"(z = {best['kappa_z']:+.1f}), so the region is Gaussian in shape and "
+        "the excess is a level error. A free scale is the right model; a heavy "
+        "tail would only duplicate it"
     )
 
     warnings = []
@@ -204,6 +213,13 @@ def recommend(records, arguments):
             "the best region is a tile, meaning the artefact separates from the "
             "signal in time and frequency jointly but not on either axis alone. "
             "Use the TD_FD branch; a plain band or chunk will not capture it."
+        )
+    if best["kappa_z"] >= arguments.kappa_threshold and \
+            best["lambda_profile"] < arguments.lambda_threshold:
+        warnings.append(
+            "the shape is non-Gaussian but the level is not raised, so a tail "
+            "is present that carries no excess power. A free scale will find "
+            "nothing here."
         )
     if best["n_bins"] < 10 and family == "hyperbolic":
         warnings.append(
@@ -269,7 +285,11 @@ def main():
     parser.add_argument("--minimum-frequency", type=float, default=20.0)
     parser.add_argument("--maximum-frequency", type=float, default=448.0)
     parser.add_argument("--lambda-threshold", type=float, default=5.0)
-    parser.add_argument("--sparsity-threshold", type=float, default=0.5)
+    parser.add_argument("--sparsity-threshold", type=float, default=0.5,
+                        help="descriptive only; kappa drives the family choice")
+    parser.add_argument("--kappa-threshold", type=float, default=3.0,
+                        help="z above which the region is called heavy tailed "
+                             "rather than merely mis-normalised")
     parser.add_argument("--information-threshold", type=float, default=0.3,
                         help="above this signal-information fraction, warn that "
                              "downweighting inflates the parameter variance")
@@ -287,7 +307,7 @@ def main():
     ordered = sorted(positive or records,
                      key=lambda r: -r["lambda_profile"])[: arguments.top]
     print(f"\n{'det':>4} {'mode':>10} {'region':>26} {'bins':>6} "
-          f"{'Lambda':>8} {'excess':>8} {'f_sig':>7} {'sparse':>7}")
+          f"{'Lambda':>8} {'excess':>8} {'kappa':>7} {'z_k':>6} {'f_sig':>7}")
     ordered = [r for r in ordered if r["fractional_excess"] > 0.0] or ordered
     for record in ordered:
         region = (
@@ -300,8 +320,8 @@ def main():
         print(f"{record['detector']:>4} {record['mode']:>10} {region:>26} "
               f"{record['n_bins']:6d} {record['lambda_profile']:8.2f} "
               f"{100 * record['fractional_excess']:7.1f}% "
-              f"{record['signal_information_fraction']:7.3f} "
-              f"{record['sparsity']:7.3f}")
+              f"{record['kappa']:7.2f} {record['kappa_z']:+6.1f} "
+              f"{record['signal_information_fraction']:7.3f}")
 
     print(f"\n=== {suggestion['verdict']} ===")
     print(f"{suggestion['reason']}")

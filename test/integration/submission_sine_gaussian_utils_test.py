@@ -53,6 +53,18 @@ def test_effective_nlive_uses_runbook_sine_gaussian_schedule():
     )
     coherent_2 = module.SineGaussianConfiguration(total_components=2, mode="coherent")
     coherent_3 = module.SineGaussianConfiguration(total_components=3, mode="coherent")
+    independent_1 = module.SineGaussianConfiguration(
+        total_components=1,
+        mode="coherent-independent",
+    )
+    independent_2 = module.SineGaussianConfiguration(
+        total_components=2,
+        mode="coherent-independent",
+    )
+    independent_3 = module.SineGaussianConfiguration(
+        total_components=3,
+        mode="coherent-independent",
+    )
     incoherent_h1_l1 = module.SineGaussianConfiguration(
         total_components=2,
         mode="incoherent",
@@ -64,6 +76,9 @@ def test_effective_nlive_uses_runbook_sine_gaussian_schedule():
     assert module.effective_nlive(2000, incoherent_1) == 2500
     assert module.effective_nlive(2000, coherent_2) == 3000
     assert module.effective_nlive(2000, coherent_3) == 3000
+    assert module.effective_nlive(2000, independent_1) == 3000
+    assert module.effective_nlive(2000, independent_2) == 3500
+    assert module.effective_nlive(2000, independent_3) == 3500
     assert module.effective_nlive(2000, incoherent_h1_l1) == 3000
 
 

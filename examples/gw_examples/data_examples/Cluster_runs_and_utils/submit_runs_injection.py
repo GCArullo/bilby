@@ -83,7 +83,9 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    "LAL_DATA_PATH": "/scratch/lalsimulation:/opt/lalsimulation-data",
+    # The container prepends its portable /opt/lalsimulation-data copy. Keep
+    # this value free of ':' because bilby_pipe treats it as a dict separator.
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
@@ -378,7 +380,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Base nested-sampler live points written into sampler-kwargs before "
             "the automatic sine-Gaussian uplift: +500 for one recovered SG, "
-            "+1000 for two or more. Defaults to "
+            "+1000 for two or more, plus a further +500 for "
+            "coherent-independent recovery. Defaults to "
             f"{TEST_INJECTION_NLIVE} for --test-injection and "
             f"{DEFAULT_NLIVE} otherwise."
         ),

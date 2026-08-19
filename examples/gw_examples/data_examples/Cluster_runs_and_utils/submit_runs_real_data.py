@@ -103,11 +103,9 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    # The cluster copy is searched first so that CIT nodes keep reading it, and
-    # the container copy is the fallback for jobs that land on OSG sites, where
-    # /scratch/lalsimulation does not exist. PESummary's NRSur_fits needs the
-    # remnant surrogate wherever the results page runs.
-    "LAL_DATA_PATH": "/scratch/lalsimulation:/opt/lalsimulation-data",
+    # The container prepends its portable /opt/lalsimulation-data copy. Keep
+    # this value free of ':' because bilby_pipe treats it as a dict separator.
+    "LAL_DATA_PATH": "/scratch/lalsimulation",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
     "multi_process": 6,
@@ -540,6 +538,29 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         help=(
             "Generate detector-specific noise parameters for parametric-noise "
             "likelihoods."
+        ),
+    )
+    alpha_sharing = parser.add_mutually_exclusive_group()
+    alpha_sharing.add_argument(
+        "--shared-alpha",
+        dest="shared_alpha",
+        action="store_true",
+        default=False,
+        help=(
+            "Hyperbolic runs only. Sample one alpha shared across every band and "
+            "detector and leave delta free per band, giving N+1 noise parameters "
+            "instead of 2N. This is the parameterisation of arXiv:2602.22074 and "
+            "is what the runbooks use; it is opt-in here so that configurations "
+            "generated before it existed still reproduce."
+        ),
+    )
+    alpha_sharing.add_argument(
+        "--per-band-alpha",
+        dest="shared_alpha",
+        action="store_false",
+        help=(
+            "Hyperbolic runs only. Sample alpha independently in every band. "
+            "This is the current default and matches all completed runs."
         ),
     )
     parser.add_argument(
@@ -1046,13 +1067,34 @@ def build_hyperbolic_priors(
     detector_dependent_noise: bool = False,
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
     frequency_band_edges=None,
+    shared_alpha: bool = False,
 ) -> str:
+    """Hyperbolic noise priors.
+
+    With ``shared_alpha`` a single ``alpha`` is sampled and broadcast to every
+    band and detector, leaving ``delta`` free per band: N+1 parameters instead of
+    2N.  This is the parameterisation of arXiv:2602.22074, and it is better
+    identified in practice, because the fitted hyperbolic densities sit at
+    ``alpha*delta >> 1`` where the band freedom acts as a variance scale and the
+    tail shape is common.  ``HyperbolicGravitationalWaveTransient`` implements
+    the sharing by short-circuiting on a bare ``alpha`` key
+    (``_get_alpha_values``), so no likelihood change is needed.
+    """
     bounds = {
         "alpha": (DEFAULT_HYPERBOLIC_ALPHA_MIN, DEFAULT_HYPERBOLIC_ALPHA_MAX),
         "delta": (DEFAULT_HYPERBOLIC_DELTA_MIN, DEFAULT_HYPERBOLIC_DELTA_MAX),
     }
     lines = []
+    if shared_alpha:
+        minimum, maximum = bounds["alpha"]
+        lines.append(
+            f"alpha = Uniform(name='alpha', minimum={minimum}, "
+            f"maximum={maximum}, "
+            f"latex_label='${BAND_LATEX_SYMBOLS['alpha']}$')"
+        )
     for parameter_name in ("alpha", "delta"):
+        if shared_alpha and parameter_name == "alpha":
+            continue
         minimum, maximum = bounds[parameter_name]
         for key, detector, suffix in band_parameter_keys(
             parameter_name,
@@ -1112,6 +1154,7 @@ def render_prior(
     sine_gaussian_config,
     noise_only_inference: bool = False,
     frequency_band_edges=None,
+    shared_alpha: bool = False,
 ) -> str:
     if noise_only_inference:
         return render_noise_only_prior(
@@ -1121,6 +1164,7 @@ def render_prior(
             detectors=detectors,
             template_settings=template_settings,
             frequency_band_edges=frequency_band_edges,
+            shared_alpha=shared_alpha,
         )
 
     if hypothesis == "student":
@@ -1136,6 +1180,7 @@ def render_prior(
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
             frequency_band_edges=frequency_band_edges,
+            shared_alpha=shared_alpha,
         )
     elif hypothesis == "gaussian-parametric":
         noise_prior_block = build_log_psd_scale_priors(
@@ -1443,6 +1488,7 @@ def render_noise_only_prior(
     detectors: list[str] | tuple[str, ...],
     template_settings: dict[str, object],
     frequency_band_edges=None,
+    shared_alpha: bool = False,
 ) -> str:
     if hypothesis == "student":
         noise_prior_block = build_nu_priors(
@@ -1457,6 +1503,7 @@ def render_noise_only_prior(
             detector_dependent_noise=detector_dependent_noise,
             detectors=detectors,
             frequency_band_edges=frequency_band_edges,
+            shared_alpha=shared_alpha,
         )
     elif hypothesis == "gaussian-parametric":
         noise_prior_block = build_log_psd_scale_priors(
@@ -1705,20 +1752,28 @@ def render_ini(
             "bilby_tgr.pseob."
         )
     ):
-        # waveform generator now calls the correct waveform generation function depending on the flag.
+        # The direct generator bypasses custom source functions, so zero-waveform
+        # and SEOB+sine-Gaussian runs must keep the generic generator.
+        waveform_generator = (
+            "bilby.gw.waveform_generator.WaveformGenerator"
+            if noise_only_inference or sine_gaussian_config.enabled
+            else "bilby.gw.waveform_generator.GWSignalWaveformGenerator"
+        )
         rendered = replace_line(
             rendered,
             "waveform-generator",
-            "bilby.gw.waveform_generator.WaveformGenerator",
+            waveform_generator,
         )
         # Sine-Gaussian runs override this below via cbc_plus_sine_gaussians,
-        # which auto-detects these approximants; without sine-Gaussians, route
-        # the CBC baseline through gwsignal directly.
-        rendered = replace_line(
-            rendered,
-            "frequency-domain-source-model",
-            "bilby.gw.source.gwsignal_binary_black_hole",
-        )
+        # which auto-detects these approximants. For direct GWSignal generation,
+        # this BBH source lets bilby_pipe infer its conversion and generation
+        # defaults; the direct generator does not evaluate it.
+        if not noise_only_inference:
+            rendered = replace_line(
+                rendered,
+                "frequency-domain-source-model",
+                "bilby.gw.source.lal_binary_black_hole",
+            )
     rendered = apply_sine_gaussian_waveform_settings(
         rendered,
         sine_gaussian_config,
@@ -1761,6 +1816,7 @@ def prepare_run(
     detector_suffix: str = "",
     joint: bool = False,
     frequency_band_edges=None,
+    shared_alpha: bool = False,
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
@@ -1905,6 +1961,7 @@ def prepare_run(
                 if hypothesis in PARAMETRIC_NOISE_LIKELIHOODS
                 else None
             ),
+            shared_alpha=shared_alpha,
         ),
         encoding="utf-8",
     )
@@ -2213,6 +2270,7 @@ def main() -> int:
                 detector_suffix=detector_suffix,
                 joint=args.joint,
                 frequency_band_edges=frequency_band_edges,
+                shared_alpha=args.shared_alpha,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

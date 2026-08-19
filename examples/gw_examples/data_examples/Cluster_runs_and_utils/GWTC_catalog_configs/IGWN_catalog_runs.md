@@ -26,12 +26,21 @@ Use one flag to prepare the complete high-mass catalog:
 python "$REAL" \
   --high-mass-catalog \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --dry-run
 ```
 
 This applies every other command-line option to each high-mass event. Remove
 `--dry-run` to submit them.
+
+`--shared-alpha` samples one `alpha` across every band and detector and leaves
+`delta` free per band, the parameterisation of arXiv:2602.22074, giving `N+1`
+noise parameters instead of `2N`. The measured hyperbolic fits sit at
+`alpha*delta` of order 70, deep in the regime where the per-band freedom acts
+as a variance scale and the tail shape is common, so the shared parameter is
+better identified. Pass `--per-band-alpha` to reproduce runs completed before
+this change.
 
 ## Gaussian likelihood with inferred PSD corrections
 
@@ -66,6 +75,7 @@ For example:
 python "$REAL" \
   --event GW190727_060333 \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --dry-run
 ```
@@ -90,6 +100,7 @@ For example:
 python "$REAL" \
   --event GW200129_065458 \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --dry-run
 ```
@@ -115,6 +126,7 @@ For example:
 python "$REAL" \
   --event GW240413_022019 \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --dry-run
 ```

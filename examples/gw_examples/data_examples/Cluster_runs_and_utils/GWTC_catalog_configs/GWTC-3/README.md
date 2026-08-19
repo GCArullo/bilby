@@ -35,6 +35,7 @@ From `Cluster_runs_and_utils`, generate files without submitting:
 python submit_runs_real_data.py \
   --event GW200129_065458 \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --dry-run
 ```
@@ -43,6 +44,14 @@ Omit `--dry-run` to submit. Default run directories are created under
 `/home/gregorio.carullo/public_html/GWTC_parametric_noise/Runs/<event>`.
 Student-t and Hyperbolic runs are factorized across detectors by default.
 Pass `--joint` to opt into the corresponding joint network likelihood.
+
+`--shared-alpha` samples one `alpha` across every band and detector and leaves
+`delta` free per band, the parameterisation of arXiv:2602.22074, giving `N+1`
+noise parameters instead of `2N`. The measured hyperbolic fits sit at
+`alpha*delta` of order 70, deep in the regime where the per-band freedom acts
+as a variance scale and the tail shape is common, so the shared parameter is
+better identified. Pass `--per-band-alpha` to reproduce runs completed before
+this change.
 
 ## De-glitched events
 

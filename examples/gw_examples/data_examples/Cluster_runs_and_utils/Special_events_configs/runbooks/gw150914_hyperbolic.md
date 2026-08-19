@@ -31,6 +31,14 @@ Hyperbolic runs are factorized across detectors by default. Add `--joint` to
 use one joint network Hyperbolic density instead; joint mode is incompatible
 with `--detector-dependent-noise`.
 
+`--shared-alpha` samples one `alpha` across every band and detector and leaves
+`delta` free per band, the parameterisation of arXiv:2602.22074, giving `N+1`
+noise parameters instead of `2N`. The measured hyperbolic fits sit at
+`alpha*delta` of order 70, deep in the regime where the per-band freedom acts
+as a variance scale and the tail shape is common, so the shared parameter is
+better identified. Pass `--per-band-alpha` to reproduce runs completed before
+this change.
+
 ## Detector-independent Hyperbolic runs
 
 Bands 1 through 4:
@@ -43,6 +51,7 @@ python "$REAL" \
   --working-directory "$WORKING_DIRECTORY" \
   --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
+  --shared-alpha \
   --range \
   --num-frequency-bands 4
 ```
@@ -57,6 +66,7 @@ python "$REAL" \
   --working-directory "$WORKING_DIRECTORY" \
   --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --disable-calibration \
   --outdir-label no_calibration
@@ -74,6 +84,7 @@ python "$REAL" \
   --working-directory "$WORKING_DIRECTORY" \
   --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
+  --shared-alpha \
   --range \
   --num-frequency-bands 4 \
   --detector-dependent-noise
@@ -89,6 +100,7 @@ python "$REAL" \
   --working-directory "$WORKING_DIRECTORY" \
   --outdir-base "$OUTPUT" \
   --likelihood hyperbolic \
+  --shared-alpha \
   --num-frequency-bands 1 \
   --joint
 ```

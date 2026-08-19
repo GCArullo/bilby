@@ -105,9 +105,9 @@ python "$REAL" "${COMMON[@]}" --likelihood student \
 ## Hyperbolic, N = 1 to 4
 
 ```
-python "$REAL" "${COMMON[@]}" --likelihood hyperbolic \
+python "$REAL" "${COMMON[@]}" --likelihood hyperbolic --shared-alpha \
   --range --num-frequency-bands 4 --no-add-gaussian
-python "$REAL" "${COMMON[@]}" --likelihood hyperbolic \
+python "$REAL" "${COMMON[@]}" --likelihood hyperbolic --shared-alpha \
   --range --num-frequency-bands 4 --no-add-gaussian --detector-dependent-noise
 ```
 
@@ -115,6 +115,14 @@ python "$REAL" "${COMMON[@]}" --likelihood hyperbolic \
 parametric likelihoods generate by default, since the Gaussian run above
 already covers it. The seven commands produce 25 runs. Add `--dry-run` to
 write the ini and prior files without submitting.
+
+`--shared-alpha` samples one `alpha` across every band and detector and leaves
+`delta` free per band, the parameterisation of arXiv:2602.22074, giving `N+1`
+noise parameters instead of `2N`. The measured hyperbolic fits sit at
+`alpha*delta` of order 70, deep in the regime where the per-band freedom acts
+as a variance scale and the tail shape is common, so the shared parameter is
+better identified. Pass `--per-band-alpha` to reproduce runs completed before
+this change.
 
 ## Hyperbolic with band edges matched to the glitch
 
@@ -125,22 +133,22 @@ the edges where the table above says the power actually is. Both runs use
 detector-dependent parameters, so they differ only in whether the edges are
 shared.
 
-Shared edges, five bands, 20 noise parameters:
+Shared edges, five bands, 11 noise parameters:
 
 ```
 python "$REAL" "${COMMON[@]}" --likelihood hyperbolic --no-add-gaussian \
-  --detector-dependent-noise \
+  --shared-alpha --detector-dependent-noise \
   --frequency-band-edges 20,30,40,180,235,448 \
   --outdir-label no_glitch_subtraction_bands_common
 ```
 
-Per-detector edges, four bands each, 16 noise parameters. Hanford isolates its
+Per-detector edges, four bands each, 9 noise parameters. Hanford isolates its
 25-40 Hz glitch; Livingston isolates the 20-30 Hz arch and the 180-235 Hz
 feature, and its remaining edges only split clean data:
 
 ```
 python "$REAL" "${COMMON[@]}" --likelihood hyperbolic --no-add-gaussian \
-  --detector-dependent-noise \
+  --shared-alpha --detector-dependent-noise \
   --frequency-band-edges H1:20,25,40,235,448 L1:20,30,180,235,448 \
   --outdir-label no_glitch_subtraction_bands_per_detector
 ```

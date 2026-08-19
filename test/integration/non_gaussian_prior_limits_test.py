@@ -96,3 +96,45 @@ def test_generated_prior_upper_edges_recover_gaussian_limit_to_expected_accuracy
 
     assert student_t_accuracy < 0.13
     assert hyperbolic_accuracy < 0.08
+
+
+def test_shared_alpha_emits_one_alpha_and_keeps_delta_per_band():
+    """The arXiv:2602.22074 parameterisation: N+1 noise parameters, not 2N.
+
+    ``HyperbolicGravitationalWaveTransient._get_alpha_values`` short-circuits on
+    a bare ``alpha`` key and broadcasts it to every band and detector, so sharing
+    needs no likelihood change -- only a prior file that declares ``alpha`` once.
+    """
+    module = load_submit_runs_real_data_module()
+    edges = [20.0, 35.0, 60.0, 448.0]
+
+    shared = module.build_hyperbolic_priors(
+        3, frequency_band_edges=edges, shared_alpha=True
+    )
+    per_band = module.build_hyperbolic_priors(
+        3, frequency_band_edges=edges, shared_alpha=False
+    )
+
+    shared_names = [line.split(" = ")[0] for line in shared.splitlines() if line]
+    per_band_names = [line.split(" = ")[0] for line in per_band.splitlines() if line]
+
+    assert shared_names == ["alpha", "delta_20_35", "delta_35_60", "delta_60_448"]
+    assert len(per_band_names) == 6
+    # the delta block is untouched by the sharing choice
+    assert [n for n in shared_names if n.startswith("delta")] == [
+        n for n in per_band_names if n.startswith("delta")
+    ]
+
+    # per-detector bands share the single alpha too
+    detector_shared = module.build_hyperbolic_priors(
+        2,
+        detector_dependent_noise=True,
+        detectors=("H1", "L1"),
+        frequency_band_edges={"H1": [20.0, 40.0, 448.0], "L1": [20.0, 30.0, 448.0]},
+        shared_alpha=True,
+    )
+    detector_names = [
+        line.split(" = ")[0] for line in detector_shared.splitlines() if line
+    ]
+    assert detector_names[0] == "alpha"
+    assert all(name.startswith("delta_") for name in detector_names[1:])

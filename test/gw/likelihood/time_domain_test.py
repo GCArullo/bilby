@@ -6,7 +6,7 @@ from unittest.mock import patch
 import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
-from scipy.linalg import solve_toeplitz
+from scipy.linalg import solve_toeplitz, toeplitz
 
 import bilby
 from bilby.gw.likelihood.time_domain import (
@@ -803,7 +803,7 @@ class TestTimeDomainGWTransient(unittest.TestCase):
             )
             expected[~finite_mask] = fill_value
 
-        low_patch_value = 10.0 * float(
+        patch_value = 10.0 * float(
             np.max(
                 expected[
                     (analysis_frequencies >= active_frequencies[0])
@@ -811,17 +811,75 @@ class TestTimeDomainGWTransient(unittest.TestCase):
                 ]
             )
         )
-        high_patch_value = 10.0 * float(
-            np.max(expected[analysis_frequencies >= active_frequencies[-1]])
-        )
-        expected[analysis_frequencies < active_frequencies[0]] = low_patch_value
-        expected[analysis_frequencies > active_frequencies[-1]] = high_patch_value
+        expected[analysis_frequencies < active_frequencies[0]] = patch_value
+        expected[analysis_frequencies > active_frequencies[-1]] = patch_value
 
         actual = bilby.gw.likelihood.TimeDomainGravitationalWaveTransient._build_finite_psd_array(
             interferometer
         )
 
         np.testing.assert_allclose(actual, expected, rtol=0.0, atol=0.0)
+
+    def test_psd_patch_stays_conditioned_when_psd_file_stops_below_nyquist(self):
+        """A PSD tabulated only up to the analysis band must not blow up the patch.
+
+        Above ``maximum_frequency`` bilby leaves the PSD array non-finite when the
+        source file does not reach Nyquist, and ``_build_finite_psd_array``
+        substitutes ``max(source_psd)`` there.  Released LVK PSD files carry a
+        large sentinel at DC, so that maximum is the sentinel, not a noise level:
+        referring the upper patch to it rather than to the in-band level inflates
+        the patch by tens of orders of magnitude, which makes the Toeplitz
+        covariance indefinite and stops the likelihood being constructed at all.
+        """
+        interferometer = self.interferometers[0]
+        interferometer.minimum_frequency = 20.0
+        interferometer.maximum_frequency = 40.0
+
+        # Reproduce what bilby_pipe hands the likelihood for a released LVK PSD
+        # file: a large sentinel at DC to suppress it, a physical spectrum in
+        # band, and non-finite entries above maximum_frequency because the file
+        # is tabulated only up to the analysis band, not up to Nyquist.
+        source_frequencies = np.asarray(interferometer.frequency_array, dtype=float)
+        source_psd = np.full_like(source_frequencies, np.inf)
+        physical = (source_frequencies > 0.0) & (source_frequencies <= 40.0)
+        source_psd[physical] = 1e-46 * (20.0 / source_frequencies[physical]) ** 4
+        source_psd[source_frequencies == 0.0] = 0.5
+        interferometer.power_spectral_density = (
+            bilby.gw.detector.PowerSpectralDensity(
+                frequency_array=source_frequencies, psd_array=source_psd
+            )
+        )
+
+        analysis_frequencies = np.asarray(interferometer.frequency_array, dtype=float)
+        self.assertTrue(
+            np.any(~np.isfinite(interferometer.power_spectral_density_array)),
+            msg="the test needs a PSD that does not reach Nyquist",
+        )
+
+        patched = bilby.gw.likelihood.TimeDomainGravitationalWaveTransient._build_finite_psd_array(
+            interferometer
+        )
+        active = analysis_frequencies[interferometer.frequency_mask]
+        in_band = patched[
+            (analysis_frequencies >= active[0]) & (analysis_frequencies <= active[-1])
+        ]
+        above = patched[analysis_frequencies > active[-1]]
+
+        self.assertTrue(np.all(np.isfinite(patched)))
+        np.testing.assert_allclose(above, 10.0 * np.max(in_band))
+
+        acf = bilby.gw.likelihood.TimeDomainGravitationalWaveTransient._acf_from_psd(
+            patched, interferometer
+        )
+        eigenvalues = np.linalg.eigvalsh(toeplitz(acf))
+        self.assertGreater(eigenvalues.min(), 0.0)
+
+        likelihood = bilby.gw.likelihood.TimeDomainGravitationalWaveTransient(
+            interferometers=bilby.gw.detector.InterferometerList([interferometer]),
+            waveform_generator=self.waveform_generator,
+            likelihood_method="gohberg-semencul",
+        )
+        self.assertTrue(np.isfinite(likelihood.log_likelihood(self.parameters.copy())))
 
     def test_gohberg_semencul_inverse_matches_solve_toeplitz(self):
         acf = 1.7 * 0.7 ** np.arange(128, dtype=float)

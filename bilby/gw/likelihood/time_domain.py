@@ -819,12 +819,18 @@ def _patch_psd_outside_active_band(psd, frequencies, active_frequencies):
     active_band_mask = (frequencies >= low_frequency) & (frequencies <= high_frequency)
 
     # Use a large but finite PSD outside the active band to suppress those
-    # frequencies without making the covariance numerically singular.
-    low_patch_value = 10.0 * float(np.max(psd[active_band_mask]))
-    high_patch_value = 10.0 * float(np.max(psd[frequencies >= high_frequency]))
+    # frequencies without making the covariance numerically singular.  Both
+    # patches are referred to the in-band level: above maximum_frequency the
+    # incoming array holds whatever filler _build_finite_psd_array substituted
+    # for the non-finite entries bilby stores there, so taking the maximum over
+    # that region would scale the patch by the filler instead of by the noise.
+    # When maximum_frequency < Nyquist that inflates the patch by many orders of
+    # magnitude, the Toeplitz covariance becomes indefinite, and the likelihood
+    # cannot be constructed at all.
+    patch_value = 10.0 * float(np.max(psd[active_band_mask]))
 
-    psd[frequencies < low_frequency] = low_patch_value
-    psd[frequencies > high_frequency] = high_patch_value
+    psd[frequencies < low_frequency] = patch_value
+    psd[frequencies > high_frequency] = patch_value
     return psd
 
 

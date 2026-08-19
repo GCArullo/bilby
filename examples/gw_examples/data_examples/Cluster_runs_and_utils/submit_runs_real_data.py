@@ -82,7 +82,15 @@ DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
 DEFAULT_NUM_FREQUENCY_BANDS = 1
 HEAVY_TAILED_LIKELIHOODS = ("student", "hyperbolic")
-PARAMETRIC_NOISE_LIKELIHOODS = (*HEAVY_TAILED_LIKELIHOODS, "gaussian-parametric")
+PARAMETRIC_NOISE_LIKELIHOODS = (
+    *HEAVY_TAILED_LIKELIHOODS, "gaussian-parametric", "tiled"
+)
+# Noise parameters on a joint time-frequency tiling. A frequency band integrates
+# over all times and a time chunk over all frequencies, so neither isolates a
+# feature localised in both; tiles do.
+TILED_LIKELIHOOD = "tiled"
+DEFAULT_TILE_NOISE_MODEL = "hyperbolic"
+DEFAULT_TILE_NU = 8.0
 DEFAULT_HYPERBOLIC_ALPHA = 10.0
 DEFAULT_HYPERBOLIC_DELTA = 1.0
 DEFAULT_HYPERBOLIC_ALPHA_MIN = 1e-6
@@ -539,6 +547,22 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
             "Generate detector-specific noise parameters for parametric-noise "
             "likelihoods."
         ),
+    )
+    parser.add_argument(
+        "--time-band-boundaries",
+        default=None,
+        help=(
+            "Comma-separated cut times in seconds from the segment start, for "
+            "--likelihood tiled. A boundary must never fall on the merger: one "
+            "that bisects it destroys 20-30%% of a deviation's evidence, while a "
+            "chunk containing it costs under a nat."
+        ),
+    )
+    parser.add_argument(
+        "--tile-noise-model",
+        choices=("gaussian", "student", "hyperbolic"),
+        default=DEFAULT_TILE_NOISE_MODEL,
+        help="Density applied within each tile for --likelihood tiled.",
     )
     alpha_sharing = parser.add_mutually_exclusive_group()
     alpha_sharing.add_argument(
@@ -998,6 +1022,139 @@ BAND_LATEX_SYMBOLS = {
 }
 
 
+def parse_time_band_boundaries(value, *, likelihood: str):
+    """Cut times in seconds from the segment start, for --likelihood tiled."""
+    if value is None:
+        if likelihood == TILED_LIKELIHOOD:
+            raise ValueError(
+                "--likelihood tiled requires --time-band-boundaries; pass a "
+                "comma-separated list of cut times in seconds from the segment "
+                "start, chosen so no boundary falls on the merger"
+            )
+        return ()
+    if likelihood != TILED_LIKELIHOOD:
+        raise ValueError(
+            "--time-band-boundaries only applies to --likelihood tiled"
+        )
+    try:
+        boundaries = [float(item) for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise ValueError(
+            f"could not parse --time-band-boundaries '{value}'"
+        ) from exc
+    if not boundaries:
+        raise ValueError("--time-band-boundaries is empty")
+    if any(b >= c for b, c in zip(boundaries[:-1], boundaries[1:])):
+        raise ValueError("--time-band-boundaries must be strictly increasing")
+    if any(b <= 0.0 for b in boundaries):
+        raise ValueError("--time-band-boundaries must be positive")
+    return boundaries
+
+
+def tile_suffix(value) -> str:
+    """Match ``_suffix`` in bilby/gw/likelihood/time_frequency.py exactly."""
+    return f"{float(value):g}".replace(".", "p").replace("-", "m")
+
+
+def tile_parameter_keys(
+    parameter_name: str,
+    time_boundaries,
+    frequency_edges,
+    *,
+    duration: float,
+    detector_dependent_noise: bool,
+    detectors,
+):
+    """``(key, detector, time label, frequency label)`` for every tile.
+
+    Names are built from the *requested* boundaries, as the likelihood does, so a
+    prior file and a likelihood agree without either knowing the sample grid.
+    """
+    time_labels = [0.0, *[float(b) for b in time_boundaries], float(duration)]
+    names = list(detectors) if detector_dependent_noise else [None]
+    keys = []
+    for detector in names:
+        edges = (
+            frequency_edges[detector]
+            if isinstance(frequency_edges, dict) else frequency_edges
+        )
+        for t_lo, t_hi in zip(time_labels[:-1], time_labels[1:]):
+            for f_lo, f_hi in zip(edges[:-1], edges[1:]):
+                prefix = (
+                    f"{parameter_name}_{detector}_" if detector
+                    else f"{parameter_name}_"
+                )
+                key = (
+                    f"{prefix}{tile_suffix(t_lo)}_{tile_suffix(t_hi)}_"
+                    f"{tile_suffix(f_lo)}_{tile_suffix(f_hi)}"
+                )
+                keys.append((key, detector, f"{t_lo:g}-{t_hi:g}s",
+                             f"{f_lo:g}-{f_hi:g}Hz"))
+    return keys
+
+
+def build_tiled_priors(
+    time_boundaries,
+    frequency_edges,
+    *,
+    duration: float,
+    detector_dependent_noise: bool = False,
+    detectors=DEFAULT_DETECTORS,
+    noise_model: str = DEFAULT_TILE_NOISE_MODEL,
+    shared_alpha: bool = True,
+) -> str:
+    """Priors for a joint time-frequency tiling.
+
+    Tiles are small by construction -- a 0.2 s chunk has 5 Hz resolution, so a
+    15 Hz tile holds three bins -- and two hyperbolic shape parameters are not
+    identifiable from so few. ``shared_alpha`` is therefore the default here even
+    more firmly than for plain bands.
+    """
+    if noise_model == "gaussian":
+        return ""
+    lines = []
+    if noise_model == "student":
+        for key, detector, time_label, frequency_label in tile_parameter_keys(
+            "nu", time_boundaries, frequency_edges, duration=duration,
+            detector_dependent_noise=detector_dependent_noise, detectors=detectors,
+        ):
+            lines.append(
+                f"{key} = Uniform(name='{key}', minimum={DEFAULT_NU_MIN}, "
+                f"maximum={DEFAULT_NU_MAX}, "
+                f"latex_label='${BAND_LATEX_SYMBOLS['nu']}"
+                f"^{{{time_label};{frequency_label}}}$')"
+            )
+        return "\n".join(lines)
+
+    if shared_alpha:
+        lines.append(
+            f"alpha = Uniform(name='alpha', minimum={DEFAULT_HYPERBOLIC_ALPHA_MIN}, "
+            f"maximum={DEFAULT_HYPERBOLIC_ALPHA_MAX}, "
+            f"latex_label='${BAND_LATEX_SYMBOLS['alpha']}$')"
+        )
+    parameters = ("delta",) if shared_alpha else ("alpha", "delta")
+    bounds = {
+        "alpha": (DEFAULT_HYPERBOLIC_ALPHA_MIN, DEFAULT_HYPERBOLIC_ALPHA_MAX),
+        "delta": (DEFAULT_HYPERBOLIC_DELTA_MIN, DEFAULT_HYPERBOLIC_DELTA_MAX),
+    }
+    for parameter_name in parameters:
+        minimum, maximum = bounds[parameter_name]
+        for key, detector, time_label, frequency_label in tile_parameter_keys(
+            parameter_name, time_boundaries, frequency_edges, duration=duration,
+            detector_dependent_noise=detector_dependent_noise, detectors=detectors,
+        ):
+            symbol = BAND_LATEX_SYMBOLS[parameter_name]
+            subscript = (
+                f"_{{\\\\mathrm{{{detector}}}}}" if detector else ""
+            )
+            lines.append(
+                f"{key} = Uniform(name='{key}', minimum={minimum}, "
+                f"maximum={maximum}, latex_label='${symbol}{subscript}"
+                f"^{{{time_label};{frequency_label}}}$')"
+            )
+    return "\n".join(lines)
+
+
 def band_parameter_keys(
     parameter_name: str,
     band_count: int,
@@ -1155,6 +1312,8 @@ def render_prior(
     noise_only_inference: bool = False,
     frequency_band_edges=None,
     shared_alpha: bool = False,
+    time_band_boundaries=(),
+    tile_noise_model: str = DEFAULT_TILE_NOISE_MODEL,
 ) -> str:
     if noise_only_inference:
         return render_noise_only_prior(
@@ -1182,6 +1341,16 @@ def render_prior(
             frequency_band_edges=frequency_band_edges,
             shared_alpha=shared_alpha,
         )
+    elif hypothesis == TILED_LIKELIHOOD:
+        noise_prior_block = build_tiled_priors(
+            time_band_boundaries,
+            frequency_band_edges,
+            duration=float(template_settings["duration"]),
+            detector_dependent_noise=detector_dependent_noise,
+            detectors=detectors,
+            noise_model=tile_noise_model,
+            shared_alpha=shared_alpha,
+        )
     elif hypothesis == "gaussian-parametric":
         noise_prior_block = build_log_psd_scale_priors(
             band_count,
@@ -1191,6 +1360,10 @@ def render_prior(
         )
     elif hypothesis == "gaussian":
         noise_prior_block = ""
+    elif hypothesis == TILED_LIKELIHOOD:
+        raise ValueError(
+            "noise-only inference is not implemented for --likelihood tiled"
+        )
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
     sine_gaussian_prior_block = build_sine_gaussian_prior_block(
@@ -1552,6 +1725,8 @@ def render_ini(
     disable_calibration: bool = False,
     joint: bool = False,
     frequency_band_edges=None,
+    time_band_boundaries=(),
+    tile_noise_model: str = DEFAULT_TILE_NOISE_MODEL,
     detectors: list[str] | tuple[str, ...] | None = None,
     condor_job_priority: int | None = None,
     waveform_arguments: dict | None = None,
@@ -1719,6 +1894,39 @@ def render_ini(
                 "}"
             ),
         )
+    elif hypothesis == TILED_LIKELIHOOD:
+        rendered = replace_line(
+            rendered,
+            "likelihood-type",
+            "bilby.gw.likelihood.TimeFrequencyTiledGravitationalWaveTransient",
+        )
+        rendered = replace_line(rendered, "distance-marginalization", "False")
+        rendered = replace_line(rendered, "phase-marginalization", "False")
+        rendered = replace_line(rendered, "time-marginalization", "False")
+        rendered = replace_line(rendered, "calibration-marginalization", "False")
+        if tile_noise_model == "student":
+            shape = f"'nu': {DEFAULT_TILE_NU}, 'infer_nu': True, "
+        elif tile_noise_model == "hyperbolic":
+            shape = (
+                f"'alpha': {DEFAULT_HYPERBOLIC_ALPHA}, "
+                f"'delta': {DEFAULT_HYPERBOLIC_DELTA}, "
+                "'infer_alpha': True, 'infer_delta': True, "
+            )
+        else:
+            shape = ""
+        rendered = replace_line(
+            rendered,
+            "extra-likelihood-kwargs",
+            (
+                "{"
+                f"'noise_model': '{tile_noise_model}', "
+                + shape
+                + f"'time_band_boundaries': {list(time_band_boundaries)}, "
+                + band_edges_kwarg(frequency_band_edges)
+                + f"'detector_dependent_noise': {detector_dependent_noise}"
+                "}"
+            ),
+        )
     elif hypothesis == "gaussian":
         rendered = replace_line(
             rendered,
@@ -1817,6 +2025,8 @@ def prepare_run(
     joint: bool = False,
     frequency_band_edges=None,
     shared_alpha: bool = False,
+    time_band_boundaries=(),
+    tile_noise_model: str = DEFAULT_TILE_NOISE_MODEL,
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
@@ -1921,6 +2131,24 @@ def prepare_run(
             f"{run_band_count}{waveform_suffix}.ini"
         ).resolve()
         run_detector_dependent_noise = detector_dependent_noise
+    elif hypothesis == TILED_LIKELIHOOD:
+        run_band_count = band_count
+        mode_suffix = (
+            "_detector_dependent_noise" if detector_dependent_noise else ""
+        )
+        # Name the run by its tiling, since the tile count is what distinguishes
+        # one tiled configuration from another.
+        tiling = f"T{len(time_band_boundaries) + 1}xF{run_band_count}"
+        stem = (
+            f"tiled_{tile_noise_model}{mode_suffix}_{tiling}{waveform_suffix}"
+        )
+        run_directory_stem = stem
+        label = f"{label_prefix}_{stem}"
+        run_directory_name = build_run_directory_name(run_directory_stem, outdir_label)
+        run_outdir = f"{outdir_base}/{run_directory_name}"
+        prior_path = (prior_dir / f"{file_prefix}_{stem}.prior").resolve()
+        ini_path = (ini_dir / f"{file_prefix}_{stem}.ini").resolve()
+        run_detector_dependent_noise = detector_dependent_noise
     elif hypothesis == "gaussian":
         run_band_count = DEFAULT_NUM_FREQUENCY_BANDS
         run_directory_stem = explicit_run_directory_stem(
@@ -1962,6 +2190,8 @@ def prepare_run(
                 else None
             ),
             shared_alpha=shared_alpha,
+            time_band_boundaries=time_band_boundaries,
+            tile_noise_model=tile_noise_model,
         ),
         encoding="utf-8",
     )
@@ -1993,6 +2223,8 @@ def prepare_run(
                 if hypothesis in PARAMETRIC_NOISE_LIKELIHOODS
                 else None
             ),
+            time_band_boundaries=time_band_boundaries,
+            tile_noise_model=tile_noise_model,
         ),
         encoding="utf-8",
     )
@@ -2108,6 +2340,9 @@ def main() -> int:
 
     ini_template = load_template(ini_template_path)
     prior_template = load_template(prior_template_path)
+    time_band_boundaries = parse_time_band_boundaries(
+        args.time_band_boundaries, likelihood=args.likelihood
+    )
     template_settings = read_template_settings(ini_template)
     if args.minimum_frequency is not None:
         template_settings = dict(
@@ -2271,6 +2506,8 @@ def main() -> int:
                 joint=args.joint,
                 frequency_band_edges=frequency_band_edges,
                 shared_alpha=args.shared_alpha,
+                time_band_boundaries=time_band_boundaries,
+                tile_noise_model=args.tile_noise_model,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

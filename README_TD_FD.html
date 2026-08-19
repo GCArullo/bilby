@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TD_FD parameterisation</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b1f24; --muted: #5b6570; --rule: #e3e7ec;
+    --accent: #0b62d0; --code-bg: #f5f7fa; --note-bg: #f0f6ff;
+    --warn-bg: #fff6e8; --warn-rule: #e0a244;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171a; --fg: #e6e9ec; --muted: #9aa4ae; --rule: #2a2f36;
+      --accent: #6ea8fe; --code-bg: #1c2126; --note-bg: #16202e;
+      --warn-bg: #2a2317; --warn-rule: #b5883c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171a; --fg: #e6e9ec; --muted: #9aa4ae; --rule: #2a2f36;
+    --accent: #6ea8fe; --code-bg: #1c2126; --note-bg: #16202e;
+    --warn-bg: #2a2317; --warn-rule: #b5883c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 3rem 1.25rem 6rem; background: var(--bg); color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .4rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.25rem; margin: 2.75rem 0 .75rem; letter-spacing: -.01em;
+       padding-bottom: .35rem; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
+  .lede { color: var(--muted); font-size: 1.05rem; margin: 0 0 2rem; }
+  p, li { margin: .7rem 0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: .12em .38em; border-radius: 4px; font-size: .89em; }
+  pre { background: var(--code-bg); padding: 1rem 1.1rem; border-radius: 8px;
+        overflow-x: auto; font-size: .85rem; line-height: 1.5; border: 1px solid var(--rule); }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .eq { background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px;
+        padding: .9rem 1.1rem; margin: 1rem 0; text-align: center; font-size: 1.02rem;
+        overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; display: block;
+          overflow-x: auto; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; color: var(--muted); font-size: .82rem; text-transform: uppercase;
+       letter-spacing: .04em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .note, .warn { border-left: 3px solid var(--accent); background: var(--note-bg);
+                 padding: .85rem 1.1rem; border-radius: 0 6px 6px 0; margin: 1.25rem 0; }
+  .warn { border-left-color: var(--warn-rule); background: var(--warn-bg); }
+  .note p:first-child, .warn p:first-child { margin-top: 0; }
+  .note p:last-child, .warn p:last-child { margin-bottom: 0; }
+  a { color: var(--accent); }
+  .tag { display: inline-block; font-size: .7rem; letter-spacing: .06em; text-transform: uppercase;
+         color: var(--muted); border: 1px solid var(--rule); border-radius: 999px;
+         padding: .15rem .6rem; vertical-align: middle; margin-left: .5rem; }
+  footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--rule);
+           color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>TD_FD: joint time–frequency tiling <span class="tag">branch readme</span></h1>
+<p class="lede">Noise parameters on tiles in time <em>and</em> frequency, for artefacts that
+separate from the signal on neither axis alone.</p>
+
+<h2>Why the branch exists</h2>
+
+<p>A frequency band integrates over all times; a time chunk integrates over all
+frequencies. Neither can isolate a feature localised in both, and GW191109 is
+the case that shows it costing something real. Inside the 0.2 s chunk holding
+the merger, the L1 scattering arch sits at 20–30 Hz while the signal sits at
+35–120 Hz. A band wide enough to cover the arch also covers two seconds of
+inspiral; a chunk covering the arch also covers the merger.</p>
+
+<table>
+  <tr><th>model</th><th>separating information used</th><th>result</th></tr>
+  <tr><td>frequency band, scale or tail</td><td>none — integrates over time</td><td>2.51 nats (worse than nothing)</td></tr>
+  <tr><td>time chunk, scale or tail</td><td>none — integrates over frequency</td><td>2.13 nats</td></tr>
+  <tr><td><strong>joint tile</strong></td><td>spectral</td><td><strong>1.18 nats</strong> (floor 1.00)</td></tr>
+  <tr><td>coherent subtraction</td><td>spectral and phase</td><td>not an amplitude model</td></tr>
+</table>
+
+<p>Figures are the likelihood-shape distortion against a Gaussian analysis of
+deglitched data, with 2.19 nats for doing nothing. The tile recovers 89% of what
+that tiling can achieve, where neither single axis recovered anything.</p>
+
+<h2>Construction</h2>
+
+<p>The residual is whitened <em>once</em>, globally, with the segment PSD,</p>
+
+<div class="eq">w(f) = r(f) ⁄ √( S<sub>n</sub>(f) T ⁄ 4 )</div>
+
+<p>and inverse-transformed. The result is white, so chunking it in time and
+taking each chunk's DFT gives coefficients of uniform expected variance, and by
+Parseval</p>
+
+<div class="eq">Σ<sub>k</sub> weight<sub>k</sub> |X<sub>k</sub>|² ⁄ L  =  Σ<sub>t</sub> w(t)²</div>
+
+<p>exactly, for any set of boundaries. With every tile at its Gaussian limit the
+likelihood therefore reproduces the Whittle likelihood to machine precision —
+measured at 2×10<sup>−16</sup> in the prototype and 10<sup>−10</sup> through the
+class for tilings up to 9 × 5. Colour is handled once and the tile parameters
+carry only <em>departures</em> from the segment PSD.</p>
+
+<p>Each bin's <code>q</code> has mean 2 under the null, matching the
+frequency-domain convention, so the existing hyperbolic and Student-t density
+code is reused unchanged. Bins 0 and Nyquist carry one degree of freedom rather
+than two and lie outside any analysis band; they are held at the Gaussian limit.</p>
+
+<div class="note">
+<p><strong>The rejected alternative.</strong> Chunking the raw strain and
+estimating a short-time spectrum per chunk. A 0.2 s chunk has 5 Hz resolution
+against a PSD spanning five orders of magnitude, so leakage dominates and the
+Gaussian limit does not reproduce the standard likelihood. Whitening first is
+what makes the tiling a reparameterisation rather than an approximation.</p>
+</div>
+
+<h2>Parameters</h2>
+
+<p>One set of noise parameters per tile, named from the <em>requested</em>
+boundaries so a prior file and a likelihood agree without either knowing the
+sample grid:</p>
+
+<pre><code>delta_1p9_2p1_20_35        # shared across detectors
+delta_L1_1p9_2p1_20_35     # with detector_dependent_noise=True</code></pre>
+
+<p>Decimal points become <code>p</code> and minus signs <code>m</code>. Time
+labels are seconds from the segment start, frequency labels are Hz.</p>
+
+<p><code>--shared-alpha</code> is the default in the runbooks and matters more
+here than for plain bands: a 0.2 s × 15 Hz tile holds <strong>three</strong>
+bins, and two hyperbolic shape parameters are not identifiable from three bins.
+Prefer <code>--tile-noise-model gaussian</code> or a free scale in small tiles.</p>
+
+<h2>Submitting a run</h2>
+
+<pre><code>python submit_runs_real_data.py \
+  --event GW191109_010717 \
+  --likelihood tiled \
+  --tile-noise-model hyperbolic \
+  --time-band-boundaries 1.9,2.1 \
+  --frequency-band-edges 20,35,448 \
+  --shared-alpha \
+  --outdir-label arch_tile</code></pre>
+
+<p>This writes an ini with
+<code>likelihood-type=bilby.gw.likelihood.TimeFrequencyTiledGravitationalWaveTransient</code>
+and the matching <code>extra-likelihood-kwargs</code>, plus a prior declaring one
+parameter per tile. Runs are named <code>tiled_&lt;model&gt;_T&lt;n&gt;xF&lt;m&gt;</code>
+by their tiling.</p>
+
+<div class="warn">
+<p><strong>Never put a boundary on the merger.</strong> A boundary that bisects
+it destroys 20–30% of a deviation's log-likelihood evidence for purely numerical
+reasons, while a chunk that <em>contains</em> it costs under a nat. Equal-width
+<code>time_bands=N</code> is unusable at 4 s / 1024 Hz, because the merger sits
+at sample 2048, which every power-of-two chunk length divides exactly.</p>
+</div>
+
+<h2>Choosing a tile</h2>
+
+<p><code>suggest_likelihood.py</code> scans bands, chunks and tiles and prints the
+reweighting command for the best candidate. Two statistics drive it.</p>
+
+<h3>Λ — is there anything to see?</h3>
+<div class="eq">Λ = n (L⋆ − 1 − ln L⋆),   L⋆ = 1 + ϱ² ⁄ 2n   ≈ ϱ⁴ ⁄ 8n</div>
+<p>Detectability grows as the <em>fourth</em> power of the artefact's SNR and
+falls <em>linearly</em> with the size of the region the parameter is shared over.
+Shrinking a region raises Λ — which is the quantitative case for tiling.</p>
+
+<h3>κ — a tail, or just the wrong PSD?</h3>
+<div class="eq">κ = ⟨q²⟩ ⁄ ⟨q⟩²   =  2 for Gaussian noise, exactly</div>
+<p>κ is invariant under <code>q → cq</code>, so it is blind to the PSD
+normalisation and responds only to shape. Null scatter is 2/√n.</p>
+
+<table>
+  <tr><th>Λ</th><th>κ</th><th>interpretation</th></tr>
+  <tr><td>high</td><td>≈ 2</td><td>PSD mis-estimated — use a free scale</td></tr>
+  <tr><td>high</td><td>&gt; 2</td><td>genuine heavy tail — Student-t or hyperbolic</td></tr>
+  <tr><td>low</td><td>&gt; 2</td><td>a tail carrying no excess power</td></tr>
+  <tr><td>low</td><td>≈ 2</td><td>nothing an amplitude model can model</td></tr>
+</table>
+
+<div class="warn">
+<p><strong>Detectability is not relevance.</strong> An artefact disjoint from the
+signal is a constant in the likelihood and biases nothing, however loud. On
+GW191109 the H1 artefact gives Λ = 11.9 and distorts the likelihood
+<em>shape</em> by exactly 0.000, while the quiet L1 arch under the merger carries
+all of the bias. Read the <code>f_sig</code> column before acting on Λ.</p>
+</div>
+
+<h2>Limits</h2>
+
+<ul>
+  <li>Tiles are small by construction, so their parameters are weakly identified.
+      Three bins cannot determine two shape parameters.</li>
+  <li>Chunking still discards cross-chunk covariance. That is harmless for
+      inference — hundreds of nats cancel between hypotheses — provided no
+      boundary bisects the merger.</li>
+  <li>This remains an <em>amplitude</em> model: it downweights, never subtracts.
+      Where an artefact overlaps the signal closely, only a coherent model that
+      fits and removes a waveform will help.</li>
+  <li>No TD_FD container image is registered in
+      <code>container_creation/container_images.json</code>; one must be built
+      before cluster submission.</li>
+</ul>
+
+<footer>
+Background and measurements: <code>notes/robust_likelihood_regimes.tex</code> and
+<code>notes/gw191109_010717_noise_deviation/iteration_02.md</code>.
+Implementation: <code>bilby/gw/likelihood/time_frequency.py</code>.
+</footer>
+
+</main>
+</body>
+</html>

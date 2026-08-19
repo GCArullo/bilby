@@ -138,3 +138,48 @@ def test_shared_alpha_emits_one_alpha_and_keeps_delta_per_band():
     ]
     assert detector_names[0] == "alpha"
     assert all(name.startswith("delta_") for name in detector_names[1:])
+
+
+def test_tiled_priors_match_the_likelihood_tile_keys():
+    """The launcher and the likelihood must agree on every tile parameter name.
+
+    Both build the name from the *requested* boundaries rather than the sample
+    indices they snap to, so a prior file and a likelihood agree without either
+    knowing the sample grid. A mismatch would leave tiles silently pinned at
+    their fixed defaults instead of being sampled.
+    """
+    import bilby
+
+    module = load_submit_runs_real_data_module()
+    boundaries = [1.9, 2.1]
+    edges = [20.0, 35.0, 448.0]
+    duration = 4.0
+
+    interferometers = bilby.gw.detector.InterferometerList(["H1", "L1"])
+    interferometers.set_strain_data_from_power_spectral_densities(
+        sampling_frequency=1024.0, duration=duration
+    )
+    generator = bilby.gw.waveform_generator.WaveformGenerator(
+        duration=duration, sampling_frequency=1024.0,
+        frequency_domain_source_model=bilby.gw.source.lal_binary_black_hole,
+    )
+
+    for detector_dependent in (False, True):
+        likelihood = (
+            bilby.gw.likelihood.TimeFrequencyTiledGravitationalWaveTransient(
+                interferometers=interferometers, waveform_generator=generator,
+                time_band_boundaries=boundaries, frequency_band_edges=edges,
+                noise_model="hyperbolic", infer_alpha=True, infer_delta=True,
+                detector_dependent_noise=detector_dependent,
+            )
+        )
+        block = module.build_tiled_priors(
+            boundaries, edges, duration=duration,
+            detector_dependent_noise=detector_dependent,
+            detectors=("H1", "L1"), shared_alpha=True,
+        )
+        declared = [line.split(" = ")[0] for line in block.splitlines() if line]
+        assert declared[0] == "alpha", declared[:1]
+        assert sorted(declared[1:]) == sorted(
+            key for key, *_ in likelihood.tile_keys("delta")
+        )

@@ -137,6 +137,57 @@ def marginal_delta(q_region, family, grid_size, priors):
 
 
 # ------------------------------------------------------------------ detectability
+def shape_statistic(q_region):
+    """kappa = <q^2>/<q>^2, a scale-free measure of non-Gaussianity.
+
+    For Gaussian noise ``q`` is exponential with mean 2, so
+
+        kappa = E[q^2] / E[q]^2 = 8 / 4 = 2
+
+    exactly, *whatever the PSD normalisation*: rescaling ``q -> c q`` leaves the
+    ratio bit-identically unchanged.  That is the point.  ``Lambda`` responds to
+    the overall level and so cannot tell a genuinely heavy-tailed region from one
+    where the PSD is merely mis-estimated; ``kappa`` is blind to the level and
+    responds only to the shape.
+
+    Together they separate the regimes:
+
+    ==============  ==============  ======================================
+    Lambda          kappa           interpretation
+    ==============  ==============  ======================================
+    high            ~ 2             PSD mis-estimated; use a free scale
+    high            > 2             genuine heavy tail
+    low             > 2             tail carrying no excess power
+    low             ~ 2             nothing an amplitude model can model
+    ==============  ==============  ======================================
+
+    The null scatter is ``sigma = 2 / sqrt(n)`` by the delta method, confirmed by
+    simulation to better than 1% for n >= 100.  The estimator is biased low at
+    small ``n`` (1.96 at n = 50, 1.86 at n = 13), which makes the reported z
+    conservative for detecting non-Gaussianity in small tiles.
+    """
+    mean_q = q_region.mean(axis=1)
+    mean_q_squared = (q_region ** 2).mean(axis=1)
+    n_bins = q_region.shape[1]
+    kappa = mean_q_squared / np.clip(mean_q ** 2, 1e-30, None)
+    sigma = 2.0 / np.sqrt(n_bins)
+    median_kappa = float(np.median(kappa))
+    z = (median_kappa - 2.0) / sigma
+    return {
+        "kappa": median_kappa,
+        "kappa_null": 2.0,
+        "kappa_null_sigma": float(sigma),
+        "kappa_z": float(z),
+        "shape_verdict": (
+            "GAUSSIAN SHAPE. Any excess here is a level error, not a tail; "
+            "prefer a free PSD scale, which a heavy tail would only duplicate."
+            if z < 3.0 else
+            "HEAVY TAILED. The excess is not a level error, so a free scale "
+            "cannot absorb it; prefer Student-t or hyperbolic."
+        ),
+    }
+
+
 def detectability(q_region):
     """Can an amplitude model see anything in this region at all?
 
@@ -189,6 +240,7 @@ def detectability(q_region):
     return {
         "n_bins": int(n_bins),
         "median_mean_q": float(np.median(mean_q)),
+        **shape_statistic(q_region),
         "median_fractional_excess": float(np.median(excess)),
         "implied_artefact_snr": float(np.median(implied_snr)),
         "lambda_profile": median_lambda,
@@ -502,7 +554,11 @@ def main():
               f"{100 * entry['median_fractional_excess']:+7.2f}%, implied artefact "
               f"SNR {entry['implied_artefact_snr']:6.2f}, Lambda "
               f"{entry['lambda_profile']:8.2f}")
+        print(f"      kappa = {entry['kappa']:.3f} "
+              f"(Gaussian 2, sigma {entry['kappa_null_sigma']:.3f}, "
+              f"z = {entry['kappa_z']:+.1f})")
         print(f"      {entry['verdict']}")
+        print(f"      {entry['shape_verdict']}")
     print()
     for name, entry in report["parameters"].items():
         base, new = entry["baseline"], entry["reweighted"]

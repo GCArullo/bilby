@@ -1083,6 +1083,11 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
             interferometer=interferometer,
             parameters=parameters,
         )
+        signal_frequency_domain = np.where(
+            interferometer.frequency_mask,
+            signal_frequency_domain,
+            0.0,
+        )
         return np.real(
             core_utils.infft(
                 signal_frequency_domain,
@@ -1092,7 +1097,17 @@ class TimeDomainGravitationalWaveTransient(GravitationalWaveTransient):
 
     @staticmethod
     def _data_time_domain(interferometer):
-        return np.asarray(interferometer.time_domain_strain, dtype=float)
+        frequency_domain_strain = np.where(
+            interferometer.frequency_mask,
+            interferometer.frequency_domain_strain,
+            0.0,
+        )
+        return np.real(
+            core_utils.infft(
+                frequency_domain_strain,
+                interferometer.sampling_frequency,
+            )
+        )
 
     def _residual_time_domain(self, interferometer, parameters, waveform_polarizations=None):
         data = self._data_time_domain(interferometer)

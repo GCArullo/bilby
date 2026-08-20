@@ -115,6 +115,64 @@ class TestTimeDomainGWTransient(unittest.TestCase):
 
         self.assertAlmostEqual(calculated, float(manual), 7)
 
+    def test_data_and_signal_use_the_analysis_frequency_mask(self):
+        interferometer = self.interferometers[0]
+        interferometer.minimum_frequency = 20.0
+        interferometer.maximum_frequency = 40.0
+        likelihood = bilby.gw.likelihood.TimeDomainGravitationalWaveTransient(
+            interferometers=bilby.gw.detector.InterferometerList([interferometer]),
+            waveform_generator=self.waveform_generator,
+        )
+
+        expected_data = np.real(
+            bilby.core.utils.infft(
+                np.where(
+                    interferometer.frequency_mask,
+                    interferometer.frequency_domain_strain,
+                    0.0,
+                ),
+                interferometer.sampling_frequency,
+            )
+        )
+        np.testing.assert_allclose(
+            likelihood._data_time_domain(interferometer),
+            expected_data,
+            rtol=0.0,
+            atol=0.0,
+        )
+
+        parameters = likelihood._resolve_signal_likelihood_parameters(
+            self.parameters.copy()
+        )
+        waveform_polarizations = likelihood._waveform_polarizations_frequency_domain(
+            parameters
+        )
+        signal_frequency_domain = likelihood._detector_response_frequency_domain(
+            waveform_polarizations,
+            interferometer,
+            parameters,
+        )
+        expected_signal = np.real(
+            bilby.core.utils.infft(
+                np.where(
+                    interferometer.frequency_mask,
+                    signal_frequency_domain,
+                    0.0,
+                ),
+                interferometer.sampling_frequency,
+            )
+        )
+        np.testing.assert_allclose(
+            likelihood._signal_time_domain(
+                interferometer,
+                waveform_polarizations,
+                parameters,
+            ),
+            expected_signal,
+            rtol=0.0,
+            atol=0.0,
+        )
+
     def test_student_t_detector_dependent_time_bands_match_direct_calculation(self):
         time_bands = [0.5]
         likelihood = bilby.gw.likelihood.StudentTTimeDomainGravitationalWaveTransient(

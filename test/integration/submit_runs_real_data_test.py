@@ -399,6 +399,49 @@ def test_special_event_submission_disables_distance_marginalization(
     assert isinstance(summary_arguments["f_final"], (int, float))
 
 
+def test_gw230814_gr_profile_matches_non_gr_common_prior(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    special_dir = SCRIPT_PATH.parent / "Special_events_configs"
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            "GW230814",
+            "--likelihood",
+            "gaussian",
+            "--prior-template",
+            str(special_dir / "priors" / "GW230814_gr_template.prior"),
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
+    assert (
+        "frequency-domain-source-model="
+        "bilby_tgr.pseob.source.gwsignal_binary_black_hole\n"
+    ) in ini_text
+    assert (
+        "chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass("
+        "name='chirp_mass', minimum=10.0, maximum=120.0"
+    ) in prior_text
+    assert "domega220 = 0.0\n" in prior_text
+    assert "dtau220 = 0.0\n" in prior_text
+
+
 def test_gw190521_lvk_nrsur_profile_generates_widened_setup(
     monkeypatch,
     tmp_path,

@@ -13,6 +13,9 @@ from .time_domain import (
     TimeDomainGravitationalWaveTransient,
 )
 from .time_frequency import TimeFrequencyTiledGravitationalWaveTransient
+from .projected_time_frequency import (
+    ProjectedTimeFrequencyGravitationalWaveTransient,
+)
 from .whittle import (
     GaussianParametricGravitationalWaveTransient,
     WhittleGravitationalWaveTransient,

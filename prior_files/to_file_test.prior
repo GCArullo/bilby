@@ -1,0 +1,3 @@
+mass = Uniform(minimum=0, maximum=1, name='a', latex_label='a', unit='kg', boundary=None)
+speed = PowerLaw(alpha=3, minimum=1, maximum=2, name='b', latex_label='b', unit='m/s', boundary=None)
+length = DeltaFunction(peak=42, name='c', latex_label='c', unit='m')

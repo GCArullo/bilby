@@ -2,6 +2,7 @@ import os
 import shutil
 import unittest
 from copy import deepcopy
+from unittest.mock import MagicMock, patch
 
 import bilby
 import bilby.core.sampler.dynesty
@@ -158,6 +159,29 @@ class TestDynesty(unittest.TestCase):
         This is not an exhaustive test.
         """
         self.init_sampler(sample=sample, bound=bound)
+
+    def test_plot_current_state_uses_log_evidence_for_run_plot(self):
+        fig = MagicMock()
+        self.sampler.check_point_plot = True
+        self.sampler.sampler = MagicMock()
+        self.sampler.sampler.results = {"samples_u": np.zeros((2, 2))}
+        with (
+            patch("dynesty.plotting.traceplot", return_value=(fig, None)),
+            patch("dynesty.plotting.runplot", return_value=(fig, None)) as runplot,
+            patch(
+                "dynesty.utils.results_substitute",
+                return_value=self.sampler.sampler.results,
+            ),
+            patch(
+                "bilby.core.sampler.dynesty.dynesty_stats_plot",
+                return_value=(fig, None),
+            ),
+            patch("matplotlib.pyplot.savefig"),
+        ):
+            self.sampler.plot_current_state()
+        runplot.assert_called_once_with(
+            self.sampler.sampler.results, logplot=True, use_math_text=False
+        )
 
 
 def test_get_expected_outputs():

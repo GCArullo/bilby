@@ -6,7 +6,7 @@ import os
 import json
 import parameterized
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import bilby
 from bilby.core.result import ResultError, FileLoadError
@@ -109,6 +109,70 @@ class TestResult(unittest.TestCase):
             pass
         del self.result
         pass
+
+    def test_get_latex_labels_from_sine_gaussian_parameter_keys(self):
+        result = bilby.core.result.Result(
+            label="label",
+            outdir="outdir",
+            sampler="emcee",
+            search_parameter_keys=[
+                "sine_gaussian_0_hrss",
+                "sine_gaussian_0_Q",
+                "sine_gaussian_0_frequency",
+                "sine_gaussian_0_time_offset",
+                "sine_gaussian_0_phase_offset",
+            ],
+            fixed_parameter_keys=[],
+            priors=None,
+            injection_parameters=dict(),
+            meta_data=dict(),
+        )
+
+        labels = result.get_latex_labels_from_parameter_keys(
+            result.search_parameter_keys
+        )
+
+        self.assertEqual(
+            labels,
+            [
+                "SG-0 hrss",
+                "SG-0 Q",
+                "SG-0 f [Hz]",
+                "SG-0 dt [s]",
+                "SG-0 dphi",
+            ],
+        )
+
+    def test_get_latex_labels_from_default_labels_without_priors(self):
+        result = bilby.core.result.Result(
+            label="label",
+            outdir="outdir",
+            sampler="emcee",
+            search_parameter_keys=[
+                "chirp_mass",
+                "mass_1",
+                "luminosity_distance",
+                "theta_jn",
+            ],
+            fixed_parameter_keys=[],
+            priors=None,
+            injection_parameters=dict(),
+            meta_data=dict(),
+        )
+
+        labels = result.get_latex_labels_from_parameter_keys(
+            result.search_parameter_keys
+        )
+
+        self.assertEqual(
+            labels,
+            [
+                r"$\mathcal{M}$",
+                "$m_1$",
+                "$d_L$",
+                r"$\theta_{JN}$",
+            ],
+        )
 
     def test_result_file_name_default(self):
         outdir = "outdir"
@@ -373,6 +437,64 @@ class TestResult(unittest.TestCase):
         df = pd.read_csv(filename, sep=" ")
         self.assertTrue(len(data.dtype) == len(df.keys()))
 
+    def test_check_railing_saves_outputs_and_ignores_hard_bounds(self):
+        priors = bilby.prior.PriorDict(
+            dict(
+                mass_ratio=bilby.prior.Uniform(0, 1, "mass_ratio"),
+                distance=bilby.prior.Uniform(0, 1, "distance"),
+                phase=bilby.prior.Uniform(
+                    0, 2 * np.pi, "phase", boundary="periodic"
+                ),
+                chi_1=bilby.prior.Uniform(0, 0.99, "chi_1"),
+            )
+        )
+        result = bilby.core.result.Result(
+            label="railing",
+            outdir=self.outdir,
+            sampler="emcee",
+            search_parameter_keys=["mass_ratio", "distance", "phase", "chi_1"],
+            fixed_parameter_keys=[],
+            priors=priors,
+            meta_data=dict(),
+        )
+        nsamples = 500
+        result.posterior = pd.DataFrame(
+            dict(
+                mass_ratio=np.linspace(0.2, 0.8, nsamples),
+                distance=np.random.uniform(0, 0.005, nsamples),
+                phase=np.random.uniform(0, 0.005, nsamples),
+                chi_1=np.random.uniform(0.985, 0.99, nsamples),
+            )
+        )
+
+        summary = result.check_railing()
+
+        filename = os.path.join(self.outdir, "railing_prior_railing.txt")
+        figure = os.path.join(self.outdir, "railing_prior_railing.png")
+        self.assertTrue(os.path.isfile(filename))
+        self.assertTrue(os.path.isfile(figure))
+
+        self.assertEqual(
+            summary.set_index("parameter").loc["mass_ratio", "status"],
+            "not_railing",
+        )
+        self.assertEqual(
+            summary.set_index("parameter").loc["distance", "status"],
+            "railing",
+        )
+        self.assertEqual(
+            summary.set_index("parameter").loc["phase", "status"],
+            "ignored_hard_bound",
+        )
+        self.assertEqual(
+            summary.set_index("parameter").loc["chi_1", "status"],
+            "ignored_hard_bound",
+        )
+
+        saved = pd.read_csv(filename, sep="\t")
+        self.assertListEqual(saved["parameter"].tolist(), summary["parameter"].tolist())
+        self.assertListEqual(saved["status"].tolist(), summary["status"].tolist())
+
     def test_samples_to_posterior_simple(self):
         self.result.posterior = None
         x = [1, 2, 3]
@@ -466,6 +588,31 @@ class TestResult(unittest.TestCase):
         self.result.plot_corner(parameters=["x", "y"], truths=[1, 1])
         self.result.plot_corner(parameters=dict(x=1, y=1))
 
+    def test_plot_corner_with_explicit_parameters_uses_injection_truths(self):
+        import matplotlib.pyplot as plt
+
+        self.result.injection_parameters = dict(x=0.8, y=1.1)
+        with patch("corner.corner", return_value=plt.figure()) as mock_corner:
+            self.result.plot_corner(
+                parameters=["x", "y"], save=False, titles=False
+            )
+
+        self.assertEqual(mock_corner.call_args.kwargs["truths"], [0.8, 1.1])
+
+    def test_plot_corner_with_single_parameter_uses_injection_truth(self):
+        import matplotlib.pyplot as plt
+
+        self.result.injection_parameters = dict(x=0.8, y=1.1)
+        fig = self.result.plot_corner(parameters=["x"], save=False, titles=False)
+        x_lines = [
+            line.get_xdata()
+            for line in fig.axes[0].lines
+            if np.array_equal(line.get_xdata(), [0.8, 0.8])
+        ]
+
+        self.assertEqual(len(x_lines), 1)
+        plt.close(fig)
+
     def test_plot_corner_with_priors(self):
         priors = bilby.core.prior.PriorDict()
         priors["x"] = bilby.core.prior.Uniform(-1, 1, "x")
@@ -475,6 +622,20 @@ class TestResult(unittest.TestCase):
         self.result.plot_corner(priors=True)
         with self.assertRaises(ValueError):
             self.result.plot_corner(priors="test")
+
+    def test_plot_corner_skips_fixed_parameters(self):
+        self.result.posterior["x"] = 1.23
+        filename = os.path.join(self.result.outdir, "fixed_parameter_corner.png")
+        self.result.plot_corner(parameters=["x", "y"], filename=filename)
+        self.assertTrue(os.path.isfile(filename))
+
+    def test_plot_corner_returns_none_if_all_requested_parameters_are_fixed(self):
+        self.result.posterior["x"] = 1.23
+        self.result.posterior["y"] = -4.56
+        filename = os.path.join(self.result.outdir, "all_fixed_corner.png")
+        figure = self.result.plot_corner(parameters=["x", "y"], filename=filename)
+        self.assertIsNone(figure)
+        self.assertFalse(os.path.exists(filename))
 
     def test_get_credible_levels(self):
         levels = self.result.get_all_injection_credible_levels()
@@ -625,6 +786,213 @@ class TestResult(unittest.TestCase):
         assert isinstance(cached_result, NotAResult)
 
 
+class TestDeferredNoiseEvidenceOrdering(unittest.TestCase):
+
+    @pytest.fixture(autouse=True)
+    def init_outdir(self, tmp_path):
+        self.outdir = str(tmp_path / "test")
+
+    def setUp(self):
+        bilby.utils.command_line_args.bilby_test_mode = False
+
+    def tearDown(self):
+        bilby.utils.command_line_args.bilby_test_mode = True
+
+    def test_run_sampler_passes_custom_railing_settings_to_postprocessing(self):
+        check_railing_mock = None
+
+        class SimpleLikelihood(bilby.Likelihood):
+            def __init__(self):
+                super().__init__()
+                self.meta_data = {"likelihood_class": "SimpleLikelihood"}
+
+            def log_likelihood(self, parameters):
+                return -1.0
+
+        class FakeSampler:
+            def __init__(
+                self,
+                likelihood,
+                priors,
+                outdir,
+                label,
+                injection_parameters,
+                meta_data,
+                use_ratio,
+                plot,
+                result_class,
+                npool,
+                **kwargs,
+            ):
+                nonlocal check_railing_mock
+                self.cached_result = None
+                self.use_ratio = True
+                self.result = bilby.core.result.Result(
+                    label=label,
+                    outdir=outdir,
+                    sampler="fake",
+                    search_parameter_keys=["x"],
+                    priors=priors,
+                    meta_data=meta_data,
+                    log_evidence=12.3,
+                    log_evidence_err=0.4,
+                    use_ratio=True,
+                )
+                self.result.posterior = pd.DataFrame(dict(x=[0.5]))
+                self.result.plot_corner = MagicMock()
+                check_railing_mock = MagicMock()
+                self.result.check_railing = check_railing_mock
+
+            def run_sampler(self):
+                return self.result
+
+        likelihood = SimpleLikelihood()
+        priors = bilby.core.prior.PriorDict(
+            dict(x=bilby.core.prior.Uniform(0, 1, "x"))
+        )
+
+        with patch("bilby.core.sampler.get_sampler_class", return_value=FakeSampler):
+            result = bilby.run_sampler(
+                likelihood=likelihood,
+                priors=priors,
+                sampler="fake",
+                outdir=self.outdir,
+                label="label",
+                plot=True,
+                save=False,
+                railing_bins=123,
+                railing_tolerance=4.5,
+            )
+
+        check_railing_mock.assert_called_once_with(bins=123, tolerance=4.5)
+        result.plot_corner.assert_called_once_with()
+
+    def test_free_noise_parameter_evidence_runs_after_plotting(self):
+        order = []
+        save_states = []
+
+        class DeferredNoiseLikelihood(bilby.Likelihood):
+            def __init__(self):
+                super().__init__()
+                self.meta_data = {"likelihood_class": "DeferredNoiseLikelihood"}
+
+            def log_likelihood(self, parameters):
+                return -1.0
+
+            def noise_log_likelihood(self):
+                return -2.0
+
+            @property
+            def noise_parameter_keys(self):
+                return ["x"]
+
+            def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+                order.append("noise")
+                return -3.0
+
+        def build_result(meta_data, priors, label, outdir):
+            result = bilby.core.result.Result(
+                label=label,
+                outdir=outdir,
+                sampler="fake",
+                search_parameter_keys=["x"],
+                priors=priors,
+                meta_data=meta_data,
+                log_evidence=12.3,
+                log_evidence_err=0.4,
+                use_ratio=True,
+            )
+
+            def save_side_effect(*args, **kwargs):
+                order.append(f"save_{len(save_states) + 1}")
+                save_states.append(
+                    dict(
+                        pending=result.meta_data.get("noise_evidence_pending"),
+                        log_noise_evidence=result.log_noise_evidence,
+                        log_evidence=result.log_evidence,
+                        log_bayes_factor=result.log_bayes_factor,
+                    )
+                )
+
+            def samples_to_posterior_side_effect(*args, **kwargs):
+                order.append("posterior")
+                result.posterior = pd.DataFrame(dict(x=[0.5]))
+                result._posterior = result.posterior
+
+            def plot_side_effect(*args, **kwargs):
+                order.append("plot")
+
+            def railing_side_effect(*args, **kwargs):
+                order.append("railing")
+
+            result.save_to_file = MagicMock(side_effect=save_side_effect)
+            result.samples_to_posterior = MagicMock(
+                side_effect=samples_to_posterior_side_effect
+            )
+            result.plot_corner = MagicMock(side_effect=plot_side_effect)
+            result.check_railing = MagicMock(side_effect=railing_side_effect)
+            return result
+
+        class FakeSampler:
+            def __init__(
+                self,
+                likelihood,
+                priors,
+                outdir,
+                label,
+                injection_parameters,
+                meta_data,
+                use_ratio,
+                plot,
+                result_class,
+                npool,
+                **kwargs,
+            ):
+                self.cached_result = None
+                self.use_ratio = True
+                self.result = build_result(
+                    meta_data=meta_data,
+                    priors=priors,
+                    label=label,
+                    outdir=outdir,
+                )
+
+            def run_sampler(self):
+                order.append("run")
+                return self.result
+
+        likelihood = DeferredNoiseLikelihood()
+        priors = bilby.core.prior.PriorDict(
+            dict(x=bilby.core.prior.Uniform(0, 1, "x"))
+        )
+
+        with patch("bilby.core.sampler.get_sampler_class", return_value=FakeSampler):
+            result = bilby.run_sampler(
+                likelihood=likelihood,
+                priors=priors,
+                sampler="fake",
+                outdir=self.outdir,
+                label="label",
+                plot=True,
+                save="json",
+            )
+
+        self.assertEqual(
+            order,
+            ["run", "save_1", "posterior", "save_2", "railing", "plot", "noise", "save_3"],
+        )
+        self.assertTrue(np.isnan(save_states[0]["log_noise_evidence"]))
+        self.assertTrue(np.isnan(save_states[0]["log_evidence"]))
+        self.assertEqual(save_states[0]["log_bayes_factor"], 12.3)
+        self.assertTrue(save_states[0]["pending"])
+        self.assertTrue(save_states[1]["pending"])
+        self.assertIsNone(save_states[2]["pending"])
+        self.assertEqual(result.log_noise_evidence, -3.0)
+        self.assertEqual(result.log_bayes_factor, 12.3)
+        self.assertEqual(result.log_evidence, 9.3)
+        self.assertNotIn("noise_evidence_pending", result.meta_data)
+
+
 class TestResultListError(unittest.TestCase):
     def setUp(self):
         np.random.seed(7)
@@ -765,6 +1133,34 @@ class TestResultListError(unittest.TestCase):
 
     def test_combine_inconsistent_data(self):
         self.nested_results[0].log_noise_evidence = -7
+        with self.assertRaises(bilby.result.ResultListError):
+            self.nested_results.combine()
+
+    def test_combine_inconsistent_noise_evidence_with_consistent_likelihood_metadata(self):
+        likelihood_meta_data = dict(
+            likelihood_class="StudentTGravitationalWaveTransient",
+            infer_nu=True,
+            num_frequency_bands=1,
+            interferometers=dict(H1=dict(name="H1"), L1=dict(name="L1")),
+        )
+        for result in self.nested_results:
+            result.meta_data = dict(likelihood=likelihood_meta_data)
+
+        self.nested_results[1].log_noise_evidence = 15
+
+        combined = self.nested_results.combine()
+
+        self.assertAlmostEqual(combined.log_noise_evidence, 14.0)
+
+    def test_combine_inconsistent_noise_evidence_with_inconsistent_likelihood_metadata(self):
+        self.nested_results[0].meta_data = dict(
+            likelihood=dict(likelihood_class="StudentTGravitationalWaveTransient")
+        )
+        self.nested_results[1].meta_data = dict(
+            likelihood=dict(likelihood_class="GravitationalWaveTransient")
+        )
+        self.nested_results[1].log_noise_evidence = 15
+
         with self.assertRaises(bilby.result.ResultListError):
             self.nested_results.combine()
 

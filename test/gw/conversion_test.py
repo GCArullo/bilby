@@ -1,4 +1,6 @@
+import logging
 import unittest
+from types import SimpleNamespace
 
 import array_api_compat as aac
 import numpy as np
@@ -347,6 +349,192 @@ class TestConvertToLALParams(unittest.TestCase):
             dict(a_1=a_1, tilt_1=tilt_1, phi_jl=phi_jl, phi_12=phi_12),
         )
 
+    def test_convert_to_cbc_plus_sine_gaussians(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            a_1=0.1,
+            tilt_1=0.2,
+            phi_12=0.3,
+            a_2=0.4,
+            tilt_2=0.5,
+            phi_jl=0.6,
+            theta_jn=0.7,
+            phase=0.8,
+            sine_gaussian_0_hrss=1e-22,
+            sine_gaussian_0_Q=9.0,
+            sine_gaussian_0_frequency=120.0,
+            sine_gaussian_0_time_offset=0.01,
+            sine_gaussian_0_phase_offset=1.2,
+            sine_gaussian_1_hrss=2e-22,
+            sine_gaussian_1_Q=8.0,
+            sine_gaussian_1_frequency=180.0,
+            sine_gaussian_1_time_offset=-0.02,
+            sine_gaussian_1_phase_offset=-0.3,
+        )
+
+        converted, added_keys = conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
+        expected = [
+            dict(hrss=1e-22, Q=9.0, frequency=120.0, time_offset=0.01, phase_offset=1.2),
+            dict(hrss=2e-22, Q=8.0, frequency=180.0, time_offset=-0.02, phase_offset=-0.3),
+        ]
+
+        self.assertEqual(converted["sine_gaussian_parameters"], expected)
+        for index in range(2):
+            for field in ("hrss", "Q", "frequency", "time_offset", "phase_offset"):
+                self.assertNotIn(f"sine_gaussian_{index}_{field}", converted)
+        self.assertIn("sine_gaussian_parameters", added_keys)
+
+    def test_convert_to_cbc_plus_sine_gaussians_incoherent(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            sine_gaussian_0_H1_hrss=3e-22,
+            sine_gaussian_0_H1_Q=7.0,
+            sine_gaussian_0_H1_frequency=90.0,
+            sine_gaussian_0_H1_time_offset=0.02,
+            sine_gaussian_0_H1_phase_offset=-0.4,
+            sine_gaussian_0_L1_hrss=1e-22,
+            sine_gaussian_0_L1_Q=5.0,
+            sine_gaussian_0_L1_frequency=100.0,
+            sine_gaussian_0_L1_time_offset=0.01,
+            sine_gaussian_0_L1_phase_offset=0.5,
+        )
+
+        converted, added_keys = conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
+        self.assertIn("incoherent_sine_gaussian_parameters", converted)
+        self.assertIn("incoherent_sine_gaussian_parameters", added_keys)
+        incoherent = converted["incoherent_sine_gaussian_parameters"]
+        self.assertIn("H1", incoherent)
+        self.assertIn("L1", incoherent)
+
+        self.assertEqual(len(incoherent["H1"]), 1)
+        self.assertEqual(len(incoherent["L1"]), 1)
+
+        h1_component = incoherent["H1"][0]
+        self.assertEqual(h1_component["hrss"], parameters["sine_gaussian_0_H1_hrss"])
+        self.assertEqual(h1_component["Q"], parameters["sine_gaussian_0_H1_Q"])
+        self.assertEqual(h1_component["frequency"], parameters["sine_gaussian_0_H1_frequency"])
+        self.assertEqual(h1_component["time_offset"], parameters["sine_gaussian_0_H1_time_offset"])
+        self.assertEqual(h1_component["phase_offset"], parameters["sine_gaussian_0_H1_phase_offset"])
+
+        l1_component = incoherent["L1"][0]
+        self.assertEqual(l1_component["hrss"], parameters["sine_gaussian_0_L1_hrss"])
+        self.assertEqual(l1_component["Q"], parameters["sine_gaussian_0_L1_Q"])
+        self.assertEqual(l1_component["frequency"], parameters["sine_gaussian_0_L1_frequency"])
+        self.assertEqual(l1_component["time_offset"], parameters["sine_gaussian_0_L1_time_offset"])
+        self.assertEqual(l1_component["phase_offset"], parameters["sine_gaussian_0_L1_phase_offset"])
+
+        for key in list(parameters.keys()):
+            if key.startswith("sine_gaussian_0_H1_") or key.startswith("sine_gaussian_0_L1_"):
+                self.assertNotIn(key, converted)
+
+    def test_convert_to_independently_localized_sine_gaussian(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            independent_sine_gaussian_ra=1.0,
+            independent_sine_gaussian_dec=-0.2,
+            independent_sine_gaussian_psi=0.4,
+            independent_sine_gaussian_0_hrss=3e-22,
+            independent_sine_gaussian_0_Q=7.0,
+            independent_sine_gaussian_0_frequency=90.0,
+            independent_sine_gaussian_0_time_offset=0.02,
+            independent_sine_gaussian_0_phase_offset=-0.4,
+        )
+
+        converted, added_keys = \
+            conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
+        self.assertEqual(
+            converted["independent_sine_gaussian_parameters"],
+            [dict(
+                hrss=3e-22,
+                Q=7.0,
+                frequency=90.0,
+                time_offset=0.02,
+                phase_offset=-0.4,
+            )],
+        )
+        self.assertEqual(converted["independent_sine_gaussian_ra"], 1.0)
+        self.assertEqual(converted["independent_sine_gaussian_dec"], -0.2)
+        self.assertEqual(converted["independent_sine_gaussian_psi"], 0.4)
+        self.assertIn("independent_sine_gaussian_parameters", added_keys)
+
+    def test_incoherent_polarization_fields_raise(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            sine_gaussian_0_H1_polarization="cross",
+            sine_gaussian_0_H1_hrss=1e-22,
+            sine_gaussian_0_H1_Q=7.0,
+            sine_gaussian_0_H1_frequency=90.0,
+            sine_gaussian_0_H1_time_offset=0.02,
+            sine_gaussian_0_H1_phase_offset=-0.4,
+        )
+
+        with self.assertRaisesRegex(KeyError, "Polarization fields are not supported"):
+            conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
+    def test_convert_to_cbc_plus_sine_gaussians_dict_wrapper(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            sine_gaussian_0_hrss=1e-22,
+            sine_gaussian_0_Q=10.0,
+            sine_gaussian_0_frequency=150.0,
+            sine_gaussian_0_time_offset=0.0,
+            sine_gaussian_0_phase_offset=0.0,
+        )
+
+        converted = conversion.convert_to_cbc_plus_sine_gaussian_parameters_dict(parameters)
+
+        self.assertIn("sine_gaussian_parameters", converted)
+        self.assertEqual(len(converted["sine_gaussian_parameters"]), 1)
+        component = converted["sine_gaussian_parameters"][0]
+        self.assertEqual(component["hrss"], parameters["sine_gaussian_0_hrss"])
+        self.assertEqual(component["Q"], parameters["sine_gaussian_0_Q"])
+        self.assertEqual(component["frequency"], parameters["sine_gaussian_0_frequency"])
+        self.assertEqual(component["time_offset"], parameters["sine_gaussian_0_time_offset"])
+        self.assertEqual(component["phase_offset"], parameters["sine_gaussian_0_phase_offset"])
+        for field in ("hrss", "Q", "frequency", "time_offset", "phase_offset"):
+            self.assertNotIn(f"sine_gaussian_0_{field}", converted)
+
+    def test_convert_to_cbc_plus_sine_gaussians_missing_offsets_raises(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            sine_gaussian_0_hrss=1e-22,
+            sine_gaussian_0_Q=10.0,
+            sine_gaussian_0_frequency=150.0,
+            sine_gaussian_0_phase_offset=0.5,
+        )
+
+        with self.assertRaisesRegex(KeyError, "time_offset"):
+            conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
+    def test_convert_to_cbc_plus_sine_gaussians_missing_incoherent_fields_raises(self):
+        parameters = dict(
+            mass_1=30.0,
+            mass_2=30.0,
+            luminosity_distance=400.0,
+            sine_gaussian_0_H1_hrss=1e-22,
+            sine_gaussian_0_H1_Q=10.0,
+            sine_gaussian_0_H1_frequency=150.0,
+            sine_gaussian_0_H1_phase_offset=0.5,
+        )
+
+        with self.assertRaisesRegex(KeyError, "time_offset"):
+            conversion.convert_to_cbc_plus_sine_gaussian_parameters(parameters)
+
     def test_bbh_zero_aligned_spin_to_spherical_with_magnitude(self):
         """
         Test the the conversion returns the correct tilt angles when zero
@@ -503,11 +691,215 @@ class TestGenerateAllParameters(unittest.TestCase):
             self.expected_bbh_keys,
         )
 
+    def test_generate_all_bbh_parameters_without_cbc_keys_does_not_log_info(self):
+        sample = {"ra": 0.0, "dec": 0.0}
+        with self.assertLogs("bilby", level="INFO") as captured:
+            bilby.gw.conversion.generate_all_bbh_parameters(sample)
+
+        self.assertFalse(
+            any("Generation of mass parameters failed" in message for message in captured.output)
+        )
+
+    def test_generate_all_bbh_parameters_without_spin_keys_does_not_log_info(self):
+        sample = {"mass_1": 30.0, "mass_2": 20.0}
+        with self.assertLogs("bilby", level="INFO") as captured:
+            logging.getLogger("bilby").info("sentinel")
+            bilby.gw.conversion.generate_all_bbh_parameters(sample)
+
+        self.assertFalse(
+            any(
+                "Generation of spin parameters failed" in message
+                for message in captured.output
+            )
+        )
+
     def test_generate_all_bns_parameters(self):
         self._generate(
             bilby.gw.conversion.generate_all_bns_parameters,
             self.expected_bbh_keys + self.expected_tidal_keys,
         )
+
+    def test_generate_all_cbc_plus_sine_gaussian_parameters(self):
+        sg_parameters = dict(
+            sine_gaussian_0_hrss=1e-22,
+            sine_gaussian_0_Q=9.0,
+            sine_gaussian_0_frequency=120.0,
+            sine_gaussian_0_time_offset=0.01,
+            sine_gaussian_0_phase_offset=0.1,
+            sine_gaussian_1_hrss=2e-22,
+            sine_gaussian_1_Q=8.0,
+            sine_gaussian_1_frequency=180.0,
+            sine_gaussian_1_time_offset=-0.02,
+            sine_gaussian_1_phase_offset=-0.5,
+            sine_gaussian_2_H1_hrss=4e-22,
+            sine_gaussian_2_H1_Q=6.0,
+            sine_gaussian_2_H1_frequency=200.0,
+            sine_gaussian_2_H1_time_offset=0.03,
+            sine_gaussian_2_H1_phase_offset=0.0,
+            sine_gaussian_2_L1_hrss=5e-22,
+            sine_gaussian_2_L1_Q=5.5,
+            sine_gaussian_2_L1_frequency=210.0,
+            sine_gaussian_2_L1_time_offset=-0.01,
+            sine_gaussian_2_L1_phase_offset=0.2,
+        )
+
+        for values in [self.parameters, self.data_frame]:
+            container = values.copy()
+            if isinstance(container, pd.DataFrame):
+                for key, value in sg_parameters.items():
+                    if key == "sine_gaussian_0_frequency":
+                        container[key] = np.linspace(
+                            value,
+                            value + len(container) - 1,
+                            len(container),
+                        )
+                    else:
+                        container[key] = value
+            else:
+                container.update(sg_parameters)
+            converted = bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters(
+                container
+            )
+
+            if isinstance(converted, pd.DataFrame):
+                self.assertNotIn("sine_gaussian_parameters", converted)
+                self.assertNotIn("incoherent_sine_gaussian_parameters", converted)
+                for key in sg_parameters:
+                    self.assertIn(key, converted)
+                self.assertEqual(converted["sine_gaussian_0_frequency"].iloc[0], 120.0)
+                self.assertEqual(
+                    converted["sine_gaussian_0_frequency"].iloc[-1],
+                    120.0 + len(converted) - 1,
+                )
+                continue
+
+            self.assertIn("sine_gaussian_parameters", converted)
+            components = converted["sine_gaussian_parameters"]
+            self.assertEqual(len(components), 2)
+            for index, expected in enumerate((
+                dict(hrss=1e-22, Q=9.0, frequency=120.0, time_offset=0.01, phase_offset=0.1),
+                dict(hrss=2e-22, Q=8.0, frequency=180.0, time_offset=-0.02, phase_offset=-0.5),
+            )):
+                self.assertEqual(components[index], expected)
+
+            incoherent = converted["incoherent_sine_gaussian_parameters"]
+            if isinstance(converted, pd.DataFrame):
+                incoherent = incoherent.iloc[0]
+            self.assertIn("H1", incoherent)
+            self.assertIn("L1", incoherent)
+            self.assertEqual(len(incoherent["H1"]), 1)
+            self.assertEqual(len(incoherent["L1"]), 1)
+            self.assertEqual(
+                incoherent["H1"][0],
+                dict(hrss=4e-22, Q=6.0, frequency=200.0, time_offset=0.03, phase_offset=0.0),
+            )
+            self.assertEqual(
+                incoherent["L1"][0],
+                dict(
+                    hrss=5e-22,
+                    Q=5.5,
+                    frequency=210.0,
+                    time_offset=-0.01,
+                    phase_offset=0.2,
+                ),
+            )
+
+    def test_generate_all_cbc_plus_sine_gaussian_parameters_dataframe_is_serializable(self):
+        sg_parameters = dict(
+            sine_gaussian_0_hrss=1e-22,
+            sine_gaussian_0_Q=9.0,
+            sine_gaussian_0_frequency=120.0,
+            sine_gaussian_0_time_offset=0.01,
+            sine_gaussian_0_phase_offset=0.1,
+        )
+        samples = self.data_frame.copy()
+        for key, value in sg_parameters.items():
+            samples[key] = value
+
+        converted = bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters(
+            samples
+        )
+
+        self.assertNotIn("sine_gaussian_parameters", converted)
+        self.assertNotIn("incoherent_sine_gaussian_parameters", converted)
+        for key, value in sg_parameters.items():
+            self.assertIn(key, converted)
+            self.assertTrue(np.all(converted[key] == value))
+
+    def test_compute_snrs_stores_cbc_and_sine_gaussian_components(self):
+        class Interferometer:
+            name = "H1"
+
+            @staticmethod
+            def inner_product(signal):
+                return np.sum(signal)
+
+            @staticmethod
+            def optimal_snr_squared(signal):
+                return np.sum(np.abs(signal) ** 2)
+
+        class WaveformGenerator:
+            @staticmethod
+            def frequency_domain_strain(parameters):
+                return bilby.gw.source._WaveformPolarizations(
+                    plus=np.array([3.0, 4.0]),
+                    component_polarizations={
+                        "cbc": {"plus": np.array([1.0, 2.0])}
+                    },
+                )
+
+        class Likelihood:
+            interferometers = [Interferometer()]
+            waveform_generator = WaveformGenerator()
+
+            @staticmethod
+            def _compute_full_waveform(
+                signal_polarizations, interferometer, parameters
+            ):
+                return signal_polarizations["plus"]
+
+            @staticmethod
+            def calculate_snrs(
+                signal_polarizations, interferometer, return_array=True,
+                parameters=None,
+            ):
+                signal = signal_polarizations["plus"]
+                optimal_snr_squared = interferometer.optimal_snr_squared(signal)
+                return SimpleNamespace(snrs_as_sample={
+                    "matched_filter_snr": (
+                        interferometer.inner_product(signal)
+                        / optimal_snr_squared**0.5
+                    ),
+                    "optimal_snr": optimal_snr_squared**0.5,
+                })
+
+        samples = pd.DataFrame([{"mass_1": 30.0}])
+        conversion.compute_snrs(samples, Likelihood())
+
+        self.assertAlmostEqual(samples["H1_cbc_optimal_snr"][0], np.sqrt(5))
+        self.assertAlmostEqual(
+            samples["H1_sine_gaussian_optimal_snr"][0], np.sqrt(8)
+        )
+        self.assertAlmostEqual(
+            samples["H1_cbc_matched_filter_snr"][0], 3 / np.sqrt(5)
+        )
+        self.assertAlmostEqual(
+            samples["H1_sine_gaussian_matched_filter_snr"][0], 4 / np.sqrt(8)
+        )
+
+        no_sine_gaussian = bilby.gw.source._WaveformPolarizations(
+            plus=np.array([1.0, 2.0]),
+            component_polarizations={
+                "cbc": {"plus": np.array([1.0, 2.0])}
+            },
+        )
+        component_snrs = conversion._component_snrs_as_sample(
+            Likelihood(), no_sine_gaussian, Interferometer(), {}
+        )
+        self.assertEqual(
+            component_snrs["sine_gaussian_matched_filter_snr"], 0j
+        )
+        self.assertEqual(component_snrs["sine_gaussian_optimal_snr"], 0)
 
     def _generate(self, func, expected):
         for values in [self.parameters, self.data_frame]:

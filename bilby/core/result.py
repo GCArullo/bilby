@@ -4,6 +4,7 @@ import inspect
 import json
 import os
 import packaging
+import re
 from collections import namedtuple
 from copy import copy
 from importlib import import_module
@@ -31,6 +32,42 @@ from .prior import Prior, PriorDict, DeltaFunction, ConditionalDeltaFunction
 
 
 EXTENSIONS = ["json", "hdf5", "h5", "pickle", "pkl"]
+RAILING_HARD_BOUND_EXACT_NAMES = {
+    "a_1",
+    "a_2",
+    "azimuth",
+    "cos_tilt_1",
+    "cos_tilt_2",
+    "dec",
+    "iota",
+    "phase",
+    "phi_1",
+    "phi_12",
+    "phi_2",
+    "phi_jl",
+    "psi",
+    "ra",
+    "theta_jn",
+    "tilt_1",
+    "tilt_2",
+    "zenith",
+}
+RAILING_HARD_BOUND_NAME_TOKENS = {
+    "angle",
+    "angles",
+    "azimuth",
+    "chi",
+    "dec",
+    "iota",
+    "phase",
+    "phi",
+    "psi",
+    "ra",
+    "spin",
+    "theta",
+    "tilt",
+    "zenith",
+}
 
 
 def result_file_name(outdir, label, extension='json', gzip=False):
@@ -938,6 +975,230 @@ class Result(object):
         logger.info("Writing samples file to {}".format(filename))
         df.to_csv(filename, index=False, header=True, sep=' ')
 
+    @staticmethod
+    def _railing_check(samples, prior_bins, tolerance):
+        hist, _ = np.histogram(samples, bins=prior_bins, density=True)
+        highest_hist = np.amax(hist)
+        if not np.isfinite(highest_hist) or highest_hist <= 0:
+            return False, False
+        lower_support = hist[0] / highest_hist * 100
+        higher_support = hist[-1] / highest_hist * 100
+        low_end_railing = lower_support > tolerance
+        high_end_railing = higher_support > tolerance
+        return low_end_railing, high_end_railing
+
+    @staticmethod
+    def _is_hard_bound_railing_parameter(key, prior):
+        if getattr(prior, "boundary", None) in {"periodic", "reflective"}:
+            return True
+        if prior.__class__.__name__ in {"AlignedSpin", "Cosine", "Sine"}:
+            return True
+        key = key.lower()
+        if key in RAILING_HARD_BOUND_EXACT_NAMES:
+            return True
+        tokens = set(re.split(r"[^0-9a-zA-Z]+", key))
+        tokens.discard("")
+        return bool(tokens.intersection(RAILING_HARD_BOUND_NAME_TOKENS))
+
+    @staticmethod
+    def _adjust_railing_flags_for_exempt_bounds(key, prior, lower_rail, upper_rail):
+        minimum = getattr(prior, "minimum", np.nan)
+        maximum = getattr(prior, "maximum", np.nan)
+        key = key.lower()
+        tokens = set(re.split(r"[^0-9a-zA-Z]+", key))
+        tokens.discard("")
+
+        if key == "mass_ratio" and np.isfinite(maximum) and np.isclose(maximum, 1):
+            upper_rail = False
+        if "hrss" in tokens and np.isfinite(minimum) and np.isclose(minimum, 0):
+            lower_rail = False
+
+        return lower_rail, upper_rail
+
+    @latex_plot_format
+    def check_railing(
+        self, bins=100, tolerance=2.0, save=True, outdir=None, label=None
+    ):
+        """Check the posterior for railing against prior bounds.
+
+        Parameters
+        ==========
+        bins: int
+            Number of bins spanning the prior support.
+        tolerance: float
+            Percentage threshold used to flag support in the edge bins.
+        save: bool
+            If true, save a text summary and table figure to disk.
+        outdir, label: str, optional
+            Alternative outdir and label to use for saved outputs.
+
+        Returns
+        =======
+        pandas.DataFrame
+            Table summarising the railing status of each parameter.
+        """
+        import matplotlib.pyplot as plt
+
+        posterior = self.posterior
+        priors = self.priors
+
+        if label is None:
+            label = self.label
+        if outdir is None:
+            outdir = self.outdir
+
+        parameter_keys = self.search_parameter_keys
+        if parameter_keys is None:
+            parameter_keys = posterior.select_dtypes([np.number]).columns
+
+        rows = []
+        for key in parameter_keys:
+            prior = priors.get(key, None)
+            if prior is None or key not in posterior:
+                continue
+
+            if self._is_hard_bound_railing_parameter(key, prior):
+                rows.append(
+                    dict(
+                        parameter=key,
+                        status="ignored_hard_bound",
+                        lower_rail=False,
+                        upper_rail=False,
+                        notes="hard_bound",
+                    )
+                )
+                continue
+
+            minimum = getattr(prior, "minimum", np.nan)
+            maximum = getattr(prior, "maximum", np.nan)
+            if not np.all(np.isfinite([minimum, maximum])) or maximum <= minimum:
+                rows.append(
+                    dict(
+                        parameter=key,
+                        status="not_checked",
+                        lower_rail=False,
+                        upper_rail=False,
+                        notes="finite_prior_bounds_required",
+                    )
+                )
+                continue
+
+            samples = posterior[key].to_numpy()
+            samples = samples[np.isfinite(samples)]
+            if len(samples) == 0:
+                rows.append(
+                    dict(
+                        parameter=key,
+                        status="not_checked",
+                        lower_rail=False,
+                        upper_rail=False,
+                        notes="no_finite_samples",
+                    )
+                )
+                continue
+
+            prior_bins = np.linspace(minimum, maximum, bins)
+            lower_rail, upper_rail = self._railing_check(
+                samples=samples,
+                prior_bins=prior_bins,
+                tolerance=tolerance,
+            )
+            lower_rail, upper_rail = self._adjust_railing_flags_for_exempt_bounds(
+                key=key,
+                prior=prior,
+                lower_rail=lower_rail,
+                upper_rail=upper_rail,
+            )
+            status = "railing" if lower_rail or upper_rail else "not_railing"
+            if lower_rail and upper_rail:
+                notes = "lower_and_upper"
+            elif lower_rail:
+                notes = "lower"
+            elif upper_rail:
+                notes = "upper"
+            else:
+                notes = "checked"
+            rows.append(
+                dict(
+                    parameter=key,
+                    status=status,
+                    lower_rail=lower_rail,
+                    upper_rail=upper_rail,
+                    notes=notes,
+                )
+            )
+
+        summary = pd.DataFrame(
+            rows,
+            columns=["parameter", "status", "lower_rail", "upper_rail", "notes"],
+        )
+
+        railing_parameters = summary.loc[summary.status == "railing", "parameter"].tolist()
+        if railing_parameters:
+            logger.warning(
+                "Posterior railing detected for parameters: %s",
+                ", ".join(railing_parameters),
+            )
+
+        if save:
+            outdir = self._safe_outdir_creation(outdir, self.check_railing)
+            filename = os.path.join(outdir, f"{label}_prior_railing.txt")
+            logger.info("Writing railing summary to {}".format(filename))
+            summary.to_csv(filename, index=False, sep="\t")
+
+            display = summary.loc[:, ["parameter", "status", "notes"]].copy()
+            display["status"] = display["status"].replace(
+                {
+                    "not_railing": "not railing",
+                    "ignored_hard_bound": "ignored",
+                    "not_checked": "not checked",
+                }
+            )
+            display["notes"] = display["notes"].replace(
+                {
+                    "hard_bound": "hard bound",
+                    "finite_prior_bounds_required": "finite bounds required",
+                    "no_finite_samples": "no finite samples",
+                    "lower_and_upper": "lower + upper",
+                }
+            )
+
+            colors = {
+                "not_railing": "#d9ead3",
+                "railing": "#f4cccc",
+                "ignored_hard_bound": "#e6e6e6",
+                "not_checked": "#e6e6e6",
+            }
+            figure_name = os.path.join(outdir, f"{label}_prior_railing.png")
+            nrows = max(len(display), 1)
+            fig_height = max(1.5, 0.45 * nrows + 1.0)
+            fig, ax = plt.subplots(figsize=(8, fig_height))
+            ax.axis("off")
+            table = ax.table(
+                cellText=display.values,
+                colLabels=["parameter", "status", "notes"],
+                cellLoc="left",
+                loc="center",
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(10)
+            table.scale(1, 1.4)
+
+            for (row, col), cell in table.get_celld().items():
+                if row == 0:
+                    cell.set_facecolor("#d9d9d9")
+                    cell.set_text_props(weight="bold")
+                    continue
+                status = summary.iloc[row - 1]["status"]
+                if col in [0, 1]:
+                    cell.set_facecolor(colors.get(status, "#ffffff"))
+
+            fig.tight_layout()
+            safe_save_figure(fig=fig, filename=figure_name, dpi=300)
+            plt.close(fig)
+
+        return summary
+
     def get_latex_labels_from_parameter_keys(self, keys):
         """ Returns a list of latex_labels corresponding to the given keys
 
@@ -952,10 +1213,28 @@ class Result(object):
 
         """
         latex_labels = []
+        sine_gaussian_labels = dict(
+            hrss="SG-{index} hrss",
+            Q="SG-{index} Q",
+            frequency="SG-{index} f [Hz]",
+            time_offset="SG-{index} dt [s]",
+            phase_offset="SG-{index} dphi",
+        )
         for key in keys:
-            if key in self.search_parameter_keys:
+            parts = key.split("_", 3)
+            if (
+                len(parts) == 4
+                and parts[0] == "sine"
+                and parts[1] == "gaussian"
+                and parts[2].isdigit()
+                and parts[3] in sine_gaussian_labels
+            ):
+                label = sine_gaussian_labels[parts[3]].format(index=parts[2])
+            elif key in self.search_parameter_keys:
                 idx = self.search_parameter_keys.index(key)
                 label = self.parameter_labels_with_unit[idx]
+                if label == key and key in Prior._default_latex_labels:
+                    label = Prior._default_latex_labels[key]
             elif key in self.parameter_labels:
                 label = key
             else:
@@ -1327,6 +1606,10 @@ class Result(object):
                 key: self.injection_parameters.get(key, np.nan)
                 for key in self.search_parameter_keys
             }
+        elif cond1 and isinstance(parameters, list) and cond3:
+            kwargs["truths"] = [
+                self.injection_parameters.get(key, np.nan) for key in parameters
+            ]
 
         # If parameters is a dictionary, use the keys to determine which
         # parameters to plot and the values as truths.
@@ -1353,16 +1636,76 @@ class Result(object):
         if isinstance(kwargs.get('truths'), bool):
             kwargs.pop('truths')
 
+        # Drop parameters that have no finite extent; corner cannot plot them.
+        xs_frame = self.posterior[plot_parameter_keys]
+        finite_plot_parameter_keys = []
+        finite_labels = []
+        finite_truths = [] if "truths" in kwargs else None
+        finite_range = [] if isinstance(kwargs.get("range"), (list, tuple, np.ndarray)) else None
+        skipped_parameters = []
+        truths = kwargs.get("truths")
+        ranges = kwargs.get("range")
+
+        for index, key in enumerate(plot_parameter_keys):
+            values = xs_frame[key].to_numpy()
+            finite = values[np.isfinite(values)]
+            if len(finite) == 0 or np.ptp(finite) == 0:
+                skipped_parameters.append(key)
+                continue
+            finite_plot_parameter_keys.append(key)
+            finite_labels.append(kwargs["labels"][index])
+            if finite_truths is not None:
+                finite_truths.append(truths[index])
+            if finite_range is not None:
+                finite_range.append(ranges[index])
+
+        if skipped_parameters:
+            logger.warning(
+                "Skipping corner-plot parameters with zero or non-finite extent: %s",
+                ", ".join(skipped_parameters),
+            )
+
+        if len(finite_plot_parameter_keys) == 0:
+            logger.warning("No plottable parameters remain for corner plot; skipping.")
+            return None
+
+        plot_parameter_keys = finite_plot_parameter_keys
+        kwargs["labels"] = finite_labels
+        if finite_truths is not None:
+            kwargs["truths"] = finite_truths
+        if finite_range is not None:
+            kwargs["range"] = finite_range
+
         # Create the data array to plot and pass everything to corner
         xs = self.posterior[plot_parameter_keys].values
         if len(plot_parameter_keys) > 1:
             fig = corner.corner(xs, **kwargs)
         else:
-            ax = kwargs.get("ax", plt.subplot())
+            ax = kwargs.get("ax", None)
+            if ax is None:
+                fig = kwargs.get("fig", None)
+                if fig is None:
+                    fig, ax = plt.subplots()
+                elif len(fig.axes) == 0:
+                    ax = fig.add_subplot(111)
+                else:
+                    ax = fig.axes[0]
+            else:
+                fig = ax.get_figure()
             ax.hist(xs, bins=kwargs["bins"], color=kwargs["color"],
                     histtype="step", **kwargs["hist_kwargs"])
+            truth = kwargs.get("truths", [np.nan])[0]
+            try:
+                plot_truth = np.isfinite(truth)
+            except TypeError:
+                plot_truth = False
+            if plot_truth:
+                ax.axvline(
+                    truth,
+                    color=kwargs["truth_color"],
+                    linestyle="-",
+                )
             ax.set_xlabel(kwargs["labels"][0])
-            fig = plt.gcf()
 
         axes = fig.get_axes()
 
@@ -1925,9 +2268,11 @@ class ResultList(list):
             result.label += '_combined'
 
         self.check_consistent_sampler()
-        self.check_consistent_data()
+        data_is_consistent = self.check_consistent_data()
         self.check_consistent_parameters()
         self.check_consistent_priors()
+        if data_is_consistent:
+            result.log_noise_evidence = self._combined_log_noise_evidence()
 
         # check which kind of sampler was used: MCMC or Nested Sampling
         if result._nested_samples is not None:
@@ -2065,16 +2410,64 @@ class ResultList(list):
             msg = "Inconsistent parameters between results"
             self._error_or_warning_consistency(msg)
 
-    def check_consistent_data(self):
-        if not np.allclose(
+    def _has_consistent_log_noise_evidence(self):
+        return np.allclose(
             [res.log_noise_evidence for res in self],
             self[0].log_noise_evidence,
             atol=1e-7,
             rtol=0.0,
             equal_nan=True,
-        ):
-            msg = "Inconsistent data between results"
-            self._error_or_warning_consistency(msg)
+        )
+
+    @staticmethod
+    def _canonical_likelihood_meta_data(result):
+        likelihood_meta_data = getattr(result, "meta_data", {}).get("likelihood", None)
+        if likelihood_meta_data is None:
+            return None
+        try:
+            return json.dumps(
+                likelihood_meta_data,
+                cls=BilbyJsonEncoder,
+                sort_keys=True,
+            )
+        except (TypeError, ValueError):
+            return None
+
+    def _has_consistent_likelihood_meta_data(self):
+        serialized_meta_data = [
+            self._canonical_likelihood_meta_data(result)
+            for result in self
+        ]
+        if any(item is None for item in serialized_meta_data):
+            return False
+        return np.all(
+            [
+                meta_data == serialized_meta_data[0]
+                for meta_data in serialized_meta_data[1:]
+            ]
+        )
+
+    def _combined_log_noise_evidence(self):
+        log_noise_evidences = np.array(
+            [res.log_noise_evidence for res in self],
+            dtype=float,
+        )
+        if np.all(np.isnan(log_noise_evidences)):
+            return np.nan
+        return float(np.nanmean(log_noise_evidences))
+
+    def check_consistent_data(self):
+        if self._has_consistent_log_noise_evidence():
+            return True
+        if self._has_consistent_likelihood_meta_data():
+            logger.info(
+                "log_noise_evidence differs between results, but likelihood "
+                "metadata is consistent. Treating the runs as equivalent data."
+            )
+            return True
+        msg = "Inconsistent data between results"
+        self._error_or_warning_consistency(msg)
+        return False
 
     def check_consistent_sampler(self):
         if not np.all([res.sampler == self[0].sampler for res in self]):

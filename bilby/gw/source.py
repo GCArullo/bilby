@@ -18,6 +18,9 @@ Unused waveform_kwargs: {waveform_kwargs}
 """
 
 
+_gwsignal_binary_black_hole_warned = False
+
+
 def gwsignal_binary_black_hole(frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
                                phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, **kwargs):
     """
@@ -88,182 +91,20 @@ def gwsignal_binary_black_hole(frequency_array, mass_1, mass_2, luminosity_dista
     This version is only intended to be used with `SEOBNRv5HM` and `SEOBNRv5PHM` and
     does not have full functionality for other waveform models.
     """
-    logger.warning(
-        "bilby.gw.source.gwsignal_binary_black_hole is deprecated and will be removed "
-        "in a future release, use bilby.gw.waveform_generator.GWSignalWaveformGenerator"
-        " instead."
-    )
+    global _gwsignal_binary_black_hole_warned
+    if not _gwsignal_binary_black_hole_warned:
+        logger.warning(
+            "bilby.gw.source.gwsignal_binary_black_hole is deprecated and will be removed "
+            "in a future release, use bilby.gw.waveform_generator.GWSignalWaveformGenerator"
+            " instead."
+        )
+        _gwsignal_binary_black_hole_warned = True
 
-    from lalsimulation.gwsignal import GenerateFDWaveform
-    from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator
-    import astropy.units as u
-
-    waveform_kwargs = dict(
-        waveform_approximant="SEOBNRv5PHM",
-        reference_frequency=50.0,
-        minimum_frequency=20.0,
-        maximum_frequency=frequency_array[-1],
-        catch_waveform_errors=False,
-        mode_array=None,
-        pn_amplitude_order=0,
-    )
-    waveform_kwargs.update(kwargs)
-
-    waveform_approximant = waveform_kwargs['waveform_approximant']
-    if waveform_approximant not in ["SEOBNRv5HM", "SEOBNRv5PHM"]:
-        if waveform_approximant == "IMRPhenomXPHM":
-            logger.warning("The new waveform interface is unreviewed for this model" +
-                           "and it is only intended for testing.")
-        else:
-            raise ValueError("The new waveform interface is unreviewed for this model.")
-    reference_frequency = waveform_kwargs['reference_frequency']
-    minimum_frequency = waveform_kwargs['minimum_frequency']
-    maximum_frequency = waveform_kwargs['maximum_frequency']
-    catch_waveform_errors = waveform_kwargs['catch_waveform_errors']
-    mode_array = waveform_kwargs['mode_array']
-    pn_amplitude_order = waveform_kwargs['pn_amplitude_order']
-
-    if pn_amplitude_order != 0:
-        # This is to mimic the behaviour in
-        # https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimInspiral.c#L5542
-        if pn_amplitude_order == -1:
-            if waveform_approximant in ["SpinTaylorT4", "SpinTaylorT5"]:
-                pn_amplitude_order = 3  # Equivalent to MAX_PRECESSING_AMP_PN_ORDER in LALSimulation
-            else:
-                pn_amplitude_order = 6  # Equivalent to MAX_NONPRECESSING_AMP_PN_ORDER in LALSimulation
-        start_frequency = minimum_frequency * 2. / (pn_amplitude_order + 2)
-    else:
-        start_frequency = minimum_frequency
-
-    # Call GWsignal generator
-    wf_gen = gwsignal_get_waveform_generator(waveform_approximant)
-
-    delta_frequency = frequency_array[1] - frequency_array[0]
-
-    frequency_bounds = ((frequency_array >= minimum_frequency) *
-                        (frequency_array <= maximum_frequency))
-
-    iota, spin_1x, spin_1y, spin_1z, spin_2x, spin_2y, spin_2z = bilby_to_lalsimulation_spins(
-        theta_jn=theta_jn, phi_jl=phi_jl, tilt_1=tilt_1, tilt_2=tilt_2,
-        phi_12=phi_12, a_1=a_1, a_2=a_2, mass_1=mass_1 * utils.solar_mass, mass_2=mass_2 * utils.solar_mass,
-        reference_frequency=reference_frequency, phase=phase)
-
-    eccentricity = 0.0
-    longitude_ascending_nodes = 0.0
-    mean_per_ano = 0.0
-
-    # Check if conditioning is needed
-    condition = 0
-    if wf_gen.metadata["implemented_domain"] == 'time':
-        condition = 1
-
-    # Create dict for gwsignal generator
-    gwsignal_dict = {'mass1' : mass_1 * u.solMass,
-                     'mass2' : mass_2 * u.solMass,
-                     'spin1x' : spin_1x * u.dimensionless_unscaled,
-                     'spin1y' : spin_1y * u.dimensionless_unscaled,
-                     'spin1z' : spin_1z * u.dimensionless_unscaled,
-                     'spin2x' : spin_2x * u.dimensionless_unscaled,
-                     'spin2y' : spin_2y * u.dimensionless_unscaled,
-                     'spin2z' : spin_2z * u.dimensionless_unscaled,
-                     'deltaF' : delta_frequency * u.Hz,
-                     'f22_start' : start_frequency * u.Hz,
-                     'f_max': maximum_frequency * u.Hz,
-                     'f22_ref': reference_frequency * u.Hz,
-                     'phi_ref' : phase * u.rad,
-                     'distance' : luminosity_distance * u.Mpc,
-                     'inclination' : iota * u.rad,
-                     'eccentricity' : eccentricity * u.dimensionless_unscaled,
-                     'longAscNodes' : longitude_ascending_nodes * u.rad,
-                     'meanPerAno' : mean_per_ano * u.rad,
-                     # 'ModeArray': mode_array,
-                     'condition': condition
-                     }
-
-    if mode_array is not None:
-        try:
-            mode_array = [tuple(map(safe_cast_mode_to_int, mode)) for mode in mode_array]
-        except (ValueError, TypeError) as e:
-            raise ValueError(
-                f"Unable to convert mode_array elements to tuples of ints. "
-                f"mode_array: {mode_array}, Error: {e}"
-            ) from e
-        gwsignal_dict.update(ModeArray=mode_array)
-
-    # Pass extra waveform arguments to gwsignal
-    extra_args = waveform_kwargs.copy()
-
-    for key in [
-            "waveform_approximant",
-            "reference_frequency",
-            "minimum_frequency",
-            "maximum_frequency",
-            "catch_waveform_errors",
-            "mode_array",
-            "pn_spin_order",
-            "pn_amplitude_order",
-            "pn_tidal_order",
-            "pn_phase_order",
-            "numerical_relativity_file",
-    ]:
-        if key in extra_args.keys():
-            del extra_args[key]
-
-    gwsignal_dict.update(extra_args)
-
-    try:
-        hpc = GenerateFDWaveform(gwsignal_dict, wf_gen)
-    except Exception as e:
-        if not catch_waveform_errors:
-            raise
-        else:
-            EDOM = (
-                "Internal function call failed: Input domain error" in e.args[0]
-            ) or "Input domain error" in e.args[
-                0
-            ]
-            if EDOM:
-                failed_parameters = dict(mass_1=mass_1, mass_2=mass_2,
-                                         spin_1=(spin_1x, spin_1y, spin_1z),
-                                         spin_2=(spin_2x, spin_2y, spin_2z),
-                                         luminosity_distance=luminosity_distance,
-                                         iota=iota, phase=phase,
-                                         eccentricity=eccentricity,
-                                         start_frequency=minimum_frequency)
-                logger.warning("Evaluating the waveform failed with error: {}\n".format(e) +
-                               "The parameters were {}\n".format(failed_parameters) +
-                               "Likelihood will be set to -inf.")
-                return None
-            else:
-                raise
-
-    hplus = hpc.hp
-    hcross = hpc.hc
-
-    h_plus = np.zeros_like(frequency_array, dtype=complex)
-    h_cross = np.zeros_like(frequency_array, dtype=complex)
-
-    if len(hplus) > len(frequency_array):
-        logger.debug("GWsignal waveform longer than bilby's `frequency_array`" +
-                     "({} vs {}), ".format(len(hplus), len(frequency_array)) +
-                     "probably because padded with zeros up to the next power of two length." +
-                     " Truncating GWsignal array.")
-        h_plus = hplus[:len(h_plus)]
-        h_cross = hcross[:len(h_cross)]
-    else:
-        h_plus[:len(hplus)] = hplus
-        h_cross[:len(hcross)] = hcross
-
-    h_plus *= frequency_bounds
-    h_cross *= frequency_bounds
-
-    if condition:
-        dt = 1 / hplus.df.value + hplus.epoch.value
-        time_shift = np.exp(-1j * 2 * np.pi * dt * frequency_array[frequency_bounds])
-        h_plus[frequency_bounds] *= time_shift
-        h_cross[frequency_bounds] *= time_shift
-
-    return dict(plus=h_plus, cross=h_cross)
+    return _base_gwsignal_cbc_fd_waveform(
+        frequency_array=frequency_array, mass_1=mass_1, mass_2=mass_2,
+        luminosity_distance=luminosity_distance, theta_jn=theta_jn, phase=phase,
+        a_1=a_1, a_2=a_2, tilt_1=tilt_1, tilt_2=tilt_2, phi_12=phi_12, phi_jl=phi_jl,
+        eccentricity=0.0, **kwargs)
 
 
 def lal_binary_black_hole(
@@ -346,6 +187,288 @@ def lal_binary_black_hole(
         luminosity_distance=luminosity_distance, theta_jn=theta_jn, phase=phase,
         a_1=a_1, a_2=a_2, tilt_1=tilt_1, tilt_2=tilt_2, phi_12=phi_12,
         phi_jl=phi_jl, **waveform_kwargs)
+
+
+_GWSIGNAL_ONLY_APPROXIMANTS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
+
+
+class _WaveformPolarizations(dict):
+    def __init__(self, *args, component_polarizations=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.component_polarizations = component_polarizations or {}
+
+
+def cbc_plus_sine_gaussians(
+        frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
+        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, lambda_1=0.0,
+        lambda_2=0.0, eccentricity=0.0, sine_gaussian_parameters=None,
+        incoherent_sine_gaussian_parameters=None,
+        independent_sine_gaussian_parameters=None,
+        independent_sine_gaussian_ra=None, independent_sine_gaussian_dec=None,
+        independent_sine_gaussian_psi=None, **kwargs):
+    """A CBC waveform model augmented with a collection of sine-Gaussians.
+
+    This function evaluates a compact binary coalescence (CBC) waveform using
+    :func:`_base_lal_cbc_fd_waveform` (or :func:`_base_gwsignal_cbc_fd_waveform`
+    for approximants that are only implemented via gwsignal, e.g. SEOBNRv5PHM)
+    and supplements it with an arbitrary number of sine-Gaussian burst
+    components defined through ``sine_gaussian_parameters``.
+
+    Parameters
+    ----------
+    frequency_array : array-like
+        The frequencies at which the waveform is evaluated.
+    mass_1, mass_2 : float
+        Component masses of the binary in solar masses.
+    luminosity_distance : float
+        Luminosity distance in megaparsec.
+    a_1, a_2 : float
+        Dimensionless spin magnitudes of the component objects.
+    tilt_1, tilt_2 : float
+        Spin tilt angles.
+    phi_12 : float
+        Azimuthal angle between the component spins.
+    phi_jl : float
+        Azimuthal angle between the total angular momentum and the orbital
+        angular momentum.
+    theta_jn : float
+        Inclination angle between the total angular momentum and the line of
+        sight.
+    phase : float
+        Phase of the waveform at the reference frequency.
+    lambda_1, lambda_2 : float, optional
+        Tidal deformability parameters of the components.
+    eccentricity : float, optional
+        Orbital eccentricity.
+    sine_gaussian_parameters : list[dict] or dict or None, optional
+        A list containing the parameters of each coherent sine-Gaussian
+        component. Each dictionary must define ``hrss``, ``Q``, ``frequency``,
+        ``time_offset`` and ``phase_offset``.
+    incoherent_sine_gaussian_parameters : dict[str, list[dict] | dict] or None, optional
+        Mapping of detector names to lists of incoherent sine-Gaussian
+        components.  Each detector entry should contain a list of dictionaries
+        describing the components local to that interferometer with the same
+        mandatory keys as the coherent case (``hrss``, ``Q``, ``frequency``,
+        ``time_offset`` and ``phase_offset``).  These detector-local bursts are
+        added directly to the interferometer strain without applying antenna
+        pattern projections or polarization choices.
+    independent_sine_gaussian_parameters : list[dict] or dict or None, optional
+        Coherent sine-Gaussian components projected using their own shared sky
+        position and polarization angle rather than those of the CBC.
+    independent_sine_gaussian_ra, independent_sine_gaussian_dec : float, optional
+        Right ascension and declination of the independently localized
+        sine-Gaussian source in radians.
+    independent_sine_gaussian_psi : float, optional
+        Polarization angle of the independently localized sine-Gaussian source
+        in radians.
+    **kwargs
+        Additional keyword arguments forwarded to the underlying CBC waveform
+        generator.
+
+    Returns
+    -------
+    dict or None
+        Dictionary containing the plus and cross polarisations of the combined
+        waveform. ``None`` is returned if the CBC waveform evaluation fails and
+        waveform error catching is enabled.
+    """
+
+    waveform_kwargs = dict(
+        waveform_approximant='IMRPhenomPv2',
+        reference_frequency=50.0,
+        minimum_frequency=20.0,
+        maximum_frequency=frequency_array[-1],
+        catch_waveform_errors=False,
+        pn_spin_order=-1,
+        pn_tidal_order=-1,
+        pn_phase_order=-1,
+        pn_amplitude_order=0,
+    )
+    waveform_kwargs.update(kwargs)
+
+    base_waveform_func = (
+        _base_gwsignal_cbc_fd_waveform
+        if waveform_kwargs['waveform_approximant'] in _GWSIGNAL_ONLY_APPROXIMANTS
+        else _base_lal_cbc_fd_waveform
+    )
+    base_waveform = base_waveform_func(
+        frequency_array=frequency_array,
+        mass_1=mass_1,
+        mass_2=mass_2,
+        luminosity_distance=luminosity_distance,
+        theta_jn=theta_jn,
+        phase=phase,
+        a_1=a_1,
+        a_2=a_2,
+        tilt_1=tilt_1,
+        tilt_2=tilt_2,
+        phi_12=phi_12,
+        phi_jl=phi_jl,
+        lambda_1=lambda_1,
+        lambda_2=lambda_2,
+        eccentricity=eccentricity,
+        **waveform_kwargs,
+    )
+
+    if base_waveform is None:
+        return None
+
+    h_plus = base_waveform['plus']
+    h_cross = base_waveform['cross']
+    combined_waveform = _WaveformPolarizations(
+        plus=h_plus,
+        cross=h_cross,
+        component_polarizations={"cbc": base_waveform},
+    )
+
+    if isinstance(sine_gaussian_parameters, dict):
+        sine_gaussian_parameters = [sine_gaussian_parameters]
+
+    if sine_gaussian_parameters:
+        h_plus = h_plus.copy()
+        h_cross = h_cross.copy()
+        combined_waveform['plus'] = h_plus
+        combined_waveform['cross'] = h_cross
+        for index, parameters in enumerate(sine_gaussian_parameters):
+            try:
+                hrss = parameters['hrss']
+                quality_factor = parameters['Q']
+                peak_frequency = parameters['frequency']
+                time_offset = parameters['time_offset']
+                phase_offset = parameters['phase_offset']
+            except KeyError as error:
+                missing_key = error.args[0]
+                raise KeyError(
+                    "Missing '{}' for sine-Gaussian {}. Each sine-Gaussian "
+                    "requires 'hrss', 'Q', 'frequency', 'time_offset', and "
+                    "'phase_offset'.".format(
+                        missing_key, index
+                    )
+                ) from error
+
+            sine_gaussian_waveform = sinegaussian(
+                frequency_array,
+                hrss=hrss,
+                Q=quality_factor,
+                frequency=peak_frequency,
+                time_offset=time_offset,
+                phase_offset=phase_offset,
+            )
+
+            h_plus += sine_gaussian_waveform['plus']
+            h_cross += sine_gaussian_waveform['cross']
+
+    if isinstance(independent_sine_gaussian_parameters, dict):
+        independent_sine_gaussian_parameters = [
+            independent_sine_gaussian_parameters
+        ]
+
+    if independent_sine_gaussian_parameters:
+        sky_parameters = {
+            "ra": independent_sine_gaussian_ra,
+            "dec": independent_sine_gaussian_dec,
+            "psi": independent_sine_gaussian_psi,
+        }
+        missing_sky_parameters = [
+            key for key, value in sky_parameters.items() if value is None
+        ]
+        if missing_sky_parameters:
+            raise ValueError(
+                "Independently localized sine-Gaussians require: {}".format(
+                    ", ".join(
+                        f"independent_sine_gaussian_{key}"
+                        for key in missing_sky_parameters
+                    )
+                )
+            )
+
+        independent_plus = np.zeros_like(h_plus, dtype=h_plus.dtype)
+        independent_cross = np.zeros_like(h_cross, dtype=h_cross.dtype)
+        for index, parameters in enumerate(independent_sine_gaussian_parameters):
+            try:
+                hrss = parameters['hrss']
+                quality_factor = parameters['Q']
+                peak_frequency = parameters['frequency']
+                time_offset = parameters['time_offset']
+                phase_offset = parameters['phase_offset']
+            except KeyError as error:
+                missing_key = error.args[0]
+                raise KeyError(
+                    "Missing '{}' for independently localized sine-Gaussian {}. "
+                    "Each sine-Gaussian requires 'hrss', 'Q', 'frequency', "
+                    "'time_offset', and 'phase_offset'.".format(
+                        missing_key, index
+                    )
+                ) from error
+
+            sine_gaussian_waveform = sinegaussian(
+                frequency_array,
+                hrss=hrss,
+                Q=quality_factor,
+                frequency=peak_frequency,
+                time_offset=time_offset,
+                phase_offset=phase_offset,
+            )
+            independent_plus += sine_gaussian_waveform['plus']
+            independent_cross += sine_gaussian_waveform['cross']
+
+        combined_waveform['independent_sine_gaussian_plus'] = independent_plus
+        combined_waveform['independent_sine_gaussian_cross'] = independent_cross
+
+    if incoherent_sine_gaussian_parameters:
+        for detector, components in incoherent_sine_gaussian_parameters.items():
+            if isinstance(components, dict):
+                components = [components]
+            if not components:
+                continue
+
+            detector_waveform = np.zeros_like(h_plus, dtype=h_plus.dtype)
+
+            for index, parameters in enumerate(components):
+                try:
+                    hrss = parameters['hrss']
+                    quality_factor = parameters['Q']
+                    peak_frequency = parameters['frequency']
+                    time_offset = parameters['time_offset']
+                    phase_offset = parameters['phase_offset']
+                    if 'polarization' in parameters:
+                        raise ValueError(
+                            "Incoherent sine-Gaussians are added directly to the "
+                            "detector strain and do not support polarization "
+                            "fields."
+                        )
+                except KeyError as error:
+                    missing_key = error.args[0]
+                    raise KeyError(
+                        "Missing '{}' for incoherent sine-Gaussian {} in '{}'. "
+                        "Each sine-Gaussian requires 'hrss', 'Q', 'frequency', "
+                        "'time_offset', and 'phase_offset'.".format(
+                            missing_key, index, detector
+                        )
+                    ) from error
+
+                sine_gaussian_waveform = sinegaussian(
+                    frequency_array,
+                    hrss=hrss,
+                    Q=quality_factor,
+                    frequency=peak_frequency,
+                    time_offset=time_offset,
+                    phase_offset=phase_offset,
+                )
+
+                detector_waveform += (
+                    sine_gaussian_waveform['plus'] + sine_gaussian_waveform['cross']
+                )
+
+            # Interferometer.get_detector_response treats a mode matching the
+            # detector name as an already projected strain (antenna_response
+            # returns 1 for mode == self.name).  Storing the summed
+            # detector-local burst contribution under the detector key therefore
+            # injects it directly into the strain alongside the coherently
+            # projected CBC modes.
+            combined_waveform[detector] = detector_waveform
+
+    return combined_waveform
 
 
 def lal_binary_neutron_star(
@@ -686,6 +809,188 @@ def _base_lal_cbc_fd_waveform(
 
     if len(waveform_kwargs) > 0:
         raise ValueError(UNUSED_KWARGS_MESSAGE.format(waveform_kwargs=waveform_kwargs))
+
+    return dict(plus=h_plus, cross=h_cross)
+
+
+def _base_gwsignal_cbc_fd_waveform(
+        frequency_array, mass_1, mass_2, luminosity_distance, theta_jn, phase,
+        a_1=0.0, a_2=0.0, tilt_1=0.0, tilt_2=0.0, phi_12=0.0, phi_jl=0.0,
+        lambda_1=0.0, lambda_2=0.0, eccentricity=0.0, **waveform_kwargs):
+    """ Generate a cbc waveform model using gwsignal's `GenerateFDWaveform` interface.
+
+    Mirrors the call contract of `_base_lal_cbc_fd_waveform`. `lambda_1`/`lambda_2` are
+    accepted for interface compatibility but are not forwarded, as gwsignal's SEOBNRv5(P)HM
+    models do not support tidal deformability.
+    """
+    from lalsimulation.gwsignal import GenerateFDWaveform
+    from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator
+    import astropy.units as u
+
+    waveform_defaults = dict(
+        waveform_approximant="SEOBNRv5PHM",
+        reference_frequency=50.0,
+        minimum_frequency=20.0,
+        maximum_frequency=frequency_array[-1],
+        catch_waveform_errors=False,
+        mode_array=None,
+        pn_amplitude_order=0,
+    )
+    waveform_defaults.update(waveform_kwargs)
+    waveform_kwargs = waveform_defaults
+
+    waveform_approximant = waveform_kwargs['waveform_approximant']
+    if waveform_approximant not in ["SEOBNRv5HM", "SEOBNRv5PHM"]:
+        if waveform_approximant == "IMRPhenomXPHM":
+            logger.warning("The new waveform interface is unreviewed for this model" +
+                           "and it is only intended for testing.")
+        else:
+            raise ValueError("The new waveform interface is unreviewed for this model.")
+    reference_frequency = waveform_kwargs['reference_frequency']
+    minimum_frequency = waveform_kwargs['minimum_frequency']
+    maximum_frequency = waveform_kwargs['maximum_frequency']
+    catch_waveform_errors = waveform_kwargs['catch_waveform_errors']
+    mode_array = waveform_kwargs['mode_array']
+    pn_amplitude_order = waveform_kwargs['pn_amplitude_order']
+
+    if pn_amplitude_order != 0:
+        # This is to mimic the behaviour in
+        # https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimInspiral.c#L5542
+        if pn_amplitude_order == -1:
+            if waveform_approximant in ["SpinTaylorT4", "SpinTaylorT5"]:
+                pn_amplitude_order = 3  # Equivalent to MAX_PRECESSING_AMP_PN_ORDER in LALSimulation
+            else:
+                pn_amplitude_order = 6  # Equivalent to MAX_NONPRECESSING_AMP_PN_ORDER in LALSimulation
+        start_frequency = minimum_frequency * 2. / (pn_amplitude_order + 2)
+    else:
+        start_frequency = minimum_frequency
+
+    # Call GWsignal generator
+    wf_gen = gwsignal_get_waveform_generator(waveform_approximant)
+
+    delta_frequency = frequency_array[1] - frequency_array[0]
+
+    frequency_bounds = ((frequency_array >= minimum_frequency) *
+                        (frequency_array <= maximum_frequency))
+
+    iota, spin_1x, spin_1y, spin_1z, spin_2x, spin_2y, spin_2z = bilby_to_lalsimulation_spins(
+        theta_jn=theta_jn, phi_jl=phi_jl, tilt_1=tilt_1, tilt_2=tilt_2,
+        phi_12=phi_12, a_1=a_1, a_2=a_2, mass_1=mass_1 * utils.solar_mass, mass_2=mass_2 * utils.solar_mass,
+        reference_frequency=reference_frequency, phase=phase)
+
+    longitude_ascending_nodes = 0.0
+    mean_per_ano = 0.0
+
+    # Check if conditioning is needed
+    condition = 0
+    if wf_gen.metadata["implemented_domain"] == 'time':
+        condition = 1
+
+    # Create dict for gwsignal generator
+    gwsignal_dict = {'mass1' : mass_1 * u.solMass,
+                     'mass2' : mass_2 * u.solMass,
+                     'spin1x' : spin_1x * u.dimensionless_unscaled,
+                     'spin1y' : spin_1y * u.dimensionless_unscaled,
+                     'spin1z' : spin_1z * u.dimensionless_unscaled,
+                     'spin2x' : spin_2x * u.dimensionless_unscaled,
+                     'spin2y' : spin_2y * u.dimensionless_unscaled,
+                     'spin2z' : spin_2z * u.dimensionless_unscaled,
+                     'deltaF' : delta_frequency * u.Hz,
+                     'f22_start' : start_frequency * u.Hz,
+                     'f_max': maximum_frequency * u.Hz,
+                     'f22_ref': reference_frequency * u.Hz,
+                     'phi_ref' : phase * u.rad,
+                     'distance' : luminosity_distance * u.Mpc,
+                     'inclination' : iota * u.rad,
+                     'eccentricity' : eccentricity * u.dimensionless_unscaled,
+                     'longAscNodes' : longitude_ascending_nodes * u.rad,
+                     'meanPerAno' : mean_per_ano * u.rad,
+                     # 'ModeArray': mode_array,
+                     'condition': condition
+                     }
+
+    if mode_array is not None:
+        try:
+            mode_array = [tuple(map(safe_cast_mode_to_int, mode)) for mode in mode_array]
+        except (ValueError, TypeError) as e:
+            raise ValueError(
+                f"Unable to convert mode_array elements to tuples of ints. "
+                f"mode_array: {mode_array}, Error: {e}"
+            ) from e
+        gwsignal_dict.update(ModeArray=mode_array)
+
+    # Pass extra waveform arguments to gwsignal
+    extra_args = waveform_kwargs.copy()
+
+    for key in [
+            "waveform_approximant",
+            "reference_frequency",
+            "minimum_frequency",
+            "maximum_frequency",
+            "catch_waveform_errors",
+            "mode_array",
+            "pn_spin_order",
+            "pn_amplitude_order",
+            "pn_tidal_order",
+            "pn_phase_order",
+            "numerical_relativity_file",
+    ]:
+        if key in extra_args.keys():
+            del extra_args[key]
+
+    gwsignal_dict.update(extra_args)
+
+    try:
+        hpc = GenerateFDWaveform(gwsignal_dict, wf_gen)
+    except Exception as e:
+        if not catch_waveform_errors:
+            raise
+        else:
+            EDOM = (
+                "Internal function call failed: Input domain error" in e.args[0]
+            ) or "Input domain error" in e.args[
+                0
+            ]
+            if EDOM:
+                failed_parameters = dict(mass_1=mass_1, mass_2=mass_2,
+                                         spin_1=(spin_1x, spin_1y, spin_1z),
+                                         spin_2=(spin_2x, spin_2y, spin_2z),
+                                         luminosity_distance=luminosity_distance,
+                                         iota=iota, phase=phase,
+                                         eccentricity=eccentricity,
+                                         start_frequency=minimum_frequency)
+                logger.warning("Evaluating the waveform failed with error: {}\n".format(e) +
+                               "The parameters were {}\n".format(failed_parameters) +
+                               "Likelihood will be set to -inf.")
+                return None
+            else:
+                raise
+
+    hplus = hpc.hp
+    hcross = hpc.hc
+
+    h_plus = np.zeros_like(frequency_array, dtype=complex)
+    h_cross = np.zeros_like(frequency_array, dtype=complex)
+
+    if len(hplus) > len(frequency_array):
+        logger.debug("GWsignal waveform longer than bilby's `frequency_array`" +
+                     "({} vs {}), ".format(len(hplus), len(frequency_array)) +
+                     "probably because padded with zeros up to the next power of two length." +
+                     " Truncating GWsignal array.")
+        h_plus = hplus[:len(h_plus)]
+        h_cross = hcross[:len(h_cross)]
+    else:
+        h_plus[:len(hplus)] = hplus
+        h_cross[:len(hcross)] = hcross
+
+    h_plus *= frequency_bounds
+    h_cross *= frequency_bounds
+
+    if condition:
+        dt = 1 / hplus.df.value + hplus.epoch.value
+        time_shift = np.exp(-1j * 2 * np.pi * dt * frequency_array[frequency_bounds])
+        h_plus[frequency_bounds] *= time_shift
+        h_cross[frequency_bounds] *= time_shift
 
     return dict(plus=h_plus, cross=h_cross)
 
@@ -1150,7 +1455,14 @@ def _base_waveform_frequency_sequence(
     return dict(plus=h_plus.data.data, cross=h_cross.data.data)
 
 
-def sinegaussian(frequency_array, hrss, Q, frequency, **kwargs):
+def sinegaussian(
+        frequency_array,
+        hrss,
+        Q,
+        frequency,
+        time_offset=0.0,
+        phase_offset=0.0,
+        **kwargs):
     r"""
     A frequency-domain sine-Gaussian burst source model.
 
@@ -1181,6 +1493,14 @@ def sinegaussian(frequency_array, hrss, Q, frequency, **kwargs):
         The quality factor of the burst, determines the decay time.
     frequency: float
         The peak frequency of the burst.
+    time_offset: float, optional
+        Relative time delay, in seconds, applied to the burst.  A positive value
+        shifts the sine-Gaussian peak to later times with respect to the CBC
+        waveform, corresponding to a multiplication by
+        :math:`e^{-2\pi i f t}` in the frequency domain. Defaults to 0.
+    phase_offset: float, optional
+        Additional phase rotation applied uniformly across the burst in radians.
+        Defaults to 0.
     kwargs: dict
         UNUSED
 
@@ -1205,6 +1525,11 @@ def sinegaussian(frequency_array, hrss, Q, frequency, **kwargs):
     h_cross = -1j * hrss * np.pi**0.5 * tau / 2 * (
         negative_term - positive_term
     ) / (temp * (1 - xp.exp(-Q**2)))**0.5
+
+    phase = np.exp(-2j * np.pi * frequency_array * time_offset)
+    phase *= np.exp(1j * phase_offset)
+    h_plus = h_plus * phase
+    h_cross = h_cross * phase
 
     return {'plus': h_plus, 'cross': h_cross}
 

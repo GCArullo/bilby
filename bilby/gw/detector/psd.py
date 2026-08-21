@@ -391,3 +391,124 @@ class PowerSpectralDensity(object):
         self._cache['psd_array'] = xp.asarray(self._cache['psd_array'])
         self._cache['asd_array'] = xp.asarray(self._cache['asd_array'])
         self._interpolate_power_spectral_density()
+
+    @staticmethod
+    def _coerce_student_t_nu_per_band(nu, num_frequency_bands):
+        try:
+            num_frequency_bands = int(num_frequency_bands)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("num_frequency_bands must be a positive integer") from exc
+        if num_frequency_bands < 1:
+            raise ValueError("num_frequency_bands must be a positive integer")
+
+        nu_values = np.asarray(nu, dtype=float)
+        if nu_values.ndim == 0:
+            nu_values = np.repeat(nu_values[None], num_frequency_bands)
+        elif nu_values.ndim == 1:
+            if len(nu_values) == 1:
+                nu_values = np.repeat(nu_values, num_frequency_bands)
+            elif len(nu_values) != num_frequency_bands:
+                raise ValueError(
+                    "nu must be scalar or have one entry per frequency band"
+                )
+        else:
+            raise ValueError(
+                "nu must be scalar or a one-dimensional array-like object"
+            )
+
+        if not np.all(np.isfinite(nu_values)) or np.any(nu_values <= 0):
+            raise ValueError("All nu values must be positive and finite")
+        return nu_values
+
+    def get_student_t_noise_realisation(
+        self,
+        sampling_frequency,
+        duration,
+        nu,
+        num_frequency_bands=1,
+        frequency_band_edges=None,
+    ):
+        """
+        Generate frequency-domain Student-t noise scaled to the power spectral density.
+
+        Parameters
+        ==========
+        sampling_frequency: float
+            sampling frequency of noise
+        duration: float
+            duration of noise
+        nu: float or array-like
+            Student-t degrees of freedom. Either a scalar (shared across all
+            frequency bins) or one value per frequency band.
+        num_frequency_bands: int
+            Number of contiguous frequency bands. If greater than one, `nu`
+            may be provided with one entry per band.
+        frequency_band_edges: array-like, optional
+            Explicit analysis-grid band edges. Frequencies outside the first
+            and last edges use the nearest outer band's `nu`.
+
+        Returns
+        =======
+        array_like: frequency domain strain of this noise realisation
+        array_like: frequencies related to the frequency domain strain
+        """
+        nu_per_band = self._coerce_student_t_nu_per_band(
+            nu=nu, num_frequency_bands=num_frequency_bands
+        )
+        num_frequency_bands = len(nu_per_band)
+        if frequency_band_edges is not None:
+            frequency_band_edges = np.asarray(frequency_band_edges, dtype=float)
+            if frequency_band_edges.shape != (num_frequency_bands + 1,):
+                raise ValueError(
+                    "frequency_band_edges must have one more entry than nu"
+                )
+            if not np.all(np.isfinite(frequency_band_edges)) or np.any(
+                np.diff(frequency_band_edges) <= 0
+            ):
+                raise ValueError(
+                    "frequency_band_edges must be finite and strictly increasing"
+                )
+
+        # Draw Student-t noise as a Gaussian scale mixture in each frequency bin:
+        #   z_k ~ N_C(0, 1),   u_k ~ chi^2_nu / nu,
+        #   n_k = sqrt(S_n(f_k)) z_k / sqrt(u_k).
+        # Marginalizing over u_k gives a complex Student-t residual with degrees
+        # of freedom nu and PSD scale S_n(f_k). The DC bin and, when present, the
+        # Nyquist bin have only one real degree of freedom in an rfft, so we set
+        # their mixing to infinity to force those components to zero here.
+        white_noise, frequencies = utils.create_white_noise(sampling_frequency, duration)
+        mixing = np.full(len(frequencies), np.inf)
+        out_of_bounds = (frequencies < min(self.frequency_array)) | (
+            frequencies > max(self.frequency_array)
+        )
+        active_mask = ~out_of_bounds
+        active_mask[0] = False
+        if len(mixing) > 1 and frequencies[-1] == sampling_frequency / 2:
+            active_mask[-1] = False
+
+        active_frequencies = frequencies[active_mask]
+        if len(active_frequencies) > 0:
+            if frequency_band_edges is None:
+                frequency_band_edges = np.linspace(
+                    active_frequencies[0],
+                    active_frequencies[-1],
+                    num_frequency_bands + 1,
+                )
+            band_indices = np.digitize(
+                frequencies,
+                frequency_band_edges[1:-1],
+            )
+            for index, band_nu in enumerate(nu_per_band):
+                band_mask = active_mask & (band_indices == index)
+                if np.any(band_mask):
+                    mixing[band_mask] = np.sqrt(
+                        utils.random.rng.chisquare(df=band_nu, size=np.sum(band_mask))
+                        / band_nu
+                    )
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            white_noise = white_noise / mixing
+            frequency_domain_strain = self._power_spectral_density_interpolated(frequencies) ** 0.5 * white_noise
+
+        frequency_domain_strain[out_of_bounds] = 0 * (1 + 1j)
+        return frequency_domain_strain, frequencies

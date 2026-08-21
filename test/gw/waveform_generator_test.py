@@ -46,6 +46,12 @@ def dummy_func_array_return_value_2(
     return dict(plus=xp.asarray(array), cross=xp.asarray(array))
 
 
+def dummy_optional_lambda_waveform(
+    frequency_array, mass_1, mass_2, lambda_1=0, lambda_2=0, **kwargs
+):
+    return dict(plus=np.zeros_like(frequency_array), cross=np.zeros_like(frequency_array))
+
+
 @pytest.mark.array_backend
 @pytest.mark.usefixtures("xp_class")
 class TestWaveformGeneratorInstantiationWithoutOptionalParameters(unittest.TestCase):
@@ -127,6 +133,7 @@ class TestWaveformGeneratorInstantiationWithoutOptionalParameters(unittest.TestC
     def test_duration(self):
         self.assertEqual(self.waveform_generator.duration, 1)
         self.assertEqual(aac.get_namespace(self.waveform_generator.duration), self.xp)
+
 
     def test_sampling_frequency(self):
         self.assertEqual(self.waveform_generator.sampling_frequency, 4096)
@@ -274,6 +281,51 @@ class TestSetters(unittest.TestCase):
             parameter_conversion=conversion_func,
         )
         self.assertEqual(conversion_func, self.waveform_generator.parameter_conversion)
+
+
+class TestCBCPlusSineGaussianDefaultConversion(unittest.TestCase):
+    def test_default_parameter_conversion_for_cbc_plus_sine_gaussians(self):
+        waveform_generator = bilby.gw.waveform_generator.LALCBCWaveformGenerator(
+            duration=4,
+            sampling_frequency=1024,
+            frequency_domain_source_model=bilby.gw.source.cbc_plus_sine_gaussians,
+            waveform_arguments=dict(
+                minimum_frequency=20.0,
+                reference_frequency=20.0,
+                waveform_approximant="SEOBNRv3",
+            ),
+        )
+
+        self.assertEqual(
+            waveform_generator.parameter_conversion,
+            bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters,
+        )
+
+    def test_default_parameter_conversion_bundles_sine_gaussian_parameters(self):
+        parameters = bilby.gw.conversion.convert_to_cbc_plus_sine_gaussian_parameters_dict(
+            dict(
+                chirp_mass=30.0,
+                mass_ratio=0.9,
+                luminosity_distance=1000.0,
+                a_1=0.0,
+                a_2=0.0,
+                tilt_1=0.0,
+                tilt_2=0.0,
+                phi_12=0.0,
+                phi_jl=0.0,
+                theta_jn=0.0,
+                phase=0.0,
+                sine_gaussian_0_hrss=1e-22,
+                sine_gaussian_0_Q=30.0,
+                sine_gaussian_0_frequency=100.0,
+                sine_gaussian_0_time_offset=0.01,
+                sine_gaussian_0_phase_offset=0.1,
+            )
+        )
+
+        self.assertIn("sine_gaussian_parameters", parameters)
+        self.assertEqual(len(parameters["sine_gaussian_parameters"]), 1)
+        self.assertNotIn("sine_gaussian_0_hrss", parameters)
 
 
 @pytest.mark.array_backend
@@ -491,6 +543,19 @@ class TestFrequencyDomainStrainMethod(unittest.TestCase):
         )
         self.assertEqual(aac.get_namespace(new_waveform["plus"]), self.xp)
         self.assertEqual(aac.get_namespace(new_waveform["cross"]), self.xp)
+
+
+class TestWaveformGeneratorOptionalParameters(unittest.TestCase):
+    def test_missing_optional_source_parameters_are_ignored(self):
+        waveform_generator = bilby.gw.waveform_generator.WaveformGenerator(
+            1, 4096, frequency_domain_source_model=dummy_optional_lambda_waveform
+        )
+        parameters = dict(mass_1=30, mass_2=30, distance=500)
+
+        waveform = waveform_generator.frequency_domain_strain(parameters=parameters)
+
+        self.assertIn("plus", waveform)
+        self.assertIn("cross", waveform)
 
 
 @pytest.mark.array_backend

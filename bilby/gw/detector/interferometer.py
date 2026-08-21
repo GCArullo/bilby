@@ -175,6 +175,36 @@ class Interferometer(object):
             self.power_spectral_density, sampling_frequency=sampling_frequency,
             duration=duration, start_time=start_time, random_state=random_state)
 
+    def set_strain_data_from_power_spectral_density_student_t(
+            self, sampling_frequency, duration, nu, start_time=0,
+            num_frequency_bands=1, frequency_band_edges=None):
+        """ Set the `Interferometer.strain_data` from a Student-t power spectral density draw
+
+        Parameters
+        ==========
+        sampling_frequency: float
+            The sampling frequency (in Hz)
+        duration: float
+            The data duration (in s)
+        nu: float or array-like
+            Student-t degrees of freedom used to generate the noise
+        start_time: float
+            The GPS start-time of the data
+        num_frequency_bands: int
+            Number of contiguous frequency bands for the Student-t noise model.
+        frequency_band_edges: array-like, optional
+            Explicit frequency-band edges defined on the analysis grid.
+        """
+        self.strain_data.set_from_power_spectral_density_student_t(
+            self.power_spectral_density,
+            sampling_frequency=sampling_frequency,
+            duration=duration,
+            nu=nu,
+            start_time=start_time,
+            num_frequency_bands=num_frequency_bands,
+            frequency_band_edges=frequency_band_edges,
+        )
+
     def set_strain_data_from_frame_file(
             self, frame_file, sampling_frequency, duration, start_time=0,
             channel=None, buffer_time=1, *, xp=None):
@@ -337,8 +367,18 @@ class Interferometer(object):
         else:
             antenna_time = self.reference_time
 
+        independent_sine_gaussian_modes = {
+            "independent_sine_gaussian_plus": "plus",
+            "independent_sine_gaussian_cross": "cross",
+        }
+        independent_modes = [
+            mode for mode in waveform_polarizations
+            if mode in independent_sine_gaussian_modes
+        ]
         signal = {}
         for mode in waveform_polarizations.keys():
+            if mode in independent_sine_gaussian_modes:
+                continue
             det_response = self.antenna_response(
                 parameters['ra'],
                 parameters['dec'],
@@ -360,7 +400,32 @@ class Interferometer(object):
 
         signal_ifo = signal_ifo * xp.exp(-1j * 2 * np.pi * dt * frequencies)
 
-        signal_ifo *= self.calibration_model.get_calibration_factor(
+        if independent_modes:
+            independent_ra = parameters['independent_sine_gaussian_ra']
+            independent_dec = parameters['independent_sine_gaussian_dec']
+            independent_psi = parameters['independent_sine_gaussian_psi']
+            independent_signal = sum(
+                waveform_polarizations[mode] * self.antenna_response(
+                    independent_ra,
+                    independent_dec,
+                    antenna_time,
+                    independent_psi,
+                    independent_sine_gaussian_modes[mode],
+                )
+                for mode in independent_modes
+            ) * mask
+            independent_time_shift = self.time_delay_from_geocenter(
+                independent_ra,
+                independent_dec,
+                parameters['geocent_time'],
+            )
+            independent_dt = dt_geocent + independent_time_shift
+            independent_signal = independent_signal * xp.exp(
+                -1j * 2 * np.pi * independent_dt * frequencies
+            )
+            signal_ifo = signal_ifo + independent_signal
+
+        signal_ifo = signal_ifo * self.calibration_model.get_calibration_factor(
             frequencies, prefix=f'recalib_{self.name}_', xp=xp, **parameters
         )
 

@@ -298,5 +298,92 @@ class TestPowerSpectralDensityEquals(unittest.TestCase):
         self.assertNotEqual(self.psd_from_array_1, self.psd_from_array_2)
 
 
+class TestStudentTNoiseRealisation(unittest.TestCase):
+    def setUp(self):
+        self.sampling_frequency = 1024
+        self.duration = 64
+        self.frequency_array = np.linspace(0, self.sampling_frequency / 2, 513)
+        self.psd_level = 3.0
+        self.psd = bilby.gw.detector.PowerSpectralDensity(
+            frequency_array=self.frequency_array,
+            psd_array=np.full_like(self.frequency_array, self.psd_level),
+        )
+
+    def test_invalid_nu_raises(self):
+        with self.assertRaises(ValueError):
+            self.psd.get_student_t_noise_realisation(
+                sampling_frequency=self.sampling_frequency,
+                duration=self.duration,
+                nu=-1,
+            )
+
+    def test_invalid_per_band_nu_shape_raises(self):
+        with self.assertRaises(ValueError):
+            self.psd.get_student_t_noise_realisation(
+                sampling_frequency=self.sampling_frequency,
+                duration=self.duration,
+                nu=[3.0, 5.0],
+                num_frequency_bands=3,
+            )
+
+    def test_student_t_whitened_power_matches_expected_mean(self):
+        nu = 7.0
+        bilby.core.utils.random.seed(1234)
+
+        strain, frequencies = self.psd.get_student_t_noise_realisation(
+            sampling_frequency=self.sampling_frequency,
+            duration=self.duration,
+            nu=nu,
+        )
+
+        mask = (frequencies > 0) & (frequencies < self.sampling_frequency / 2)
+        scale2 = self.psd_level * self.duration / 4.0
+        whitened_power = np.abs(strain[mask]) ** 2 / scale2
+
+        expected_mean = 2.0 * nu / (nu - 2.0)
+        self.assertAlmostEqual(np.mean(whitened_power), expected_mean, delta=0.12)
+        self.assertGreater(np.quantile(whitened_power, 0.995), 12.0)
+
+    def test_per_band_nu_changes_whitened_power_between_bands(self):
+        bilby.core.utils.random.seed(1234)
+        strain, frequencies = self.psd.get_student_t_noise_realisation(
+            sampling_frequency=self.sampling_frequency,
+            duration=self.duration,
+            nu=[3.5, 40.0],
+            num_frequency_bands=2,
+        )
+
+        active_mask = (frequencies > 0) & (frequencies < self.sampling_frequency / 2)
+        active_frequencies = frequencies[active_mask]
+        edges = np.linspace(active_frequencies[0], active_frequencies[-1], 3)
+        low_band_mask = active_mask & (frequencies >= edges[0]) & (frequencies < edges[1])
+        high_band_mask = active_mask & (frequencies >= edges[1]) & (frequencies <= edges[2])
+
+        scale2 = self.psd_level * self.duration / 4.0
+        low_band_power = np.abs(strain[low_band_mask]) ** 2 / scale2
+        high_band_power = np.abs(strain[high_band_mask]) ** 2 / scale2
+
+        self.assertGreater(np.mean(low_band_power), np.mean(high_band_power))
+        self.assertGreater(np.quantile(low_band_power, 0.995), np.quantile(high_band_power, 0.995))
+
+    @mock.patch.object(bilby.core.utils.random.Generator, "rng")
+    def test_explicit_band_edges_are_extended_over_psd_support(self, rng):
+        rng.normal.return_value = np.ones((2, 17))
+        rng.chisquare.side_effect = lambda df, size: np.full(size, df)
+
+        self.psd.get_student_t_noise_realisation(
+            sampling_frequency=16,
+            duration=2,
+            nu=[3.0, 40.0],
+            num_frequency_bands=2,
+            frequency_band_edges=[2.0, 4.0, 6.0],
+        )
+
+        self.assertEqual(
+            rng.chisquare.call_args_list,
+            [mock.call(df=3.0, size=7), mock.call(df=40.0, size=8)],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

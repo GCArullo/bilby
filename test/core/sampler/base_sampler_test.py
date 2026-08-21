@@ -110,6 +110,27 @@ class TestSampler(unittest.TestCase):
         self.sampler.use_ratio = False
         self.assertEqual(self.sampler.log_likelihood([0]), 2)
 
+    def test_use_ratio_is_disabled_for_parameter_dependent_noise_likelihood(self):
+        self.sampler.use_ratio = None
+        self.sampler.likelihood.has_parameter_dependent_noise_likelihood = MagicMock(
+            return_value=True
+        )
+
+        self.sampler._verify_use_ratio()
+
+        self.assertFalse(self.sampler.use_ratio)
+
+    def test_log_likelihood_correctly_sets_parameters(self):
+        expected_dict = dict(a=0, c=0)
+        observed = {}
+
+        def log_likelihood(parameters):
+            observed["parameters"] = parameters
+            return 2
+
+        self.sampler.likelihood.log_likelihood = log_likelihood
+        _ = self.sampler.log_likelihood([0])
+        self.assertDictEqual(observed["parameters"], expected_dict)
     def test_get_random_draw(self):
         self.assertEqual(self.sampler.get_random_draw_from_prior(), np.array([0.5]))
 

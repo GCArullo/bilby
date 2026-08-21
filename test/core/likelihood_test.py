@@ -19,6 +19,7 @@ from bilby.core.likelihood import (
     AnalyticalMultidimensionalBimodalCovariantGaussian,
     JointLikelihood,
 )
+from bilby.core.prior import PriorDict, Uniform
 
 
 class TestLikelihoodBase(unittest.TestCase):
@@ -669,6 +670,101 @@ class TestJointLikelihood(unittest.TestCase):
             + self.third_likelihood.noise_log_likelihood()
         )
         self.assertEqual(expected, self.joint_likelihood.noise_log_likelihood())
+
+    def test_noise_log_evidence_sums_independent_children(self):
+        class ParametricNoiseLikelihood(Likelihood):
+            def __init__(self, key, log_evidence):
+                super().__init__()
+                self.key = key
+                self.log_evidence = log_evidence
+                self.noise_evidence_call = None
+
+            @property
+            def noise_parameter_keys(self):
+                return [self.key]
+
+            def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+                self.noise_evidence_call = dict(
+                    priors=priors,
+                    sampler=sampler,
+                    result=result,
+                    npool=npool,
+                    label=self.label,
+                    outdir=self.outdir,
+                )
+                return self.log_evidence
+
+        joint_likelihood = JointLikelihood(
+            ParametricNoiseLikelihood("noise_1", 1.0),
+            ParametricNoiseLikelihood("noise_2", 2.0),
+        )
+        priors = PriorDict(
+            dict(
+                noise_1=Uniform(0, 1, name="noise_1"),
+                noise_2=Uniform(0, 1, name="noise_2"),
+            )
+        )
+        joint_likelihood.label = "joint"
+        joint_likelihood.outdir = "joint_outdir"
+        sampler = mock.sentinel.sampler
+        result = mock.sentinel.result
+
+        self.assertEqual(joint_likelihood.noise_parameter_keys, ["noise_1", "noise_2"])
+        self.assertEqual(
+            joint_likelihood.noise_log_evidence(
+                priors=priors,
+                sampler=sampler,
+                result=result,
+                npool=3,
+            ),
+            3.0,
+        )
+        for index, likelihood in enumerate(joint_likelihood.likelihoods):
+            self.assertIs(likelihood.noise_evidence_call["priors"], priors)
+            self.assertIs(likelihood.noise_evidence_call["sampler"], sampler)
+            self.assertIs(likelihood.noise_evidence_call["result"], result)
+            self.assertEqual(likelihood.noise_evidence_call["npool"], 3)
+            self.assertEqual(
+                likelihood.noise_evidence_call["label"],
+                f"joint_{index}",
+            )
+            self.assertEqual(
+                likelihood.noise_evidence_call["outdir"],
+                "joint_outdir",
+            )
+
+    def test_noise_log_evidence_rejects_shared_sampled_parameters(self):
+        class ParametricNoiseLikelihood(Likelihood):
+            @property
+            def noise_parameter_keys(self):
+                return ["noise"]
+
+        joint_likelihood = JointLikelihood(
+            ParametricNoiseLikelihood(),
+            ParametricNoiseLikelihood(),
+        )
+        priors = PriorDict(dict(noise=Uniform(0, 1, name="noise")))
+
+        with self.assertRaisesRegex(ValueError, "shared sampled noise parameters"):
+            joint_likelihood.noise_log_evidence(priors=priors)
+
+    def test_log_likelihood_ratio_uses_child_parameter_aware_ratio(self):
+        class ParameterAwareNoiseLikelihood(Likelihood):
+            def log_likelihood(self, parameters):
+                return 10.0
+
+            def noise_log_likelihood(self):
+                return 3.0
+
+            def log_likelihood_ratio(self, parameters):
+                return 10.0 - parameters["fixed_noise"]
+
+        joint_likelihood = JointLikelihood(ParameterAwareNoiseLikelihood())
+
+        self.assertEqual(
+            joint_likelihood.log_likelihood_ratio(dict(fixed_noise=5.0)),
+            5.0,
+        )
 
     def test_init_with_list_of_likelihoods(self):
         with self.assertRaises(ValueError):

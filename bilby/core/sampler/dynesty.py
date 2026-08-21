@@ -898,7 +898,7 @@ class Dynesty(NestedSampler):
             try:
                 filename = f"{self.outdir}/{self.label}_checkpoint_run.png"
                 fig, _ = dyplot.runplot(
-                    self.sampler.results, logplot=False, use_math_text=False
+                    self.sampler.results, logplot=True, use_math_text=False
                 )
                 fig.tight_layout()
                 plt.savefig(filename)

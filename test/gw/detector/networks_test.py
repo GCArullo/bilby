@@ -208,6 +208,95 @@ class TestInterferometerList(unittest.TestCase):
         )
         self.assertEqual(len(self.ifo_list), m.call_count)
 
+    @mock.patch.object(
+        bilby.gw.detector.Interferometer, "set_strain_data_from_power_spectral_density_student_t"
+    )
+    def test_set_strain_data_from_power_spectral_density_student_t_shared_nu(self, m):
+        self.ifo_list.set_strain_data_from_power_spectral_densities_student_t(
+            sampling_frequency=128,
+            duration=2,
+            nu=8.0,
+            start_time=3,
+            num_frequency_bands=4,
+        )
+        m.assert_called_with(
+            sampling_frequency=128,
+            duration=2,
+            nu=8.0,
+            start_time=3,
+            num_frequency_bands=4,
+            frequency_band_edges=mock.ANY,
+        )
+        np.testing.assert_allclose(
+            m.call_args.kwargs["frequency_band_edges"],
+            [10.0, 12.5, 15.0, 17.5, 20.0],
+        )
+        self.assertEqual(len(self.ifo_list), m.call_count)
+
+    @mock.patch.object(
+        bilby.gw.detector.Interferometer, "set_strain_data_from_power_spectral_density_student_t"
+    )
+    def test_set_strain_data_from_power_spectral_density_student_t_detector_specific_nu(self, m):
+        self.ifo_list.set_strain_data_from_power_spectral_densities_student_t(
+            sampling_frequency=128,
+            duration=2,
+            nu={self.ifo1.name: 5.0, self.ifo2.name: 9.0},
+            start_time=3,
+            num_frequency_bands=2,
+        )
+        self.assertEqual(len(self.ifo_list), m.call_count)
+        expected_calls = [
+            mock.call(
+                sampling_frequency=128,
+                duration=2,
+                nu=5.0,
+                start_time=3,
+                num_frequency_bands=2,
+                frequency_band_edges=mock.ANY,
+            ),
+            mock.call(
+                sampling_frequency=128,
+                duration=2,
+                nu=9.0,
+                start_time=3,
+                num_frequency_bands=2,
+                frequency_band_edges=mock.ANY,
+            ),
+        ]
+        m.assert_has_calls(expected_calls, any_order=False)
+        for call in m.call_args_list:
+            np.testing.assert_allclose(
+                call.kwargs["frequency_band_edges"],
+                [10.0, 15.0, 20.0],
+            )
+
+    @mock.patch.object(
+        bilby.gw.detector.PowerSpectralDensity,
+        "get_student_t_noise_realisation",
+    )
+    def test_student_t_noise_uses_shared_analysis_frequency_bands(self, m):
+        self.ifo1.minimum_frequency = 10.1
+        self.ifo1.maximum_frequency = 20.1
+        self.ifo2.minimum_frequency = 8.1
+        self.ifo2.maximum_frequency = 22.1
+        frequencies = bilby.core.utils.create_frequency_series(64, 2)
+        m.return_value = np.zeros(len(frequencies), dtype=complex), frequencies
+
+        self.ifo_list.set_strain_data_from_power_spectral_densities_student_t(
+            sampling_frequency=64,
+            duration=2,
+            nu=[5.0, 9.0],
+            num_frequency_bands=2,
+        )
+
+        expected_edges = np.array([8.5, 15.25, 22.0])
+        self.assertEqual(m.call_count, 2)
+        for call in m.call_args_list:
+            np.testing.assert_allclose(
+                call.kwargs["frequency_band_edges"],
+                expected_edges,
+            )
+
     def test_inject_signal_pol_and_wg_none(self):
         with self.assertRaises(ValueError):
             self.ifo_list.inject_signal(

@@ -181,11 +181,31 @@ class TestPriorDict(unittest.TestCase):
         from_dict = bilby.core.prior.PriorDict(dictionary=self.priors)
         self.assertDictEqual(self.prior_set_from_dict, from_dict)
 
+    def test_unnamed_prior_from_string_uses_dict_key_as_name(self):
+        priors = bilby.core.prior.PriorDict(
+            dictionary={"azimuth": "Uniform(minimum=0, maximum=2 * np.pi, boundary='periodic')"}
+        )
+        self.assertEqual("azimuth", priors["azimuth"].name)
+
+    def test_unnamed_prior_object_uses_dict_key_as_name(self):
+        priors = bilby.core.prior.PriorDict(
+            dictionary={"zenith": bilby.core.prior.Sine(minimum=0, maximum=np.pi)}
+        )
+        self.assertEqual("zenith", priors["zenith"].name)
+
+    def test_float_prior_uses_dict_key_as_name_when_converted(self):
+        priors = bilby.core.prior.PriorDict(dictionary={"ra": 1.23})
+        self.assertEqual("ra", priors["ra"].name)
+
     def test_convert_floats_to_delta_functions(self):
         self.prior_set_from_dict["d"] = 5
         self.prior_set_from_dict["e"] = 7.3
         self.prior_set_from_dict["f"] = "unconvertable"
         self.prior_set_from_dict.convert_floats_to_delta_functions()
+        expected_d = bilby.core.prior.DeltaFunction(peak=5)
+        expected_d.name = "d"
+        expected_e = bilby.core.prior.DeltaFunction(peak=7.3)
+        expected_e.name = "e"
         expected = dict(
             mass=bilby.core.prior.Uniform(
                 name="a", minimum=0, maximum=1, unit="kg", boundary=None
@@ -194,8 +214,8 @@ class TestPriorDict(unittest.TestCase):
                 name="b", alpha=3, minimum=1, maximum=2, unit="m/s", boundary=None
             ),
             length=bilby.core.prior.DeltaFunction(name="c", peak=42, unit="m"),
-            d=bilby.core.prior.DeltaFunction(peak=5),
-            e=bilby.core.prior.DeltaFunction(peak=7.3),
+            d=expected_d,
+            e=expected_e,
             f="unconvertable",
         )
         self.assertDictEqual(expected, self.prior_set_from_dict)

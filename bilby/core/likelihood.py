@@ -43,6 +43,27 @@ class Likelihood:
         """
         return np.nan
 
+    @property
+    def noise_parameter_keys(self):
+        """list: Sampled parameters that enter the noise-only likelihood."""
+        return []
+
+    def has_parameter_dependent_noise_likelihood(self, sampled_parameters=None):
+        """Whether the noise term depends on any sampled parameters."""
+        noise_parameter_keys = set(self.noise_parameter_keys)
+        if sampled_parameters is None:
+            return len(noise_parameter_keys) > 0
+        return any(key in noise_parameter_keys for key in sampled_parameters)
+
+    def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+        """Return the log evidence for the noise hypothesis."""
+        return self.noise_log_likelihood()
+
+    @property
+    def defer_noise_evidence(self):
+        """Override automatic deferral of noise evidence evaluation if needed."""
+        return None
+
     def log_likelihood_ratio(self, parameters):
         """Difference between log likelihood and noise log likelihood
 
@@ -598,6 +619,77 @@ class JointLikelihood(Likelihood):
     def noise_log_likelihood(self):
         """ This is just the sum of the noise likelihoods of all parts of the joint likelihood"""
         return sum([likelihood.noise_log_likelihood() for likelihood in self.likelihoods])
+
+    def log_likelihood_ratio(self, parameters):
+        return sum(
+            likelihood.log_likelihood_ratio(parameters=parameters)
+            for likelihood in self.likelihoods
+        )
+
+    @property
+    def noise_parameter_keys(self):
+        return list(
+            dict.fromkeys(
+                key
+                for likelihood in self.likelihoods
+                for key in likelihood.noise_parameter_keys
+            )
+        )
+
+    def noise_log_evidence(self, priors=None, sampler=None, result=None, npool=1):
+        """Sum child noise evidences with disjoint, factorized nuisance priors.
+
+        Conversion-derived constraints must not couple nuisance parameters
+        across children.
+        """
+        from .prior import JointPrior, PriorDict
+
+        if priors is None:
+            sampled_parameters = set()
+        else:
+            if not isinstance(priors, PriorDict):
+                priors = PriorDict(priors)
+            sampled_parameters = set(priors.non_fixed_keys)
+
+        used_parameters = set()
+        for likelihood in self.likelihoods:
+            child_parameters = (
+                set(likelihood.noise_parameter_keys) & sampled_parameters
+            )
+            shared_parameters = used_parameters & child_parameters
+            if shared_parameters:
+                raise ValueError(
+                    "JointLikelihood cannot combine child noise evidences with "
+                    "shared sampled noise parameters: "
+                    f"{sorted(shared_parameters)}"
+                )
+            coupled_parameters = {
+                key
+                for key in child_parameters
+                if isinstance(priors[key], JointPrior)
+                or getattr(priors[key], "required_variables", [])
+            }
+            if coupled_parameters:
+                raise ValueError(
+                    "JointLikelihood cannot combine child noise evidences with "
+                    "coupled sampled noise priors: "
+                    f"{sorted(coupled_parameters)}"
+                )
+            used_parameters.update(child_parameters)
+
+        log_evidence = 0.0
+        for index, likelihood in enumerate(self.likelihoods):
+            if getattr(self, "label", None) is not None:
+                likelihood.label = f"{self.label}_{index}"
+            if getattr(self, "outdir", None) is not None:
+                likelihood.outdir = self.outdir
+            log_evidence += likelihood.noise_log_evidence(
+                priors=priors,
+                sampler=sampler,
+                result=result,
+                npool=npool,
+            )
+        return log_evidence
 
 
 def function_to_celerite_mean_model(func):

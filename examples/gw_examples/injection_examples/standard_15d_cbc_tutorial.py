@@ -89,16 +89,45 @@ injection_parameters["H1_time"] = injection_parameters["geocent_time"] + time_de
 # injected value.
 # We change the mass boundaries to be more targeted for the source we
 # injected.
-# We define a prior in the time at the Hanford interferometer
-priors = bilby.gw.prior.BBHPriorDict()
+# We define priors in the time at the Hanford interferometer and two
+# parameters (zenith, azimuth) defining the sky position wrt the two
+# interferometers.
+# priors = bilby.gw.prior.BBHPriorDict()
 
-priors["H1_time"] = bilby.core.prior.Uniform(
-    minimum=injection_parameters["H1_time"] - 0.1,
-    maximum=injection_parameters["H1_time"] + 0.1,
-    name="H1_time",
-    latex_label="$t_H$",
-    unit="$s$",
-)
+# time_delay = ifos[0].time_delay_from_geocenter(
+#     injection_parameters["ra"],
+#     injection_parameters["dec"],
+#     injection_parameters["geocent_time"],
+# )
+# priors["H1_time"] = bilby.core.prior.Uniform(
+#     minimum=injection_parameters["geocent_time"] + time_delay - 0.1,
+#     maximum=injection_parameters["geocent_time"] + time_delay + 0.1,
+#     name="H1_time",
+#     latex_label="$t_H$",
+#     unit="$s$",
+# )
+# del priors["ra"], priors["dec"]
+# priors["zenith"] = bilby.core.prior.Sine(latex_label="$\\kappa$")
+# priors["azimuth"] = bilby.core.prior.Uniform(
+#     minimum=0, maximum=2 * np.pi, latex_label="$\\epsilon$", boundary="periodic"
+# )
+
+priors = bilby.gw.prior.BBHPriorDict(dictionary={})
+for fixed_key in ["psi", "ra", "dec", "geocent_time", "theta_jn"]:
+    priors[fixed_key] = injection_parameters[fixed_key]
+
+priors["a_1"] = bilby.core.prior.Uniform(0, 0.8, name="a_1")
+# priors["a_1"]    = injection_parameters["a_1"]
+
+priors["luminosity_distance"] = injection_parameters["luminosity_distance"]
+priors["mass_1"]              = injection_parameters["mass_1"]
+priors["mass_2"]              = injection_parameters["mass_2"]
+priors["a_2"]                 = injection_parameters["a_2"]
+priors["tilt_1"]              = injection_parameters["tilt_1"]
+priors["tilt_2"]              = injection_parameters["tilt_2"]
+priors["phi_12"]              = injection_parameters["phi_12"]
+priors["phi_jl"]              = injection_parameters["phi_jl"]
+priors["phase"]               = injection_parameters["phase"]
 
 # Initialise the likelihood by passing in the interferometer data (ifos) and
 # the waveoform generator, as well the priors.
@@ -108,11 +137,11 @@ likelihood = bilby.gw.GravitationalWaveTransient(
     interferometers=ifos,
     waveform_generator=waveform_generator,
     priors=priors,
-    distance_marginalization=True,
+    distance_marginalization=False,
     phase_marginalization=False,
     time_marginalization=False,
-    reference_frame="H1L1",
-    time_reference="H1",
+    # reference_frame="H1L1",
+    # time_reference="H1",
 )
 
 # Run sampler. In this case we're going to use the `dynesty` sampler

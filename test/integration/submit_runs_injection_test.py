@@ -375,6 +375,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         for line in gaussian_ini.splitlines()
         if "=" in line
     )
+    environment_variables = ast.literal_eval(
+        ini_settings["environment-variables"]
+    )
+    assert "LAL_DATA_PATH" not in environment_variables
     assert Path(ini_settings["webdir"]) == Path(ini_settings["outdir"]) / "web"
 
 

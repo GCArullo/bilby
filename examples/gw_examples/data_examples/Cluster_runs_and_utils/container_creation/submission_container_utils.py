@@ -31,6 +31,17 @@ def add_container_arguments(
     )
 
 
+def environment_variables_for_container(
+    environment_variables: dict,
+    container_image: str | None,
+) -> dict:
+    """Let the container supply its packaged LAL data path."""
+    environment_variables = environment_variables.copy()
+    if container_image is not None:
+        environment_variables.pop("LAL_DATA_PATH", None)
+    return environment_variables
+
+
 def resolve_container_image(
     *,
     use_container: bool,

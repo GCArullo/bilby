@@ -18,6 +18,7 @@ from pathlib import Path
 
 from container_creation.submission_container_utils import (
     add_container_arguments,
+    environment_variables_for_container,
     resolve_container_image,
 )
 from submission_sine_gaussian_utils import (
@@ -62,8 +63,8 @@ DEFAULT_ENVIRONMENT_VARIABLES = {
     "NUMBA_CACHE_DIR": "/tmp",
     "OMP_NUM_THREADS": 1,
     "OMP_PROC_BIND": False,
-    # The container prepends its portable /opt/lalsimulation-data copy. Keep
-    # this value free of ':' because bilby_pipe treats it as a dict separator.
+    # Used only without a container. Container jobs use the image's packaged
+    # /opt/lalsimulation-data copy.
     "LAL_DATA_PATH": "/scratch/lalsimulation",
 }
 DEFAULT_PESUMMARY_ARGUMENTS = {
@@ -645,7 +646,12 @@ def render_ini(
     rendered = replace_line(
         rendered,
         "environment-variables",
-        repr(DEFAULT_ENVIRONMENT_VARIABLES),
+        repr(
+            environment_variables_for_container(
+                DEFAULT_ENVIRONMENT_VARIABLES,
+                container_image,
+            )
+        ),
     )
     rendered = replace_line(
         rendered,

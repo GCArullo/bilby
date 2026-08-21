@@ -196,6 +196,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     ini_settings = dict(
         line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
     )
+    environment_variables = ast.literal_eval(
+        ini_settings["environment-variables"]
+    )
+    assert "LAL_DATA_PATH" not in environment_variables
     outdir = Path(ini_settings["outdir"])
     assert outdir.parent == (
         tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
@@ -280,6 +284,12 @@ def test_main_selects_direct_generator_only_for_standard_seob(
     ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
     assert f"waveform-generator={waveform_generator}\n" in ini_text
     assert f"frequency-domain-source-model={source_model}\n" in ini_text
+    environment_line = next(
+        line for line in ini_text.splitlines()
+        if line.startswith("environment-variables=")
+    )
+    environment_variables = ast.literal_eval(environment_line.split("=", 1)[1])
+    assert environment_variables["LAL_DATA_PATH"] == "/scratch/lalsimulation"
 
 
 def test_render_ini_writes_maxmcmc_override():

@@ -506,11 +506,16 @@ class TestStudentTGWTransient(unittest.TestCase):
         mock_result = MagicMock(log_evidence=-123.4)
 
         with patch("bilby.core.sampler.run_sampler", return_value=mock_result) as mock_run_sampler:
-            likelihood.noise_log_evidence(priors=priors, npool=3)
+            likelihood.noise_log_evidence(
+                priors=priors, sampler=MagicMock(exit_code=77), npool=3
+            )
 
         self.assertEqual(mock_run_sampler.call_args.kwargs["npool"], 1)
         self.assertEqual(mock_run_sampler.call_args.kwargs["nlive"], 256)
         self.assertEqual(mock_run_sampler.call_args.kwargs["dlogz"], 0.03)
+        self.assertEqual(mock_run_sampler.call_args.kwargs["exit_code"], 77)
+        self.assertTrue(mock_run_sampler.call_args.kwargs["check_point"])
+        self.assertTrue(mock_run_sampler.call_args.kwargs["resume"])
 
     def test_noise_log_evidence_uses_2d_quadrature_for_two_sampled_nu(self):
         likelihood = bilby.gw.likelihood.StudentTGravitationalWaveTransient(

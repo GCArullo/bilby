@@ -482,6 +482,7 @@ def test_gw190521_lvk_nrsur_profile_generates_widened_setup(
         "minimum-frequency={'H1': 11.0, 'L1': 11.0, 'V1': 11.0, 'waveform': 11.0}\n"
     ) in ini_text
     assert "additional-transfer-paths=None\n" in ini_text
+    assert "request-disk=10\n" in ini_text
     assert "minimum=70.0, maximum=231.21615942439638" in prior_text
     assert "minimum=10, maximum=13333.333333333332" in prior_text
     assert "minimum=0.17, maximum=1.0" in prior_text

@@ -11,6 +11,7 @@ from ..utils import (
     loaded_modules_dict,
     logger,
 )
+from ..utils.parallel import bilby_pool
 from . import proposal
 from .base_sampler import Sampler, SamplingMarginalisedParameterError
 
@@ -220,6 +221,7 @@ def run_sampler(
     npool=1,
     railing_bins=100,
     railing_tolerance=2.0,
+    pool=None,
     **kwargs,
 ):
     """
@@ -287,6 +289,8 @@ def run_sampler(
     npool: int
         An integer specifying the available CPUs to create pool objects for
         parallelization.
+    pool: pool-like, optional
+        An existing pool to use for sampling and posterior conversion.
     **kwargs:
         All kwargs are passed directly to the samplers `run` function
 
@@ -334,36 +338,27 @@ def run_sampler(
 
         likelihood = ZeroLikelihood(likelihood)
 
+    common_kwargs = dict(
+        likelihood=likelihood,
+        priors=priors,
+        outdir=outdir,
+        label=label,
+        injection_parameters=injection_parameters,
+        meta_data=meta_data,
+        use_ratio=use_ratio,
+        plot=plot,
+        result_class=result_class,
+        npool=npool,
+        pool=pool,
+    )
+
     if isinstance(sampler, Sampler):
         pass
     elif isinstance(sampler, str):
         sampler_class = get_sampler_class(sampler)
-        sampler = sampler_class(
-            likelihood,
-            priors=priors,
-            outdir=outdir,
-            label=label,
-            injection_parameters=injection_parameters,
-            meta_data=meta_data,
-            use_ratio=use_ratio,
-            plot=plot,
-            result_class=result_class,
-            npool=npool,
-            **kwargs,
-        )
+        sampler = sampler_class(**common_kwargs, **kwargs)
     elif inspect.isclass(sampler):
-        sampler = sampler.__init__(
-            likelihood,
-            priors=priors,
-            outdir=outdir,
-            label=label,
-            use_ratio=use_ratio,
-            plot=plot,
-            injection_parameters=injection_parameters,
-            meta_data=meta_data,
-            npool=npool,
-            **kwargs,
-        )
+        sampler = sampler.__init__(**common_kwargs, **kwargs)
     else:
         raise ValueError(
             "Provided sampler should be a Sampler object or name of a known "
@@ -373,66 +368,63 @@ def run_sampler(
     if sampler.cached_result:
         logger.warning("Using cached result")
         result = sampler.cached_result
+        result = apply_conversion_function(
+            result=result,
+            likelihood=likelihood,
+            conversion_function=conversion_function,
+            npool=npool,
+            pool=pool,
+        )
     else:
         defer_noise_evidence = _should_defer_noise_evidence(
             likelihood=likelihood,
             priors=priors,
         )
         # Run the sampler
-        start_time = datetime.datetime.now()
-        if command_line_args.bilby_test_mode:
-            result = sampler._run_test()
-        else:
-            result = sampler.run_sampler()
-        end_time = datetime.datetime.now()
-
-        # Some samplers calculate the sampling time internally
-        if result.sampling_time is None:
-            result.sampling_time = end_time - start_time
-        elif isinstance(result.sampling_time, (float, int)):
-            result.sampling_time = datetime.timedelta(result.sampling_time)
-
-        logger.info(f"Sampling time: {result.sampling_time}")
-        # Convert sampling time into seconds
-        result.sampling_time = result.sampling_time.total_seconds()
-
-        if defer_noise_evidence:
-            _prepare_result_for_deferred_noise_evidence(
-                result=result,
-                sampler=sampler,
-            )
-        else:
-            _set_result_evidence(
+        with bilby_pool(
+            likelihood,
+            priors,
+            use_ratio=sampler.use_ratio,
+            search_parameter_keys=sampler.search_parameter_keys,
+            npool=npool,
+            pool=pool,
+            parameters=priors.sample(),
+        ) as _pool:
+            start_time = datetime.datetime.now()
+            sampler.pool = _pool
+            if command_line_args.bilby_test_mode:
+                result = sampler._run_test()
+            else:
+                result = sampler.run_sampler()
+            end_time = datetime.datetime.now()
+            result = finalize_result(
                 result=result,
                 likelihood=likelihood,
-                priors=priors,
-                sampler=sampler,
+                use_ratio=sampler.use_ratio,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            if defer_noise_evidence:
+                _prepare_result_for_deferred_noise_evidence(
+                    result=result, sampler=sampler,
+                )
+            else:
+                _set_result_evidence(
+                    result=result, likelihood=likelihood, priors=priors,
+                    sampler=sampler, npool=npool,
+                )
+
+            # Initial save of the sampler in case of failure in samples_to_posterior
+            if save:
+                result.save_to_file(extension=save, gzip=gzip, outdir=outdir)
+
+            result = apply_conversion_function(
+                result=result,
+                likelihood=likelihood,
+                conversion_function=conversion_function,
                 npool=npool,
+                pool=_pool,
             )
-
-        if None not in [result.injection_parameters, conversion_function]:
-            result.injection_parameters = conversion_function(
-                result.injection_parameters
-            )
-
-        # Initial save of the sampler in case of failure in samples_to_posterior
-        if save:
-            result.save_to_file(extension=save, gzip=gzip, outdir=outdir)
-
-    if None not in [result.injection_parameters, conversion_function]:
-        result.injection_parameters = conversion_function(
-            result.injection_parameters,
-            likelihood=likelihood,
-        )
-
-    # Check if the posterior has already been created
-    if getattr(result, "_posterior", None) is None:
-        result.samples_to_posterior(
-            likelihood=likelihood,
-            priors=result.priors,
-            conversion_function=conversion_function,
-            npool=npool,
-        )
 
     if save:
         # The overwrite here ensures we overwrite the initially stored data
@@ -447,20 +439,66 @@ def run_sampler(
         except Exception as error:
             logger.warning(f"Prior railing check failed with error: {error}")
         result.plot_corner()
-    if (
-        not sampler.cached_result
-        and _should_defer_noise_evidence(likelihood=likelihood, priors=priors)
-    ):
+    if not sampler.cached_result and defer_noise_evidence:
         _set_result_evidence(
-            result=result,
-            likelihood=likelihood,
-            priors=priors,
-            sampler=sampler,
-            npool=npool,
+            result=result, likelihood=likelihood, priors=priors,
+            sampler=sampler, npool=npool,
         )
         if save:
             result.save_to_file(overwrite=True, extension=save, gzip=gzip, outdir=outdir)
     logger.info(f"Summary of results:\n{result}")
+    return result
+
+
+def apply_conversion_function(
+    result, likelihood, conversion_function, npool=None, pool=None
+):
+    """
+    Apply the conversion function to the injected parameters and posterior if the
+    posterior has not already been created from the stored samples.
+
+    Parameters
+    ----------
+    result : bilby.core.result.Result
+        The result object from the sampler.
+    likelihood : bilby.Likelihood
+        The likelihood used during sampling.
+    conversion_function : function
+        The conversion function to apply.
+    npool : int, optional
+        The number of processes to use in a processing pool.
+    pool : multiprocessing.Pool, schwimmbad.MPIPool, optional
+        The pool to use for parallelisation, this overrides the :code:`npool` argument.
+    """
+    if None not in [result.injection_parameters, conversion_function]:
+        result.injection_parameters = conversion_function(
+            result.injection_parameters,
+            likelihood=likelihood,
+        )
+
+    # Check if the posterior has already been created
+    if getattr(result, "_posterior", None) is None:
+        result.samples_to_posterior(
+            likelihood=likelihood,
+            priors=result.priors,
+            conversion_function=conversion_function,
+            npool=npool,
+            pool=pool,
+        )
+    return result
+
+
+def finalize_result(result, likelihood, use_ratio, start_time=None, end_time=None):
+    # Some samplers calculate the sampling time internally
+    if result.sampling_time is None and None not in [start_time, end_time]:
+        result.sampling_time = end_time - start_time
+    elif isinstance(result.sampling_time, (float, int)):
+        result.sampling_time = datetime.timedelta(result.sampling_time)
+
+    logger.info(f"Sampling time: {result.sampling_time}")
+    # Convert sampling time into seconds
+    result.sampling_time = result.sampling_time.total_seconds()
+
     return result
 
 

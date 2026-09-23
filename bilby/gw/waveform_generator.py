@@ -8,6 +8,7 @@ from ..core.utils import logger
 from .conversion import (
     convert_to_cbc_plus_sine_gaussian_parameters,
     convert_to_lal_binary_black_hole_parameters,
+    convert_to_sine_gaussian_parameters,
 )
 from .utils import lalsim_GetApproximantFromString
 
@@ -100,6 +101,8 @@ class WaveformGenerator(object):
         )
         if getattr(source_model, "__name__", "") == "cbc_plus_sine_gaussians":
             return convert_to_cbc_plus_sine_gaussian_parameters
+        if getattr(source_model, "__name__", "") == "sine_gaussians":
+            return convert_to_sine_gaussian_parameters
         return convert_to_lal_binary_black_hole_parameters
 
     def __repr__(self):

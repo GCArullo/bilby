@@ -356,6 +356,11 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
+    parser.add_argument(
+        "--sg-only", action="store_true",
+        help=("Omit the CBC exactly and sample only SG, sky/time, and noise/calibration "
+              "parameters. Coherent-independent is equivalent to coherent here."),
+    )
     return parser
 
 
@@ -467,6 +472,7 @@ def render_prior(
     detectors: list[str] | tuple[str, ...] = DEFAULT_DETECTORS,
     template_settings: dict[str, object],
     sine_gaussian_config,
+    sg_only: bool = False,
 ) -> str:
     nu_prior_block = ""
     if include_nu_priors:
@@ -480,6 +486,21 @@ def render_prior(
         minimum_frequency=template_settings["minimum_frequency"],
         maximum_frequency=template_settings["maximum_frequency"],
     )
+    if sg_only:
+        # Keep the reference epoch and sky priors: fixing these would change
+        # the induced prior on SG arrival times, even for detector-local SGs.
+        extrinsic_keys = {"ra", "dec", "psi", "azimuth", "zenith", "geocent_time"}
+        retained = [
+            line for line in prior_template.splitlines()
+            if "=" in line and (
+                line.split("=", 1)[0].strip() in extrinsic_keys
+                or line.split("=", 1)[0].strip().startswith("recalib_")
+                or line.split("=", 1)[0].strip() in {f"{detector}_time" for detector in detectors}
+            )
+        ]
+        return combine_prior_blocks(
+            "\n".join(retained), nu_prior_block, sine_gaussian_prior_block,
+        ) + "\n"
     return prior_template.replace(
         "__NU_PRIORS__",
         combine_prior_blocks(nu_prior_block, sine_gaussian_prior_block),
@@ -602,6 +623,7 @@ def render_ini(
     detectors: list[str] | tuple[str, ...] | None = None,
     condor_job_priority: int | None = None,
     waveform_arguments: dict | None = None,
+    sg_only: bool = False,
 ) -> str:
     replacements = {
         "__LABEL__": label,
@@ -738,6 +760,28 @@ def render_ini(
         sine_gaussian_config,
         replace_line=replace_line,
     )
+    if sg_only:
+        # Generic priors/generation must not introduce CBC defaults or derived
+        # masses, spins, or a cosmological distance into an SG-only result.
+        sg_settings = {
+            "frequency-domain-source-model": "bilby.gw.source.sine_gaussians",
+            "conversion-function": "bilby.gw.conversion.convert_to_sine_gaussian_parameters",
+            "generation-function": "bilby.gw.conversion.identity_map_generation",
+            "default-prior": "bilby.core.prior.ConditionalPriorDict",
+            "waveform-generator": "bilby.gw.waveform_generator.WaveformGenerator",
+            "waveform-approximant": "None",
+            "waveform-arguments-dict": "None",
+            "enforce-signal-duration": "False",
+            "distance-marginalization": "False",
+            "phase-marginalization": "False",
+            "time-marginalization": "False",
+            "plot-waveform": "False",
+            # bilby_pipe's summary node unconditionally requests CBC/GW
+            # conversions. SG-only results need generic post-processing.
+            "create-summary": "False",
+        }
+        for key, value in sg_settings.items():
+            rendered = replace_or_append_line(rendered, key, value)
     # Substituted last: lines written above (summarypages-arguments in
     # particular) carry template placeholders through from template_settings.
     for placeholder, value in replacements.items():
@@ -771,10 +815,13 @@ def prepare_run(
     sine_gaussian_config,
     approximant_suffix: str = "",
     detector_suffix: str = "",
+    sg_only: bool = False,
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
     )
+    if sg_only:
+        waveform_suffix = waveform_suffix.replace("_sg_", "_sg_only_", 1)
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -820,6 +867,7 @@ def prepare_run(
             detectors=detectors,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
+            sg_only=sg_only,
         ),
         encoding="utf-8",
     )
@@ -843,6 +891,7 @@ def prepare_run(
             waveform_arguments=waveform_arguments,
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
+            sg_only=sg_only,
         ),
         encoding="utf-8",
     )
@@ -942,6 +991,14 @@ def main() -> int:
         else ""
     )
 
+    if args.sg_only:
+        if args.num_sine_gaussians < 1:
+            raise ValueError("--sg-only requires at least one sine-Gaussian")
+        if args.waveform_approximant is not None:
+            raise ValueError("--waveform-approximant has no meaning with --sg-only")
+        if args.sine_gaussian_mode == "coherent-independent":
+            args.sine_gaussian_mode = "coherent"
+
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
         range_mode=args.sine_gaussian_range,
@@ -994,6 +1051,7 @@ def main() -> int:
                 sine_gaussian_config=sine_gaussian_config,
                 approximant_suffix=approximant_suffix,
                 detector_suffix=detector_suffix,
+                sg_only=args.sg_only,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

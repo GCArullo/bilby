@@ -315,6 +315,14 @@ def convert_to_cbc_plus_sine_gaussian_parameters(parameters):
     """
 
     converted_parameters, added_keys = convert_to_lal_binary_black_hole_parameters(parameters)
+    converted_parameters, sg_added_keys = convert_to_sine_gaussian_parameters(converted_parameters)
+    return converted_parameters, list(added_keys) + sg_added_keys
+
+
+def convert_to_sine_gaussian_parameters(parameters):
+    """Bundle indexed SG fields without adding or converting CBC parameters."""
+    converted_parameters = parameters.copy()
+    added_keys = []
 
     sine_gaussian_pattern = re.compile(
         r"sine_gaussian_(\d+)_(hrss|Q|frequency|time_offset|phase_offset)"
@@ -3049,6 +3057,12 @@ def identity_map_generation(sample, likelihood=None, priors=None, npool=1):
                     "{}. Some parameters may not have the intended "
                     "interpretation.".format(e)
                 )
+
+        if (
+            getattr(likelihood, "reference_frame", "sky") != "sky"
+            or "geocent" not in getattr(likelihood, "time_reference", "geocent")
+        ):
+            generate_sky_frame_parameters(output_sample, likelihood)
 
         if ("ra" in output_sample.keys() and "dec" in output_sample.keys() and "psi" in output_sample.keys()):
             compute_snrs(output_sample, likelihood, npool=npool)

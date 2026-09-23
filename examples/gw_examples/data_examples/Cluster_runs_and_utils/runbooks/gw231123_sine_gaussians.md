@@ -148,6 +148,44 @@ GW231123 NRsur + 2 SG in L1 (incoherent):
 python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors L1 --maxmcmc "$MAXMCMC"
 ```
 
+## SG-only runs (no CBC)
+
+Add `--sg-only` to a real-data SG command, for example:
+
+```
+SG_ONLY_IMAGE="osdf:///igwn/cit/staging/gregorio.carullo/bilby-sg-only-a8b49d109-20260922.sif"
+python "$REAL" --event GW231123 --likelihood gaussian --sg-only \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent \
+  --container-image "$SG_ONLY_IMAGE" --maxmcmc "$MAXMCMC"
+```
+
+The container must include the new source/conversion functions; previously
+registered images do not. The image above backports only the SG-only changes
+onto the original GW231123 Bilby version, retaining its sampler and dependency
+versions. A newly built image from this branch also supports the option.
+
+This uses `bilby.gw.source.sine_gaussians`, with an exactly zero CBC and no
+CBC waveform evaluation. Masses, spins, distance, inclination and CBC phase
+are absent from the priors. The sky/polarization and reference-time priors,
+SG offsets, data, PSDs, calibration settings and sampler settings are retained.
+In particular, the reference time is **not fixed**: doing that would change
+the SG arrival-time prior. Detector-local runs retain the sky/time variables
+used by their existing detector-delay convention, even if some are unmeasured.
+
+Without a CBC, `coherent-independent` maps to `coherent`, and CBC approximant
+variants are redundant. The option rejects an explicit waveform approximant.
+The canonical SG-only model uses the common-sky reference-time convention;
+it does not retain an additional, unphysical CBC sky to shift that time prior.
+Single-detector coherent and detector-local SG models remain distinct because
+the former projects the source amplitude through antenna patterns and the
+latter puts its amplitude prior directly on detector strain.
+
+Output names contain `_sg_only_`, leaving CBC+SG results untouched. Automatic
+CBC-specific PESummary pages and waveform plots are disabled; use generic
+PESummary post-processing for these results. Posterior SNRs are retained,
+including zero CBC component SNRs.
+Calibration is retained, not removed by the summary-page `recalib*` filter.
+
 ## Single-detector Runs
 
 `--detectors` selects the detectors that are analysed, not just the ones used

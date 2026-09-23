@@ -47,6 +47,38 @@ def test_num_frequency_bands_defaults_to_one():
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
+@pytest.mark.parametrize("mode", ["coherent", "coherent-independent", "incoherent"])
+def test_sg_only_configs_keep_extrinsic_but_not_cbc_priors(monkeypatch, tmp_path, mode):
+    module = load_submit_runs_real_data_module()
+    argv = [
+        str(SCRIPT_PATH), "--event", "GW231123", "--likelihood", "gaussian",
+        "--sg-only", "--num-sine-gaussians", "2", "--sine-gaussian-mode", mode,
+        "--dry-run", "--ini-dir", str(tmp_path / "ini"),
+        "--prior-dir", str(tmp_path / "prior"), "--home-dir", str(tmp_path),
+    ]
+    if mode == "incoherent":
+        argv.extend(["--incoherent-sg-counts", "H1=1", "L1=1"])
+    monkeypatch.setattr(sys, "argv", argv)
+    assert module.main() == 0
+    ini_path, = (tmp_path / "ini").glob("*.ini")
+    prior_path, = (tmp_path / "prior").glob("*.prior")
+    ini = ini_path.read_text()
+    prior = prior_path.read_text()
+    assert "_sg_only_" in ini_path.name
+    assert "bilby.gw.source.sine_gaussians" in ini
+    assert "bilby.core.prior.ConditionalPriorDict" in ini
+    assert "time-reference=L1" in ini
+    assert "calibration-model=CubicSpline" in ini
+    assert "identity_map_generation" in ini
+    assert "chirp_mass" not in prior
+    assert "luminosity_distance" not in prior
+    assert "independent_sine_gaussian" not in prior
+    assert "psi = Uniform" in prior
+    assert "dec = Cosine" in prior
+    assert "ConditionalUpperBoundedLogUniform" in prior or mode == "incoherent"
+    assert "minimum=-0.15, maximum=0.15" in prior
+
+
 def test_accounting_user_defaults_to_home_basename(monkeypatch):
     monkeypatch.setenv("HOME", "/home/name.surname")
 

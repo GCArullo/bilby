@@ -49,7 +49,6 @@ if str(REPO_ROOT) not in sys.path:
 
 import bilby
 
-
 DEFAULT_POSTERIOR_PATH = (
     Path(__file__).resolve().parent
     / "LVK_posteriors"
@@ -215,9 +214,7 @@ def build_run_settings(data_dump) -> RunSettings:
         start_time=0.0,
     )
     settings.start_time = (
-        settings.trigger_time
-        + settings.post_trigger_duration
-        - settings.duration
+        settings.trigger_time + settings.post_trigger_duration - settings.duration
     )
     return settings
 
@@ -254,9 +251,7 @@ def load_maximum_likelihood_injection(
         }
         maxl_log_likelihood = float(posterior_samples["log_likelihood"][maxl_index])
         psds = {
-            detector: tuple(
-                posterior_file[f"C00:NRSur7dq4/psds/{detector}"][:].T
-            )
+            detector: tuple(posterior_file[f"C00:NRSur7dq4/psds/{detector}"][:].T)
             for detector in ("H1", "L1")
         }
     return injection_parameters, psds, maxl_log_likelihood, maxl_index
@@ -408,9 +403,7 @@ def gwpy_roundtrip_time_domain_strain(
             max_abs_difference = max(
                 max_abs_difference,
                 float(
-                    np.max(
-                        np.abs(time_domain_strain[detector] - reread_series.value)
-                    )
+                    np.max(np.abs(time_domain_strain[detector] - reread_series.value))
                 ),
             )
     return reread, max_abs_difference
@@ -535,9 +528,7 @@ def load_full_run_posterior_summary(run_dir: Path) -> dict[str, float] | None:
     )
 
 
-def max_abs_frequency_difference(
-    interferometers_a, interferometers_b
-) -> float:
+def max_abs_frequency_difference(interferometers_a, interferometers_b) -> float:
     maximum = 0.0
     for interferometer_a, interferometer_b in zip(interferometers_a, interferometers_b):
         difference = np.max(
@@ -578,7 +569,9 @@ def plot_stage_posteriors(
             color=colors.get(key),
             label=labels.get(key, key),
         )
-    plt.axvline(3.0, color="black", linestyle="--", linewidth=1.5, label="Injected nu = 3")
+    plt.axvline(
+        3.0, color="black", linestyle="--", linewidth=1.5, label="Injected nu = 3"
+    )
     plt.xlim(2.1, 5.0)
     plt.xlabel("nu")
     plt.ylabel("Posterior density")
@@ -596,7 +589,9 @@ def plot_rolloff_scan(
 ) -> None:
     plt.figure(figsize=(7, 4.5))
     plt.plot(rolloff_values, medians, marker="o", linewidth=2, color="#1f77b4")
-    plt.axhline(3.0, color="black", linestyle="--", linewidth=1.5, label="Injected nu = 3")
+    plt.axhline(
+        3.0, color="black", linestyle="--", linewidth=1.5, label="Injected nu = 3"
+    )
     plt.xlabel("Tukey roll-off [s]")
     plt.ylabel("Median inferred nu")
     plt.title("Effective nu shift from bilby windowing")
@@ -629,7 +624,9 @@ def plot_duration_scan(duration_scan: list[dict[str, float]], outpath: Path) -> 
         color="#d62728",
         label="After bilby TD conditioning",
     )
-    plt.axhline(3.0, color="black", linestyle="--", linewidth=1.5, label="Injected nu = 3")
+    plt.axhline(
+        3.0, color="black", linestyle="--", linewidth=1.5, label="Injected nu = 3"
+    )
     plt.xlabel("Analysis duration [s]")
     plt.ylabel("Median inferred nu")
     plt.title("Duration dependence of the conditioning-induced nu shift")
@@ -672,7 +669,11 @@ def plot_bias_overview(
             f"(median={stage_summaries['stored_data_dump']['median']:.3f})"
         ),
     }
-    for key in ("raw_fd_direct", "set_from_time_domain_rolloff_1p0", "stored_data_dump"):
+    for key in (
+        "raw_fd_direct",
+        "set_from_time_domain_rolloff_1p0",
+        "stored_data_dump",
+    ):
         posterior_axis.plot(
             nu_grid,
             stage_curves[key],
@@ -687,7 +688,11 @@ def plot_bias_overview(
         linewidth=1.5,
         label=f"Injected nu = {injected_nu:g}",
     )
-    posterior_axis.set_xlim(injected_nu-0.3*injected_nu, stage_summaries['stored_data_dump']['median']+0.6*stage_summaries['stored_data_dump']['median'])
+    posterior_axis.set_xlim(
+        injected_nu - 0.3 * injected_nu,
+        stage_summaries["stored_data_dump"]["median"]
+        + 0.6 * stage_summaries["stored_data_dump"]["median"],
+    )
     posterior_axis.set_xlabel("nu")
     posterior_axis.set_ylabel("Posterior density")
     posterior_axis.set_title("Posterior shift from bilby time-domain conditioning")
@@ -737,11 +742,13 @@ def plot_bias_overview(
     conditioned_yerr = np.array(
         [
             [
-                entry["conditioned_summary"]["median"] - entry["conditioned_summary"]["q05"]
+                entry["conditioned_summary"]["median"]
+                - entry["conditioned_summary"]["q05"]
                 for entry in duration_scan
             ],
             [
-                entry["conditioned_summary"]["q95"] - entry["conditioned_summary"]["median"]
+                entry["conditioned_summary"]["q95"]
+                - entry["conditioned_summary"]["median"]
                 for entry in duration_scan
             ],
         ]
@@ -790,9 +797,12 @@ def main() -> None:
 
     data_dump_path, data_dump = load_data_dump(run_dir)
     settings = build_run_settings(data_dump)
-    injection_parameters, psds, maxl_log_likelihood, maxl_index = (
-        load_maximum_likelihood_injection(posterior_path)
-    )
+    (
+        injection_parameters,
+        psds,
+        maxl_log_likelihood,
+        maxl_index,
+    ) = load_maximum_likelihood_injection(posterior_path)
     waveform_generator = build_waveform_generator(settings)
 
     raw_ifos = build_raw_interferometers(
@@ -813,9 +823,10 @@ def main() -> None:
         )
         for detector, frequency_domain_strain in raw_frequency_domain_strain.items()
     }
-    reread_time_domain_strain, max_td_diff_after_hdf5 = gwpy_roundtrip_time_domain_strain(
-        settings, raw_time_domain_strain
-    )
+    (
+        reread_time_domain_strain,
+        max_td_diff_after_hdf5,
+    ) = gwpy_roundtrip_time_domain_strain(settings, raw_time_domain_strain)
 
     stage_interferometers = {
         "raw_fd_direct": clone_with_frequency_domain_strain(

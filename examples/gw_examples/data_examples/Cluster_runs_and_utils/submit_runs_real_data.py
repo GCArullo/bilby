@@ -34,7 +34,6 @@ from submission_sine_gaussian_utils import (
     validate_submission_local_paths,
 )
 
-
 DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
 SPIN_TAYLOR_SUFFIX = "_SpinTaylor"
@@ -99,12 +98,9 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         run_subdir="GW150914/Runs",
         file_prefix="GW150914_IGWN_C01_IMRPhenomXPHM",
         ini_template=(
-            "Special_events_configs/templates/"
-            "GW150914_t_student_igwn_template.ini"
+            "Special_events_configs/templates/" "GW150914_t_student_igwn_template.ini"
         ),
-        prior_template=(
-            "Special_events_configs/priors/GW150914_igwn_template.prior"
-        ),
+        prior_template=("Special_events_configs/priors/GW150914_igwn_template.prior"),
         working_directory="LVK_posteriors/GW150914",
         detectors=("H1", "L1"),
     ),
@@ -113,12 +109,10 @@ EVENT_DEFAULTS: dict[str, EventDefaults] = {
         run_subdir="GWTC_parametric_noise/Runs/GW190521_030229",
         file_prefix="GW190521_030229_LVK_NRSur7dq4",
         ini_template=(
-            "Special_events_configs/templates/"
-            "GW190521_030229_LVK_NRSur7dq4.ini"
+            "Special_events_configs/templates/" "GW190521_030229_LVK_NRSur7dq4.ini"
         ),
         prior_template=(
-            "Special_events_configs/priors/"
-            "GW190521_030229_LVK_NRSur7dq4.prior"
+            "Special_events_configs/priors/" "GW190521_030229_LVK_NRSur7dq4.prior"
         ),
         working_directory="Special_events_configs",
         detectors=("H1", "L1", "V1"),
@@ -149,7 +143,9 @@ def outdir_label(value: str) -> str:
     if not label:
         raise argparse.ArgumentTypeError("outdir label must not be empty")
     if any(separator and separator in label for separator in (os.sep, os.altsep)):
-        raise argparse.ArgumentTypeError("outdir label must not contain path separators")
+        raise argparse.ArgumentTypeError(
+            "outdir label must not contain path separators"
+        )
     return label
 
 
@@ -357,9 +353,12 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     add_sine_gaussian_arguments(parser)
     parser.add_argument(
-        "--sg-only", action="store_true",
-        help=("Omit the CBC exactly and sample only SG, sky/time, and noise/calibration "
-              "parameters. Coherent-independent is equivalent to coherent here."),
+        "--sg-only",
+        action="store_true",
+        help=(
+            "Omit the CBC exactly and sample only SG, sky/time, and noise/calibration "
+            "parameters. Coherent-independent is equivalent to coherent here."
+        ),
     )
     return parser
 
@@ -491,16 +490,24 @@ def render_prior(
         # the induced prior on SG arrival times, even for detector-local SGs.
         extrinsic_keys = {"ra", "dec", "psi", "azimuth", "zenith", "geocent_time"}
         retained = [
-            line for line in prior_template.splitlines()
-            if "=" in line and (
+            line
+            for line in prior_template.splitlines()
+            if "=" in line
+            and (
                 line.split("=", 1)[0].strip() in extrinsic_keys
                 or line.split("=", 1)[0].strip().startswith("recalib_")
-                or line.split("=", 1)[0].strip() in {f"{detector}_time" for detector in detectors}
+                or line.split("=", 1)[0].strip()
+                in {f"{detector}_time" for detector in detectors}
             )
         ]
-        return combine_prior_blocks(
-            "\n".join(retained), nu_prior_block, sine_gaussian_prior_block,
-        ) + "\n"
+        return (
+            combine_prior_blocks(
+                "\n".join(retained),
+                nu_prior_block,
+                sine_gaussian_prior_block,
+            )
+            + "\n"
+        )
     return prior_template.replace(
         "__NU_PRIORS__",
         combine_prior_blocks(nu_prior_block, sine_gaussian_prior_block),
@@ -510,8 +517,7 @@ def render_prior(
 def minimum_frequency_for_pesummary(minimum_frequency):
     if isinstance(minimum_frequency, dict):
         detector_frequencies = [
-            value for key, value in minimum_frequency.items()
-            if key != "waveform"
+            value for key, value in minimum_frequency.items() if key != "waveform"
         ]
         if detector_frequencies:
             return min(detector_frequencies)
@@ -710,7 +716,7 @@ def render_ini(
         rendered = replace_line(rendered, "extra-likelihood-kwargs", "None")
     else:
         raise ValueError(f"Unknown hypothesis '{hypothesis}'")
-    
+
     rendered = replace_line(
         rendered,
         "waveform-approximant",
@@ -728,11 +734,12 @@ def render_ini(
         repr(template_settings["minimum_frequency"]),
     )
     GW_SIGNAL_MODELS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
-    if (
-        template_settings["waveform_approximant"] in GW_SIGNAL_MODELS
-        and not template_settings["frequency_domain_source_model"].startswith(
-            "bilby_tgr.pseob."
-        )
+    if template_settings[
+        "waveform_approximant"
+    ] in GW_SIGNAL_MODELS and not template_settings[
+        "frequency_domain_source_model"
+    ].startswith(
+        "bilby_tgr.pseob."
     ):
         # The direct generator bypasses custom source functions, so an
         # SEOB+sine-Gaussian run must keep the generic generator.
@@ -849,7 +856,9 @@ def prepare_run(
             outdir_label,
         )
         run_outdir = f"{outdir_base}/{run_directory_name}"
-        prior_path = (prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior").resolve()
+        prior_path = (
+            prior_dir / f"{file_prefix}_gaussian{waveform_suffix}.prior"
+        ).resolve()
         ini_path = (ini_dir / f"{file_prefix}_gaussian{waveform_suffix}.ini").resolve()
         include_nu_priors = False
         run_detector_dependent_nu = False
@@ -970,7 +979,9 @@ def main() -> int:
             waveform_freq = min(detector_freqs) if detector_freqs else 20.0
             if lal_approximant in TUNED_ANGLE_MODELS:
                 # PNR tuned angles require f_min <= f_ref.
-                waveform_freq = min(waveform_freq, template_settings["reference_frequency"])
+                waveform_freq = min(
+                    waveform_freq, template_settings["reference_frequency"]
+                )
             min_freq = dict(min_freq, waveform=waveform_freq)
         template_settings = dict(
             template_settings,

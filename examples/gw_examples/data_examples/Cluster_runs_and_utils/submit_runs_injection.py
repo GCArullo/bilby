@@ -32,7 +32,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import bilby
-
 from container_creation.submission_container_utils import (
     add_container_arguments,
     environment_variables_for_container,
@@ -57,7 +56,6 @@ from submission_sine_gaussian_utils import (
     validate_submission_local_paths,
 )
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONTAINER_IMAGES_FILE = (
     SCRIPT_DIR / "container_creation" / "container_images.json"
@@ -76,9 +74,7 @@ def default_accounting_user() -> str:
 
 DEFAULT_HOME_DIR = Path.home()
 DEFAULT_ACCOUNTING_USER = default_accounting_user()
-DEFAULT_BASE_SUBDIR = (
-    Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
-)
+DEFAULT_BASE_SUBDIR = Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
 DEFAULT_ENVIRONMENT_VARIABLES = {
     "HDF5_USE_FILE_LOCKING": False,
     "NUMBA_CACHE_DIR": "/tmp",
@@ -167,12 +163,16 @@ TEST_INJECTION_FIXED_KEYS = (
     "ra",
     "dec",
 )
+
+
 def outdir_label(value: str) -> str:
     label = value.strip()
     if not label:
         raise argparse.ArgumentTypeError("outdir label must not be empty")
     if any(separator and separator in label for separator in (os.sep, os.altsep)):
-        raise argparse.ArgumentTypeError("outdir label must not contain path separators")
+        raise argparse.ArgumentTypeError(
+            "outdir label must not contain path separators"
+        )
     return label
 
 
@@ -329,9 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--naccept",
         type=int,
         default=60,
-        help=(
-            "Dynesty acceptance-walk target naccept to write into sampler-kwargs."
-        ),
+        help=("Dynesty acceptance-walk target naccept to write into sampler-kwargs."),
     )
     parser.add_argument(
         "--maxmcmc",
@@ -532,9 +530,7 @@ def resolve_nu_configuration(
     else:
         shared_nu = _coerce_nu_per_band(parsed_nu, num_frequency_bands)
         if detector_dependent_nu:
-            resolved_detector_nu = {
-                detector: list(shared_nu) for detector in detectors
-            }
+            resolved_detector_nu = {detector: list(shared_nu) for detector in detectors}
             effective_detector_dependent_nu = True
         else:
             resolved_detector_nu = list(shared_nu)
@@ -542,8 +538,12 @@ def resolve_nu_configuration(
 
     if effective_detector_dependent_nu:
         if num_frequency_bands == 1:
-            likelihood_nu = [resolved_detector_nu[detector][0] for detector in detectors]
-            noise_nu = {detector: values[0] for detector, values in resolved_detector_nu.items()}
+            likelihood_nu = [
+                resolved_detector_nu[detector][0] for detector in detectors
+            ]
+            noise_nu = {
+                detector: values[0] for detector, values in resolved_detector_nu.items()
+            }
         else:
             likelihood_nu = [resolved_detector_nu[detector] for detector in detectors]
             noise_nu = resolved_detector_nu
@@ -581,7 +581,9 @@ def load_test_injection_chirp_mass_bounds(
         posterior_samples = posterior_file["C00:NRSur7dq4/posterior_samples"]
         dtype_names = posterior_samples.dtype.names or ()
         if "chirp_mass" in dtype_names:
-            chirp_mass_samples = np.asarray(posterior_samples["chirp_mass"][:], dtype=float)
+            chirp_mass_samples = np.asarray(
+                posterior_samples["chirp_mass"][:], dtype=float
+            )
         else:
             mass_1 = np.asarray(posterior_samples["mass_1"][:], dtype=float)
             mass_2 = np.asarray(posterior_samples["mass_2"][:], dtype=float)
@@ -602,9 +604,7 @@ def load_psds(
 ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     with h5py.File(posterior_path, "r") as posterior_file:
         return {
-            detector: tuple(
-                posterior_file[f"C00:NRSur7dq4/psds/{detector}"][:].T
-            )
+            detector: tuple(posterior_file[f"C00:NRSur7dq4/psds/{detector}"][:].T)
             for detector in detectors
         }
 
@@ -726,9 +726,7 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
                 f"coherent-independent.{key} must be a finite numeric value."
             ) from exc
         if not np.isfinite(value) or not bounds[0] <= value <= bounds[1]:
-            raise ValueError(
-                f"coherent-independent.{key}={value} is outside {bounds}."
-            )
+            raise ValueError(f"coherent-independent.{key}={value} is outside {bounds}.")
         independent_sky[key] = value
 
     def parse_count(raw_count, *, context: str) -> int:
@@ -758,9 +756,7 @@ def load_injected_sine_gaussian_values() -> dict[str, object]:
             set(raw_component).difference(INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS)
         )
         if unexpected:
-            raise ValueError(
-                f"{context} has unexpected keys: {', '.join(unexpected)}."
-            )
+            raise ValueError(f"{context} has unexpected keys: {', '.join(unexpected)}.")
 
         component = {}
         for key in INJECTED_SINE_GAUSSIAN_COMPONENT_KEYS:
@@ -969,13 +965,13 @@ def add_injected_sine_gaussians(
                     independent=True,
                 )
             )
-        independent_sky = load_injected_sine_gaussian_values()[
-            "coherent_independent"
-        ]
-        updated_parameters.update({
-            f"independent_sine_gaussian_{key}": value
-            for key, value in independent_sky.items()
-        })
+        independent_sky = load_injected_sine_gaussian_values()["coherent_independent"]
+        updated_parameters.update(
+            {
+                f"independent_sine_gaussian_{key}": value
+                for key, value in independent_sky.items()
+            }
+        )
         return updated_parameters
 
     component_index = 0
@@ -1137,9 +1133,11 @@ def stage_injection_bundle(
         )
     bilby.core.utils.random.seed(staging_seed)
 
-    injection_parameters, maxl_log_likelihood, maxl_index = (
-        load_maximum_likelihood_injection(posterior_path)
-    )
+    (
+        injection_parameters,
+        maxl_log_likelihood,
+        maxl_index,
+    ) = load_maximum_likelihood_injection(posterior_path)
     injection_parameters = add_injected_sine_gaussians(
         injection_parameters,
         template_settings=template_settings,
@@ -1149,13 +1147,15 @@ def stage_injection_bundle(
         args.injection_noise == "student" or args.likelihood == "student"
     )
     if need_nu_configuration:
-        configured_noise_nu, likelihood_nu, effective_detector_dependent_nu = (
-            resolve_nu_configuration(
-                raw_nu_injection=args.nu_injection,
-                detectors=template_settings["detectors"],
-                num_frequency_bands=args.num_frequency_bands,
-                detector_dependent_nu=args.detector_dependent_nu,
-            )
+        (
+            configured_noise_nu,
+            likelihood_nu,
+            effective_detector_dependent_nu,
+        ) = resolve_nu_configuration(
+            raw_nu_injection=args.nu_injection,
+            detectors=template_settings["detectors"],
+            num_frequency_bands=args.num_frequency_bands,
+            detector_dependent_nu=args.detector_dependent_nu,
         )
     else:
         configured_noise_nu = None
@@ -1373,9 +1373,7 @@ def build_nu_priors(
         return ""
 
     nu_maximum = (
-        min(args.nu_max, TEST_INJECTION_NU_MAX)
-        if args.test_injection
-        else args.nu_max
+        min(args.nu_max, TEST_INJECTION_NU_MAX) if args.test_injection else args.nu_max
     )
 
     if detector_dependent_nu:
@@ -1475,8 +1473,7 @@ def render_prior(
 def minimum_frequency_for_pesummary(minimum_frequency):
     if isinstance(minimum_frequency, dict):
         detector_frequencies = [
-            value for key, value in minimum_frequency.items()
-            if key != "waveform"
+            value for key, value in minimum_frequency.items() if key != "waveform"
         ]
         if detector_frequencies:
             return min(detector_frequencies)

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
-
 NLIVE_ONE_SINE_GAUSSIAN_UPLIFT = 500
 NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT = 1000
 NLIVE_COHERENT_INDEPENDENT_UPLIFT = 500
@@ -188,9 +187,7 @@ def _path_values(raw_value: str) -> list[str]:
             ]
         )
     elif (
-        isinstance(parsed, str)
-        and stripped.startswith("[")
-        and stripped.endswith("]")
+        isinstance(parsed, str) and stripped.startswith("[") and stripped.endswith("]")
     ):
         inner = stripped[1:-1].strip()
         parsed = (
@@ -251,12 +248,9 @@ def validate_submission_local_paths(
                 missing.append((setting, path))
 
     if missing:
-        formatted = "\n".join(
-            f"  - {setting}: {path}" for setting, path in missing
-        )
+        formatted = "\n".join(f"  - {setting}: {path}" for setting, path in missing)
         raise FileNotFoundError(
-            "Missing local input paths required for grid submission:\n"
-            f"{formatted}"
+            "Missing local input paths required for grid submission:\n" f"{formatted}"
         )
 
 
@@ -299,9 +293,7 @@ def read_template_settings(ini_template: str) -> dict[str, object]:
     )
     missing = [key for key in required_keys if key not in parsed]
     if missing:
-        raise ValueError(
-            f"Template ini is missing required keys: {', '.join(missing)}"
-        )
+        raise ValueError(f"Template ini is missing required keys: {', '.join(missing)}")
 
     sampler_kwargs = parsed["sampler-kwargs"]
     if not isinstance(sampler_kwargs, dict):
@@ -391,9 +383,7 @@ def resolve_sine_gaussian_configurations(
 
     if num_sine_gaussians == 0:
         if range_mode:
-            raise ValueError(
-                "--sine-gaussian-range requires --num-sine-gaussians >= 1"
-            )
+            raise ValueError("--sine-gaussian-range requires --num-sine-gaussians >= 1")
         if mode != "coherent":
             raise ValueError(
                 "--sine-gaussian-mode only applies when --num-sine-gaussians >= 1"
@@ -537,7 +527,9 @@ def effective_nlive(base_nlive: int, config: SineGaussianConfiguration) -> int:
     return base_nlive + uplift
 
 
-def sine_gaussian_frequency_bounds(minimum_frequency, maximum_frequency) -> tuple[float, float]:
+def sine_gaussian_frequency_bounds(
+    minimum_frequency, maximum_frequency
+) -> tuple[float, float]:
     return (
         _resolve_frequency_minimum(minimum_frequency),
         _resolve_frequency_maximum(maximum_frequency),
@@ -654,16 +646,18 @@ def _build_sine_gaussian_prior_block(
                 )
             )
     elif config.mode == "coherent-independent":
-        lines.extend([
-            "independent_sine_gaussian_ra = Uniform("
-            "name='independent_sine_gaussian_ra', minimum=0, "
-            "maximum=2 * np.pi, boundary='periodic')",
-            "independent_sine_gaussian_dec = Cosine("
-            "name='independent_sine_gaussian_dec')",
-            "independent_sine_gaussian_psi = Uniform("
-            "name='independent_sine_gaussian_psi', minimum=0, "
-            "maximum=np.pi, boundary='periodic')",
-        ])
+        lines.extend(
+            [
+                "independent_sine_gaussian_ra = Uniform("
+                "name='independent_sine_gaussian_ra', minimum=0, "
+                "maximum=2 * np.pi, boundary='periodic')",
+                "independent_sine_gaussian_dec = Cosine("
+                "name='independent_sine_gaussian_dec')",
+                "independent_sine_gaussian_psi = Uniform("
+                "name='independent_sine_gaussian_psi', minimum=0, "
+                "maximum=np.pi, boundary='periodic')",
+            ]
+        )
         for index in range(config.total_components):
             lines.extend(
                 _sine_gaussian_prior_lines(

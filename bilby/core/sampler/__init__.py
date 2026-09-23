@@ -406,12 +406,16 @@ def run_sampler(
             )
             if defer_noise_evidence:
                 _prepare_result_for_deferred_noise_evidence(
-                    result=result, sampler=sampler,
+                    result=result,
+                    sampler=sampler,
                 )
             else:
                 _set_result_evidence(
-                    result=result, likelihood=likelihood, priors=priors,
-                    sampler=sampler, npool=npool,
+                    result=result,
+                    likelihood=likelihood,
+                    priors=priors,
+                    sampler=sampler,
+                    npool=npool,
                 )
 
             # Initial save of the sampler in case of failure in samples_to_posterior
@@ -441,11 +445,16 @@ def run_sampler(
         result.plot_corner()
     if not sampler.cached_result and defer_noise_evidence:
         _set_result_evidence(
-            result=result, likelihood=likelihood, priors=priors,
-            sampler=sampler, npool=npool,
+            result=result,
+            likelihood=likelihood,
+            priors=priors,
+            sampler=sampler,
+            npool=npool,
         )
         if save:
-            result.save_to_file(overwrite=True, extension=save, gzip=gzip, outdir=outdir)
+            result.save_to_file(
+                overwrite=True, extension=save, gzip=gzip, outdir=outdir
+            )
     logger.info(f"Summary of results:\n{result}")
     return result
 

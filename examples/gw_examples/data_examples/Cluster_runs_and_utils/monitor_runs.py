@@ -13,7 +13,6 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-
 DZ_RE = re.compile(r"dlogz:\s*([^\s>\]]+)\s*>\s*([^\s\]]+)")
 LABEL_RE = re.compile(r"(?:^|\s)--label\s+(\S+)")
 FATAL_RE = re.compile(
@@ -148,9 +147,13 @@ def latest_ads(ads: list[dict], root: Path) -> dict[str, dict]:
         key = (ad.get("ClusterId", 0), ad.get("ProcId", 0))
         previous = selected.get(label)
         previous_key = (
-            previous.get("ClusterId", 0),
-            previous.get("ProcId", 0),
-        ) if previous else (-1, -1)
+            (
+                previous.get("ClusterId", 0),
+                previous.get("ProcId", 0),
+            )
+            if previous
+            else (-1, -1)
+        )
         if key > previous_key:
             selected[label] = ad
     return selected
@@ -164,9 +167,7 @@ def active_roots(ads: list[dict]) -> list[Path]:
         if (root := analysis_root(ad)) is not None
     }
     return sorted(
-        root
-        for root in roots
-        if any(root.glob("*/submit/*_analysis_*_par*.submit"))
+        root for root in roots if any(root.glob("*/submit/*_analysis_*_par*.submit"))
     )
 
 
@@ -254,9 +255,7 @@ def main() -> int:
         "ExitSignal,RemoveReason,Iwd,Args,Out,Err"
     )
     try:
-        queued = condor_json(
-            ["condor_q", "-json", "-attributes", attributes]
-        )
+        queued = condor_json(["condor_q", "-json", "-attributes", attributes])
         history = condor_json(
             [
                 "condor_history",

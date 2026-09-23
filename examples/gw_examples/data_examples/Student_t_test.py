@@ -15,10 +15,10 @@ Student-t likelihood instead of the standard Gaussian likelihood.
 
 event = "GW150914"  # Available options: ["GW150914", "GW231123"]
 likelihood_type = "Student"  # Available options: ["Gaussian", "Student"]
-outdir_label = "test_multiband_N2"  # Label for output directory, e.g. "test", "test_fixed_nu", "test_GW231123"
+outdir_label = "test_multiband_N2"  # Label for output directory.
 single_par = True
 
-waveform_approximant = "IMRPhenomXPHM"  # Waveform approximant to use. Must be supported by your version of LALSimulation. Examples: "IMRPhenomD", "IMRPhenomPv2", "IMRPhenomXPHM", "SEOBNRv4_ROM", etc.
+waveform_approximant = "IMRPhenomXPHM"  # Must be supported by LALSimulation.
 
 nu_min, nu_max = (
     2.1,
@@ -28,7 +28,7 @@ num_frequency_bands = (
     2  # Number of frequency bands. For N > 1, sample nu_i for each band.
 )
 
-location_type = "sky"  # Available options: ["sky", "L1"]. This sets the reference frame and time reference for the likelihood. "sky" uses the standard geocentric frame and time, while "L1" uses the L1 frame and time. The latter is a non-inertial frame which can cause issues with the standard bilby likelihood, but should work fine with the heavy-tailed likelihoods used here.
+location_type = "sky"  # Available options: "sky" or "L1".
 
 if location_type == "sky":
 
@@ -224,7 +224,7 @@ result = bilby.run_sampler(
     npool=1,
     conversion_function=bilby.gw.conversion.generate_all_bbh_parameters,
     result_class=bilby.gw.result.CBCResult,
-    clean=True,  # Overwrite existing output directory if it exists. Set to False to append to existing directory (e.g. for multiple runs with different samplers or settings
+    clean=True,  # Overwrite the existing output directory.
 )
 
 #########

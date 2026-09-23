@@ -29,6 +29,9 @@ def load_submit_runs_real_data_module():
         assert spec.loader is not None
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
+        module.resolve_container_image = (
+            lambda use_container, **kwargs: "/tmp/test-container.sif" if use_container else None
+        )
         return module
     finally:
         sys.modules.pop("submit_runs_real_data_test_module", None)
@@ -178,6 +181,7 @@ def test_student_likelihood_keeps_gaussian_companion_for_multiple_frequency_band
 
 
 def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_path):
+    monkeypatch.delenv("LAL_DATA_PATH", raising=False)
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
     prior_dir = tmp_path / "prior"

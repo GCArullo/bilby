@@ -369,11 +369,6 @@ def hypothesis_list(args: argparse.Namespace) -> list[str]:
         "num_frequency_bands_was_explicit",
         args.num_frequency_bands is not None,
     )
-    resolved_num_frequency_bands = (
-        DEFAULT_NUM_FREQUENCY_BANDS
-        if args.num_frequency_bands is None
-        else args.num_frequency_bands
-    )
     if args.likelihood == "gaussian":
         if args.add_gaussian is True:
             raise ValueError(

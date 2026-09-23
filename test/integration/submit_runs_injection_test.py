@@ -30,6 +30,9 @@ def load_submit_runs_injection_module():
         assert spec.loader is not None
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
+        module.resolve_container_image = (
+            lambda use_container, **kwargs: "/tmp/test-container.sif" if use_container else None
+        )
         return module
     finally:
         sys.modules.pop("submit_runs_injection_test_module", None)

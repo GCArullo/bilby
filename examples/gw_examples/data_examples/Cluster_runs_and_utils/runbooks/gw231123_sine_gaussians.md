@@ -153,16 +153,14 @@ python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --s
 Add `--sg-only` to a real-data SG command, for example:
 
 ```
-SG_ONLY_IMAGE="osdf:///igwn/cit/staging/gregorio.carullo/bilby-sg-only-a8b49d109-20260922.sif"
 python "$REAL" --event GW231123 --likelihood gaussian --sg-only \
   --num-sine-gaussians 1 --sine-gaussian-mode coherent \
-  --container-image "$SG_ONLY_IMAGE" --maxmcmc "$MAXMCMC"
+  --maxmcmc "$MAXMCMC"
 ```
 
-The container must include the new source/conversion functions; previously
-registered images do not. The image above backports only the SG-only changes
-onto the original GW231123 Bilby version, retaining its sampler and dependency
-versions. A newly built image from this branch also supports the option.
+The launcher selects the official branch image from
+`container_creation/container_images.json`. Publish that image after updating
+the official Bilby, bilby_pipe, and PESummary checkouts.
 
 This uses `bilby.gw.source.sine_gaussians`, with an exactly zero CBC and no
 CBC waveform evaluation. Masses, spins, distance, inclination and CBC phase

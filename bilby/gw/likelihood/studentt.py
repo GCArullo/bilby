@@ -3,7 +3,6 @@ from itertools import product
 
 import numpy as np
 from scipy.integrate import quad
-from scipy.special import gammaln
 
 from ...core.likelihood import Likelihood
 from ...core.prior import DeltaFunction, PriorDict
@@ -137,7 +136,8 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             noise_evidence_method
         )
 
-        if not self._valid_nu_values(self._fixed_nu): raise ValueError("All nu values must be positive and finite")
+        if not self._valid_nu_values(self._fixed_nu):
+            raise ValueError("All nu values must be positive and finite")
 
         if (
             self.time_marginalization
@@ -202,10 +202,13 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
 
     def _validate_num_frequency_bands(self, num_frequency_bands):
 
-        try                                   : num_frequency_bands = int(num_frequency_bands)
-        except (TypeError, ValueError) as exc : raise ValueError("num_frequency_bands must be a positive integer") from exc
+        try:
+            num_frequency_bands = int(num_frequency_bands)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("num_frequency_bands must be a positive integer") from exc
 
-        if num_frequency_bands < 1:  raise ValueError("num_frequency_bands must be a positive integer")
+        if num_frequency_bands < 1:
+            raise ValueError("num_frequency_bands must be a positive integer")
 
         return num_frequency_bands
 
@@ -268,9 +271,12 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         values = np.asarray(nu, dtype=float)
 
         if not self.detector_dependent_nu:
-            if   values.ndim == 0                                             : values = np.repeat(values[None], self.num_frequency_bands)
-            elif values.ndim == 1 and len(values) == 1                        : values = np.repeat(values,       self.num_frequency_bands)
-            elif values.ndim != 1 or  len(values) != self.num_frequency_bands : raise ValueError("nu must be a scalar or an array with one entry per frequency band")
+            if values.ndim == 0:
+                values = np.repeat(values[None], self.num_frequency_bands)
+            elif values.ndim == 1 and len(values) == 1:
+                values = np.repeat(values, self.num_frequency_bands)
+            elif values.ndim != 1 or len(values) != self.num_frequency_bands:
+                raise ValueError("nu must be a scalar or an array with one entry per frequency band")
             return values.astype(float, copy=False)
 
         num_detectors = len(self.interferometers)
@@ -303,7 +309,8 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         return values.astype(float, copy=False)
 
     @staticmethod
-    def _valid_nu_values(values): return np.all(np.isfinite(values)) and np.all(values > 0)
+    def _valid_nu_values(values):
+        return np.all(np.isfinite(values)) and np.all(values > 0)
 
     def _create_frequency_band_edges(self):
         active_frequencies = [
@@ -367,8 +374,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
         for index, (lower, upper) in enumerate(
             zip(self._frequency_band_edges[:-1], self._frequency_band_edges[1:])
         ):
-            if index == self.num_frequency_bands - 1: band_mask = (frequencies >= lower) & (frequencies <= upper)
-            else                                    : band_mask = (frequencies >= lower) & (frequencies <  upper)
+            if index == self.num_frequency_bands - 1:
+                band_mask = (frequencies >= lower) & (frequencies <= upper)
+            else:
+                band_mask = (frequencies >= lower) & (frequencies < upper)
             band_masks.append(band_mask)
 
         return band_masks
@@ -425,10 +434,10 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
                 continue
 
             band_scale2 = scale2[band_mask]
-            band_abs2   =   abs2[band_mask]
+            band_abs2 = abs2[band_mask]
 
             """
-            Multivariate Student's t with dimension d=2 (complex residuals in frequency domain) 
+            Multivariate Student's t with dimension d=2 (complex residuals in frequency domain)
 
             The full expression would be:
 
@@ -439,7 +448,7 @@ class StudentTGravitationalWaveTransient(GravitationalWaveTransient):
             but for d=2, gamma functions simplify to give const= - np.log(2 * np.pi * band_scale2)
 
             See: https://en.wikipedia.org/wiki/Multivariate_t-distribution
-            
+
             """
             const = - np.log(2 * np.pi * band_scale2)
 

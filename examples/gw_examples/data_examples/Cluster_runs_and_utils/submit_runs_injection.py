@@ -35,6 +35,7 @@ import bilby
 
 from container_creation.submission_container_utils import (
     add_container_arguments,
+    environment_variables_for_container,
     resolve_container_image,
 )
 from submission_sine_gaussian_utils import (
@@ -1916,7 +1917,12 @@ def render_ini(
     rendered = replace_line(
         rendered,
         "environment-variables",
-        repr(DEFAULT_ENVIRONMENT_VARIABLES),
+        repr(
+            environment_variables_for_container(
+                DEFAULT_ENVIRONMENT_VARIABLES,
+                getattr(args, "container_image", None),
+            )
+        ),
     )
     if args.noise_only_inference:
         rendered = replace_line(rendered, "create-summary", "False")

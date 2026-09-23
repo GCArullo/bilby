@@ -22,6 +22,7 @@ REAL="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit
 INJ="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/submit_runs_injection.py"
 MONITOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/monitor_runs.py"
 SG_JSON="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs/runbooks/injected_sine_gaussian_values.json"
+L1_PRIOR="$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs/priors/GW231123_L1_template.prior"
 INJECTION_POSTERIOR="/home/gregorio.carullo/src/bilby_greg/examples/gw_examples/data_examples/Cluster_runs_and_utils/LVK_posteriors/GW231123/posterior_samples.h5"
 BASE="$HOME/public_html/GW231123/Runs/injections_gw231123_sine_gaussians"
 MAXMCMC=5000
@@ -148,6 +149,41 @@ GW231123 NRsur + 2 SG in L1 (incoherent):
 python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors L1 --maxmcmc "$MAXMCMC"
 ```
 
+## SG-only runs (no CBC)
+
+Add `--sg-only` to a real-data SG command, for example:
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --sg-only \
+  --num-sine-gaussians 1 --sine-gaussian-mode coherent \
+  --maxmcmc "$MAXMCMC"
+```
+
+The launcher selects the official image for the checked-out branch from
+`container_creation/container_images.json`.
+
+This uses `bilby.gw.source.sine_gaussians`, with an exactly zero CBC and no
+CBC waveform evaluation. Masses, spins, distance, inclination and CBC phase
+are absent from the priors. The sky/polarization and reference-time priors,
+SG offsets, data, PSDs, calibration settings and sampler settings are retained.
+In particular, the reference time is **not fixed**: doing that would change
+the SG arrival-time prior. Detector-local runs retain the sky/time variables
+used by their existing detector-delay convention, even if some are unmeasured.
+
+Without a CBC, `coherent-independent` maps to `coherent`, and CBC approximant
+variants are redundant. The option rejects an explicit waveform approximant.
+The canonical SG-only model uses the common-sky reference-time convention;
+it does not retain an additional, unphysical CBC sky to shift that time prior.
+Single-detector coherent and detector-local SG models remain distinct because
+the former projects the source amplitude through antenna patterns and the
+latter puts its amplitude prior directly on detector strain.
+
+Output names contain `_sg_only_`, leaving CBC+SG results untouched. Automatic
+CBC-specific PESummary pages and waveform plots are disabled; use generic
+PESummary post-processing for these results. Posterior SNRs are retained,
+including zero CBC component SNRs.
+Calibration is retained, not removed by the summary-page `recalib*` filter.
+
 ## Single-detector Runs
 
 `--detectors` selects the detectors that are analysed, not just the ones used
@@ -167,7 +203,7 @@ python "$REAL" \
   --event GW231123 \
   --likelihood gaussian \
   --detectors L1 \
-  --prior-template "$BASE_DIR/examples/gw_examples/data_examples/Cluster_runs_and_utils/Special_events_configs/priors/GW231123_L1_template.prior" \
+  --prior-template "$L1_PRIOR" \
   --maxmcmc "$MAXMCMC"
 ```
 
@@ -177,8 +213,8 @@ GW231123 NRsur + 1 SG (coherent) in H1 only:
 python "$REAL" --event GW231123 --likelihood gaussian --detectors H1 --num-sine-gaussians 1 --sine-gaussian-mode coherent --maxmcmc "$MAXMCMC"
 ```
 
-To give a single-detector run different mass bounds, point `--prior-template` at
-a dedicated template, for example `priors/GW231123_L1_template.prior`.
+The L1-only command uses the dedicated `GW231123_L1_template.prior`, whose mass
+bounds are wider than the network prior.
 
 ## Injections
 

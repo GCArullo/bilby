@@ -491,6 +491,36 @@ def test_gw190521_lvk_nrsur_profile_generates_widened_setup(
         f"outdir={tmp_path}/public_html/GWTC_parametric_noise/Runs/"
         "GW190521_030229/gaussian_detector_independent_noise_N1\n"
     ) in ini_text
+@pytest.mark.parametrize("mode", ["coherent", "coherent-independent", "incoherent"])
+def test_sg_only_configs_keep_extrinsic_but_not_cbc_priors(monkeypatch, tmp_path, mode):
+    module = load_submit_runs_real_data_module()
+    argv = [
+        str(SCRIPT_PATH), "--event", "GW231123", "--likelihood", "gaussian",
+        "--sg-only", "--num-sine-gaussians", "2", "--sine-gaussian-mode", mode,
+        "--dry-run", "--ini-dir", str(tmp_path / "ini"),
+        "--prior-dir", str(tmp_path / "prior"), "--home-dir", str(tmp_path),
+    ]
+    if mode == "incoherent":
+        argv.extend(["--incoherent-sg-counts", "H1=1", "L1=1"])
+    monkeypatch.setattr(sys, "argv", argv)
+    assert module.main() == 0
+    ini_path, = (tmp_path / "ini").glob("*.ini")
+    prior_path, = (tmp_path / "prior").glob("*.prior")
+    ini = ini_path.read_text()
+    prior = prior_path.read_text()
+    assert "_sg_only_" in ini_path.name
+    assert "bilby.gw.source.sine_gaussians" in ini
+    assert "bilby.core.prior.ConditionalPriorDict" in ini
+    assert "time-reference=L1" in ini
+    assert "calibration-model=CubicSpline" in ini
+    assert "identity_map_generation" in ini
+    assert "chirp_mass" not in prior
+    assert "luminosity_distance" not in prior
+    assert "independent_sine_gaussian" not in prior
+    assert "psi = Uniform" in prior
+    assert "dec = Cosine" in prior
+    assert "ConditionalUpperBoundedLogUniform" in prior or mode == "incoherent"
+    assert "minimum=-0.15, maximum=0.15" in prior
 
 
 def test_accounting_user_defaults_to_home_basename(monkeypatch):
@@ -954,6 +984,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     ini_settings = dict(
         line.split("=", maxsplit=1) for line in ini_text.splitlines() if "=" in line
     )
+    environment_variables = ast.literal_eval(
+        ini_settings["environment-variables"]
+    )
+    assert "LAL_DATA_PATH" not in environment_variables
     outdir = Path(ini_settings["outdir"])
     assert outdir.parent == tmp_path / "public_html" / "GW231123" / "Runs"
     assert Path(ini_settings["webdir"]) == outdir / "web"
@@ -999,6 +1033,79 @@ def test_render_prior_qualifies_gw_prior_classes():
     assert (
         "mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(" in rendered
     )
+
+@pytest.mark.parametrize(
+    ("event", "extra_args", "waveform_generator", "source_model"),
+    [
+        (
+            "GW231123",
+            ["--waveform-approximant", "SEOBNRv5PHM"],
+            "bilby.gw.waveform_generator.GWSignalWaveformGenerator",
+            "bilby.gw.source.lal_binary_black_hole",
+        ),
+        (
+            "GW231123",
+            [
+                "--waveform-approximant",
+                "SEOBNRv5PHM",
+                "--num-sine-gaussians",
+                "1",
+                "--sine-gaussian-mode",
+                "coherent",
+            ],
+            "bilby.gw.waveform_generator.WaveformGenerator",
+            "bilby.gw.source.cbc_plus_sine_gaussians",
+        ),
+        (
+            "GW230814",
+            [],
+            "bilby.gw.waveform_generator.WaveformGenerator",
+            "bilby_tgr.pseob.source.gwsignal_binary_black_hole",
+        ),
+    ],
+)
+def test_main_selects_direct_generator_only_for_standard_seob(
+    monkeypatch,
+    tmp_path,
+    event,
+    extra_args,
+    waveform_generator,
+    source_model,
+):
+    module = load_submit_runs_real_data_module()
+    ini_dir = tmp_path / "ini"
+    prior_dir = tmp_path / "prior"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH),
+            "--event",
+            event,
+            "--likelihood",
+            "gaussian",
+            "--no-container",
+            "--dry-run",
+            "--ini-dir",
+            str(ini_dir),
+            "--prior-dir",
+            str(prior_dir),
+            "--home-dir",
+            str(tmp_path),
+            *extra_args,
+        ],
+    )
+
+    assert module.main() == 0
+    ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
+    assert f"waveform-generator={waveform_generator}\n" in ini_text
+    assert f"frequency-domain-source-model={source_model}\n" in ini_text
+    environment_line = next(
+        line for line in ini_text.splitlines()
+        if line.startswith("environment-variables=")
+    )
+    environment_variables = ast.literal_eval(environment_line.split("=", 1)[1])
+    assert environment_variables["LAL_DATA_PATH"] == "/scratch/lalsimulation"
 
 
 def test_render_ini_writes_maxmcmc_override():

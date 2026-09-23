@@ -321,6 +321,37 @@ def cbc_plus_sine_gaussians(
     if base_waveform is None:
         return None
 
+    return _add_sine_gaussians(
+        frequency_array, base_waveform, sine_gaussian_parameters,
+        incoherent_sine_gaussian_parameters, independent_sine_gaussian_parameters,
+        independent_sine_gaussian_ra, independent_sine_gaussian_dec,
+        independent_sine_gaussian_psi,
+    )
+
+
+def sine_gaussians(frequency_array, sine_gaussian_parameters=None,
+                   incoherent_sine_gaussian_parameters=None, **kwargs):
+    """Coherent and/or detector-local sine-Gaussians, with no CBC waveform.
+
+    Component dictionaries have the same fields and conventions as
+    :func:`cbc_plus_sine_gaussians`. Time offsets remain relative to the
+    sampled reference epoch (converted to geocentric time by the likelihood).
+    Coherent components share the sampled sky position and polarization.
+    No masses, spins, inclination, distance, or CBC phase are required.
+    """
+    zero = np.zeros_like(frequency_array, dtype=complex)
+    return _add_sine_gaussians(
+        frequency_array, dict(plus=zero, cross=zero.copy()),
+        sine_gaussian_parameters, incoherent_sine_gaussian_parameters,
+    )
+
+
+def _add_sine_gaussians(
+        frequency_array, base_waveform, sine_gaussian_parameters=None,
+        incoherent_sine_gaussian_parameters=None,
+        independent_sine_gaussian_parameters=None,
+        independent_sine_gaussian_ra=None, independent_sine_gaussian_dec=None,
+        independent_sine_gaussian_psi=None):
     h_plus = base_waveform['plus']
     h_cross = base_waveform['cross']
     combined_waveform = _WaveformPolarizations(
@@ -1096,6 +1127,7 @@ def lal_binary_neutron_star_relative_binning(
     waveform_kwargs.update(kwargs)
 
     if fiducial == 1:
+        _ = waveform_kwargs.pop("frequency_bin_edges", None)
         return _base_lal_cbc_fd_waveform(
             frequency_array=frequency_array, mass_1=mass_1, mass_2=mass_2,
             luminosity_distance=luminosity_distance, theta_jn=theta_jn, phase=phase,

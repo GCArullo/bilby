@@ -79,6 +79,11 @@ class TestPriorDict(unittest.TestCase):
     def test_prior_set_has_expected_priors(self):
         self.assertDictEqual(self.priors, dict(self.prior_set_from_dict))
 
+    def test_assignment_rejects_invalid_prior_value(self):
+        expected_error = "Unable to parse prior, bad entry"
+        with self.assertRaisesRegex(TypeError, expected_error):
+            self.prior_set_from_dict["Om0"] = np.array(0.30966)
+
     def test_read_from_file(self):
         expected = dict(
             mass_1=bilby.core.prior.Constraint(
@@ -200,7 +205,6 @@ class TestPriorDict(unittest.TestCase):
     def test_convert_floats_to_delta_functions(self):
         self.prior_set_from_dict["d"] = 5
         self.prior_set_from_dict["e"] = 7.3
-        self.prior_set_from_dict["f"] = "unconvertable"
         self.prior_set_from_dict.convert_floats_to_delta_functions()
         expected_d = bilby.core.prior.DeltaFunction(peak=5)
         expected_d.name = "d"
@@ -216,7 +220,6 @@ class TestPriorDict(unittest.TestCase):
             length=bilby.core.prior.DeltaFunction(name="c", peak=42, unit="m"),
             d=expected_d,
             e=expected_e,
-            f="unconvertable",
         )
         self.assertDictEqual(expected, self.prior_set_from_dict)
 
@@ -299,17 +302,6 @@ class TestPriorDict(unittest.TestCase):
         for key in samples:
             self.assertEqual(size, len(samples[key]))
             self.assertEqual(aac.get_namespace(samples[key]), self.xp)
-
-    def test_sample_subset_correct_size_when_non_priors_in_dict(self):
-        self.prior_set_from_dict["asdf"] = "not_a_prior"
-        samples = self.prior_set_from_dict.sample_subset(
-            keys=self.prior_set_from_dict.keys(),
-            random_state=self.rng,
-        )
-        self.assertEqual(len(self.prior_set_from_dict) - 1, len(samples))
-        for key in samples:
-            if not isinstance(samples[key], (int, float)):
-                self.assertIsNotNone(aac.get_namespace(samples[key]), self.xp)
 
     def test_sample_subset_with_actual_subset(self):
         size = 3

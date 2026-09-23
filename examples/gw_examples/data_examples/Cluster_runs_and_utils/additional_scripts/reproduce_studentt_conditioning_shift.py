@@ -24,13 +24,11 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 import pickle
 import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
@@ -446,9 +444,8 @@ def summarize_curve(
     posterior_density: np.ndarray,
     cumulative_density: np.ndarray,
 ) -> dict[str, float]:
-    quantile = lambda probability: float(
-        np.interp(probability, cumulative_density, nu_grid)
-    )
+    def quantile(probability):
+        return float(np.interp(probability, cumulative_density, nu_grid))
     return dict(
         map=float(nu_grid[np.argmax(posterior_density)]),
         mean=float(np.trapz(nu_grid * posterior_density, nu_grid)),

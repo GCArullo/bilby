@@ -231,12 +231,12 @@ class PriorDict(dict):
             if isinstance(val, Prior):
                 continue
             elif isinstance(val, (int, float)):
-                dictionary[key] = DeltaFunction(peak=val)
+                dictionary[key] = DeltaFunction(peak=val, name=key)
             elif isinstance(val, str):
                 cls = val.split("(")[0]
                 args = "(".join(val.split("(")[1:])[:-1]
                 try:
-                    dictionary[key] = DeltaFunction(peak=float(cls))
+                    dictionary[key] = DeltaFunction(peak=float(cls), name=key)
                     logger.debug("{} converted to DeltaFunction prior".format(key))
                     continue
                 except ValueError:
@@ -336,8 +336,7 @@ class PriorDict(dict):
             if isinstance(self[key], Prior):
                 continue
             elif isinstance(self[key], float) or isinstance(self[key], int):
-                self[key] = DeltaFunction(self[key])
-                self[key].name = key
+                self[key] = DeltaFunction(self[key], name=key)
                 logger.debug("{} converted to delta function prior.".format(key))
             else:
                 logger.debug(

@@ -159,8 +159,9 @@ python "$REAL" --event GW231123 --likelihood gaussian --sg-only \
   --maxmcmc "$MAXMCMC"
 ```
 
-The launcher selects the official image for the checked-out branch from
-`container_creation/container_images.json`.
+The launcher selects the official branch image from
+`container_creation/container_images.json`. Publish that image after updating
+the official Bilby, bilby_pipe, and PESummary checkouts.
 
 This uses `bilby.gw.source.sine_gaussians`, with an exactly zero CBC and no
 CBC waveform evaluation. Masses, spins, distance, inclination and CBC phase

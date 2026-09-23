@@ -375,9 +375,12 @@ class Interferometer(object):
             mode for mode in waveform_polarizations
             if mode in independent_sine_gaussian_modes
         ]
+        detector_signal = waveform_polarizations.get(self.name, 0) * mask
         signal = {}
         for mode in waveform_polarizations.keys():
-            if mode in independent_sine_gaussian_modes:
+            if mode in independent_sine_gaussian_modes or mode not in (
+                "plus", "cross", "x", "y", "breathing", "longitudinal"
+            ):
                 continue
             det_response = self.antenna_response(
                 parameters['ra'],
@@ -399,6 +402,7 @@ class Interferometer(object):
         xp = array_module(signal_ifo)
 
         signal_ifo = signal_ifo * xp.exp(-1j * 2 * np.pi * dt * frequencies)
+        signal_ifo = signal_ifo + detector_signal
 
         if independent_modes:
             independent_ra = parameters['independent_sine_gaussian_ra']

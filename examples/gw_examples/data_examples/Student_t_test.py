@@ -14,19 +14,19 @@ Student-t or hyperbolic likelihood instead of the standard Gaussian likelihood.
 # Standard user inputs #
 ########################
 
-event                = "GW150914"                   # Available options: ["GW150914", "GW231123"]
-likelihood_type      = "Hyperbolic"                    # Available options: ["Gaussian", "Student", "Hyperbolic"]
-outdir_label         = "test_multiband_N2"     # Label for output directory, e.g. "test", "test_fixed_nu", "test_GW231123"
-single_par           = True           
+event = "GW150914"  # Available options: ["GW150914", "GW231123"]
+likelihood_type = "Hyperbolic"  # Available options: ["Gaussian", "Student", "Hyperbolic"]
+outdir_label = "test_multiband_N2"  # Label for output directory.
+single_par = True
 
-waveform_approximant = "IMRPhenomXPHM" # Waveform approximant to use. Must be supported by your version of LALSimulation. Examples: "IMRPhenomD", "IMRPhenomPv2", "IMRPhenomXPHM", "SEOBNRv4_ROM", etc.
+waveform_approximant = "IMRPhenomXPHM"  # Must be supported by LALSimulation.
 
 nu_min, nu_max       = 2.1, 1000            # Range for uniform prior on nu (if infer_nu=True). Must be > 2 for finite variance in 2D.
 alpha_min, alpha_max = 1e-6, 30             # HyperWave-style uniform prior range for alpha (if infer_alpha=True).
 delta_min, delta_max = 1e-6, 30             # HyperWave-style uniform prior range for delta (if infer_delta=True).
 num_frequency_bands  = 2                    # Number of frequency bands. For N > 1, sample nu_i or alpha_i for each band.
 
-location_type        = "sky" # Available options: ["sky", "L1"]. This sets the reference frame and time reference for the likelihood. "sky" uses the standard geocentric frame and time, while "L1" uses the L1 frame and time. The latter is a non-inertial frame which can cause issues with the standard bilby likelihood, but should work fine with the heavy-tailed likelihoods used here.
+location_type = "sky"  # Available options: "sky" or "L1".
 
 if(location_type == "sky"):
 
@@ -246,7 +246,6 @@ result = bilby.run_sampler(
     # sample              = 'rslice',
     # bound               = "balls",
     # slices              = 20,
-
     nlive               = 64,
     n_check_point       = 200,
     outdir              = outdir,
@@ -257,7 +256,7 @@ result = bilby.run_sampler(
     conversion_function = bilby.gw.conversion.generate_all_bbh_parameters,
     result_class        = bilby.gw.result.CBCResult,
 
-    clean               = True, # Overwrite existing output directory if it exists. Set to False to append to existing directory (e.g. for multiple runs with different samplers or settings
+    clean               = True, # Overwrite the existing output directory.
 )
 
 #########

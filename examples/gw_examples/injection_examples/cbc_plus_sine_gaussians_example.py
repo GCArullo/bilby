@@ -145,7 +145,7 @@ seed(seed_value) # Set seed to ensure reproducibility
 # Injected signal # 
 ###################
 
-# Build the injection parameters in the sampling space so they are converted by the waveform generator into the structured input expected by the source model.
+# Convert sampling parameters into the structured input expected by the source model.
 injection_parameters = cbc_parameters.copy()
 
 if incoherent:

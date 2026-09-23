@@ -3,7 +3,7 @@
 Tutorial to demonstrate running parameter estimation on a sine gaussian
 injected signal.
 """
-import bilby, numpy as np
+import bilby
 from bilby.core.utils.random import seed
 
 # Sets seed of bilby's generator "rng" to "123" to ensure reproducibility

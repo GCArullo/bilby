@@ -1,8 +1,8 @@
 # This special-event prior is consumed by submit_runs_real_data.py.
-# It matches the GW230814 pSEOB setup but fixes the non-GR deviation
-# parameters to their GR values.
+# It matches the broad GW230814 pSEOB prior on all common parameters and fixes
+# the non-GR deviation parameters to their GR values.
 
-chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=20.0, maximum=40.0, unit='$M_{\{\odot\}}')
+chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=10.0, maximum=120.0, unit='$M_{\{\odot\}}')
 mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.25, maximum=1.0)
 mass_1 = Constraint(name='mass_1', minimum=1, maximum=1000)
 mass_2 = Constraint(name='mass_2', minimum=1, maximum=1000)

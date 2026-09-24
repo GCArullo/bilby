@@ -802,6 +802,16 @@ class TestHyperbolicGWTransient(unittest.TestCase):
         self.assertEqual(mock_run_sampler.call_args.kwargs["npool"], 1)
         self.assertEqual(mock_run_sampler.call_args.kwargs["nlive"], 192)
         self.assertEqual(mock_run_sampler.call_args.kwargs["dlogz"], 0.02)
+        self.assertEqual(mock_run_sampler.call_args.kwargs["exit_code"], 130)
+        self.assertTrue(mock_run_sampler.call_args.kwargs["check_point"])
+        self.assertTrue(mock_run_sampler.call_args.kwargs["resume"])
+
+        with patch("bilby.core.sampler.run_sampler", return_value=mock_result) as mock_run_sampler:
+            likelihood.noise_log_evidence(
+                priors=priors, sampler=MagicMock(exit_code=77), npool=2
+            )
+
+        self.assertEqual(mock_run_sampler.call_args.kwargs["exit_code"], 77)
 
     def test_noise_log_evidence_quadrature_falls_back_to_nested_above_2d(self):
         likelihood = bilby.gw.likelihood.HyperbolicGravitationalWaveTransient(

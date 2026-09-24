@@ -10,7 +10,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT = (
     SCRIPT_DIR.parent
@@ -19,10 +18,7 @@ DEFAULT_INPUT = (
 )
 DEFAULT_RUN_GROUP = "C01:IMRPhenomXPHM"
 DEFAULT_OUTPUT_DIR = (
-    SCRIPT_DIR.parent
-    / "GW150914"
-    / "Data"
-    / "GW150914_C01_IMRPhenomXPHM"
+    SCRIPT_DIR.parent / "GW150914" / "Data" / "GW150914_C01_IMRPhenomXPHM"
 )
 
 

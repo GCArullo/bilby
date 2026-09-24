@@ -3,7 +3,6 @@ from itertools import product
 
 import numpy as np
 from scipy.integrate import quad
-from scipy.special import gammaln
 
 from ...core.likelihood import Likelihood
 from ...core.prior import DeltaFunction, PriorDict
@@ -185,7 +184,8 @@ class StudentTGravitationalWaveTransient(
             noise_evidence_method
         )
 
-        if not self._valid_nu_values(self._fixed_nu): raise ValueError("All nu values must be positive and finite")
+        if not self._valid_nu_values(self._fixed_nu):
+            raise ValueError("All nu values must be positive and finite")
 
         if (
             self.time_marginalization
@@ -367,10 +367,13 @@ class StudentTGravitationalWaveTransient(
 
     def _validate_num_frequency_bands(self, num_frequency_bands):
 
-        try                                   : num_frequency_bands = int(num_frequency_bands)
-        except (TypeError, ValueError) as exc : raise ValueError("num_frequency_bands must be a positive integer") from exc
+        try:
+            num_frequency_bands = int(num_frequency_bands)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("num_frequency_bands must be a positive integer") from exc
 
-        if num_frequency_bands < 1:  raise ValueError("num_frequency_bands must be a positive integer")
+        if num_frequency_bands < 1:
+            raise ValueError("num_frequency_bands must be a positive integer")
 
         return num_frequency_bands
 
@@ -448,9 +451,12 @@ class StudentTGravitationalWaveTransient(
         values = np.asarray(nu, dtype=float)
 
         if not self.detector_dependent_noise:
-            if   values.ndim == 0                                             : values = np.repeat(values[None], self.num_frequency_bands)
-            elif values.ndim == 1 and len(values) == 1                        : values = np.repeat(values,       self.num_frequency_bands)
-            elif values.ndim != 1 or  len(values) != self.num_frequency_bands : raise ValueError("nu must be a scalar or an array with one entry per frequency band")
+            if values.ndim == 0:
+                values = np.repeat(values[None], self.num_frequency_bands)
+            elif values.ndim == 1 and len(values) == 1:
+                values = np.repeat(values, self.num_frequency_bands)
+            elif values.ndim != 1 or len(values) != self.num_frequency_bands:
+                raise ValueError("nu must be a scalar or an array with one entry per frequency band")
             return values.astype(float, copy=False)
 
         num_detectors = len(self.interferometers)
@@ -483,7 +489,8 @@ class StudentTGravitationalWaveTransient(
         return values.astype(float, copy=False)
 
     @staticmethod
-    def _valid_nu_values(values): return np.all(np.isfinite(values)) and np.all(values > 0)
+    def _valid_nu_values(values):
+        return np.all(np.isfinite(values)) and np.all(values > 0)
 
     def _create_frequency_band_edges(self):
         active_frequencies = [
@@ -624,10 +631,10 @@ class StudentTGravitationalWaveTransient(
                 continue
 
             band_scale2 = scale2[band_mask]
-            band_abs2   =   abs2[band_mask]
+            band_abs2 = abs2[band_mask]
 
             """
-            Multivariate Student's t with dimension d=2 (complex residuals in frequency domain) 
+            Multivariate Student's t with dimension d=2 (complex residuals in frequency domain)
 
             The full expression would be:
 
@@ -638,7 +645,7 @@ class StudentTGravitationalWaveTransient(
             but for d=2, gamma functions simplify to give const= - np.log(2 * np.pi * band_scale2)
 
             See: https://en.wikipedia.org/wiki/Multivariate_t-distribution
-            
+
             """
             const = - np.log(2 * np.pi * band_scale2)
 
@@ -957,7 +964,7 @@ class StudentTGravitationalWaveTransient(
             )
         return float(logl_reference + np.log(integral))
 
-    def _noise_log_evidence_by_nested_sampling(self, noise_priors):
+    def _noise_log_evidence_by_nested_sampling(self, noise_priors, sampler=None):
         from ...core.sampler import run_sampler
 
         return run_sampler(
@@ -979,8 +986,9 @@ class StudentTGravitationalWaveTransient(
             ),
             dlogz=self.dlogz_noise,
             print_progress=False,
-            check_point=False,
-            resume=False,
+            check_point=True,
+            resume=True,
+            exit_code=getattr(sampler, "exit_code", 130),
         )
 
     def log_likelihood(self, parameters):
@@ -1042,7 +1050,9 @@ class StudentTGravitationalWaveTransient(
                 "sampled noise parameters; falling back to nested sampling."
             )
 
-        noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
+        noise_result = self._noise_log_evidence_by_nested_sampling(
+            noise_priors, sampler=sampler
+        )
         return float(noise_result.log_evidence)
 
     def log_likelihood_ratio(self, parameters):

@@ -43,7 +43,6 @@ import bilby_pipe.data_analysis
 import bilby_pipe.main
 from bilby.core.utils import logger
 
-
 RESULT_NAME_REGEX = re.compile(r"(?P<label>.+)_result\.(?P<extension>[^.]+)$")
 PARALLEL_LABEL_REGEX = re.compile(r"^(?P<base>.+)_par\d+$")
 
@@ -189,12 +188,16 @@ def _coerce_command_arguments(arguments) -> list[str]:
 
 
 def _run_command(command: list[str], cwd: Path) -> None:
-    executable = shutil.which(command[0]) if not os.path.isabs(command[0]) else command[0]
+    executable = (
+        shutil.which(command[0]) if not os.path.isabs(command[0]) else command[0]
+    )
     if executable is None:
         raise FileNotFoundError(f"Unable to locate executable {command[0]!r}")
 
     full_command = [executable, *command[1:]]
-    logger.info("Running command: %s", " ".join(shlex.quote(part) for part in full_command))
+    logger.info(
+        "Running command: %s", " ".join(shlex.quote(part) for part in full_command)
+    )
     subprocess.run(full_command, cwd=str(cwd), check=True)
 
 
@@ -258,9 +261,7 @@ def _recover_analysis_result(
     result = bilby.core.result.read_in_result(filename=str(result_path))
     detectors = result.meta_data.get("likelihood", {}).get("interferometers", None)
     if not detectors:
-        raise RuntimeError(
-            f"Unable to determine detector list from {result_path}"
-        )
+        raise RuntimeError(f"Unable to determine detector list from {result_path}")
 
     analysis_input = _build_analysis_input(
         ini_path=ini_path,
@@ -280,9 +281,9 @@ def _recover_analysis_result(
     meta_data = copy.deepcopy(getattr(result, "meta_data", {}) or {})
     meta_data["likelihood"] = copy.deepcopy(likelihood.meta_data)
     meta_data["data_dump"] = str(data_dump_file.resolve())
-    needs_noise_evidence = bool(meta_data.get("noise_evidence_pending", False)) or not _is_finite(
-        getattr(result, "log_noise_evidence", None)
-    )
+    needs_noise_evidence = bool(
+        meta_data.get("noise_evidence_pending", False)
+    ) or not _is_finite(getattr(result, "log_noise_evidence", None))
     meta_data.pop("noise_evidence_pending", None)
     result.meta_data = meta_data
 
@@ -319,7 +320,11 @@ def _apply_max_samples(result, max_samples: int | None):
 
 
 def _apply_lightweight(result):
-    for key in ["_nested_samples", "log_likelihood_evaluations", "log_prior_evaluations"]:
+    for key in [
+        "_nested_samples",
+        "log_likelihood_evaluations",
+        "log_prior_evaluations",
+    ]:
         setattr(result, key, None)
     return result
 
@@ -359,7 +364,10 @@ def _run_plot_step(inputs, parent_result_path: Path, run_dir: Path) -> None:
 def _run_postprocessing(inputs, parent_result_path: Path, run_dir: Path) -> None:
     if inputs.single_postprocessing_executable:
         arguments = _coerce_command_arguments(inputs.single_postprocessing_arguments)
-        arguments = [argument.replace("$RESULT", str(parent_result_path)) for argument in arguments]
+        arguments = [
+            argument.replace("$RESULT", str(parent_result_path))
+            for argument in arguments
+        ]
         _run_command([inputs.single_postprocessing_executable, *arguments], cwd=run_dir)
 
     if inputs.postprocessing_executable:
@@ -376,17 +384,26 @@ def recover_run(
     skip_final_result: bool,
 ) -> None:
     run_dir = _resolve_run_dir(run_dir)
-    ini_path = (ini_path.expanduser().resolve() if ini_path else _find_unique_file(
-        run_dir, "*_config_complete.ini", "complete bilby_pipe config"
-    ))
+    ini_path = (
+        ini_path.expanduser().resolve()
+        if ini_path
+        else _find_unique_file(
+            run_dir, "*_config_complete.ini", "complete bilby_pipe config"
+        )
+    )
     data_dump_file = (
         data_dump_file.expanduser().resolve()
         if data_dump_file
-        else _find_unique_file(run_dir / "data", "*generation_data_dump.pickle", "generation data dump")
+        else _find_unique_file(
+            run_dir / "data", "*generation_data_dump.pickle", "generation data dump"
+        )
     )
 
     inputs = _load_main_inputs(run_dir=run_dir, ini_path=ini_path)
-    if inputs.likelihood_type != "bilby.gw.likelihood.StudentTGravitationalWaveTransient":
+    if (
+        inputs.likelihood_type
+        != "bilby.gw.likelihood.StudentTGravitationalWaveTransient"
+    ):
         raise RuntimeError(
             "This recovery script only supports "
             "bilby.gw.likelihood.StudentTGravitationalWaveTransient runs"
@@ -415,12 +432,14 @@ def recover_run(
         logger.info("Single analysis result found; merge step is not required")
     else:
         merge_label = _merge_label(recovered_paths)
-        merged = bilby.core.result.ResultList([str(path) for path in recovered_paths]).combine(
-            consistency_level="warning"
-        )
+        merged = bilby.core.result.ResultList(
+            [str(path) for path in recovered_paths]
+        ).combine(consistency_level="warning")
         merged.label = merge_label
         merged.outdir = str(result_dir)
-        merged.save_to_file(overwrite=True, extension=inputs.result_format, outdir=str(result_dir))
+        merged.save_to_file(
+            overwrite=True, extension=inputs.result_format, outdir=str(result_dir)
+        )
         parent_result_path = result_dir / f"{merge_label}_result.{inputs.result_format}"
         logger.info("Wrote merged result to %s", parent_result_path)
 
@@ -440,7 +459,9 @@ def recover_run(
     if skip_plots:
         logger.info("Skipping plots by command line request")
     else:
-        _run_plot_step(inputs=inputs, parent_result_path=parent_result_path, run_dir=run_dir)
+        _run_plot_step(
+            inputs=inputs, parent_result_path=parent_result_path, run_dir=run_dir
+        )
 
     if skip_postprocessing:
         logger.info("Skipping post-processing by command line request")

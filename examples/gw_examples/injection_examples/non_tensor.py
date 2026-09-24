@@ -101,7 +101,15 @@ ifos.inject_signal(
 )
 
 priors = bilby.core.prior.PriorDict()
-for key in ["psi", "geocent_time", "hrss", "Q", "frequency", "time_offset", "phase_offset"]:
+for key in [
+    "psi",
+    "geocent_time",
+    "hrss",
+    "Q",
+    "frequency",
+    "time_offset",
+    "phase_offset",
+]:
     priors[key] = injection_parameters[key]
 priors["ra"] = bilby.core.prior.Uniform(0, 2 * np.pi, latex_label="$\\alpha$")
 priors["dec"] = bilby.core.prior.Cosine(latex_label="$\\delta$")

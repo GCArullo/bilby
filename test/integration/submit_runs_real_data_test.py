@@ -47,7 +47,45 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.num_frequency_bands is None
     assert args.maxmcmc is None
     assert args.require_epnfs is False
+    assert args.sine_gaussian_hrss_prior == "loguniform"
     assert module.hypothesis_list(args) == ["gaussian"]
+
+
+def test_uniform_hrss_dry_run_keeps_cbc_and_uses_separate_output(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH), "--event", "GW231123", "--likelihood", "gaussian",
+            "--num-sine-gaussians", "2", "--sine-gaussian-mode", "coherent",
+            "--sine-gaussian-hrss-prior", "uniform", "--dry-run",
+            "--ini-dir", str(tmp_path / "ini"),
+            "--prior-dir", str(tmp_path / "prior"),
+            "--home-dir", str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    ini_path, = (tmp_path / "ini").glob("*.ini")
+    prior_path, = (tmp_path / "prior").glob("*.prior")
+    ini = ini_path.read_text()
+    prior = prior_path.read_text()
+    assert "_sg_coherent_2_hrss_uniform" in ini_path.name
+    assert "_sg_coherent_2_hrss_uniform" in prior_path.name
+    assert "bilby.gw.source.cbc_plus_sine_gaussians" in ini
+    assert "chirp_mass" in prior
+    assert "sine_gaussian_0_hrss = Uniform(" in prior
+    assert "sine_gaussian_1_hrss = bilby.gw.prior.ConditionalUpperBoundedUniform(" in prior
+    from bilby.gw.prior import BBHPriorDict
+
+    priors = BBHPriorDict(filename=str(prior_path))
+    samples = priors.sample_subset(
+        keys=["sine_gaussian_0_hrss", "sine_gaussian_1_hrss"], size=100
+    )
+    assert all(
+        samples["sine_gaussian_1_hrss"] <= samples["sine_gaussian_0_hrss"]
+    )
 
 
 @pytest.mark.parametrize("mode", ["coherent", "coherent-independent", "incoherent"])

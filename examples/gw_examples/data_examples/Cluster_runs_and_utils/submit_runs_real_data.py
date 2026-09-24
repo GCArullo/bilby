@@ -353,6 +353,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     add_sine_gaussian_arguments(parser)
     parser.add_argument(
+        "--sine-gaussian-hrss-prior",
+        choices=("loguniform", "uniform"),
+        default="loguniform",
+        help=(
+            "SG hrss prior: log-uniform (default) or linear uniform. "
+            "Later SGs retain the decreasing-hrss conditional ordering."
+        ),
+    )
+    parser.add_argument(
         "--sg-only",
         action="store_true",
         help=(
@@ -467,6 +476,7 @@ def render_prior(
     template_settings: dict[str, object],
     sine_gaussian_config,
     sg_only: bool = False,
+    sine_gaussian_hrss_prior: str = "loguniform",
 ) -> str:
     nu_prior_block = ""
     if include_nu_priors:
@@ -479,6 +489,7 @@ def render_prior(
         sine_gaussian_config,
         minimum_frequency=template_settings["minimum_frequency"],
         maximum_frequency=template_settings["maximum_frequency"],
+        hrss_prior=sine_gaussian_hrss_prior,
     )
     if sg_only:
         # Keep the reference epoch and sky priors: fixing these would change
@@ -818,10 +829,13 @@ def prepare_run(
     approximant_suffix: str = "",
     detector_suffix: str = "",
     sg_only: bool = False,
+    sine_gaussian_hrss_prior: str = "loguniform",
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
     )
+    if sine_gaussian_hrss_prior == "uniform" and sine_gaussian_config.enabled:
+        waveform_suffix += "_hrss_uniform"
     if sg_only:
         waveform_suffix = waveform_suffix.replace("_sg_", "_sg_only_", 1)
     if hypothesis == "student":
@@ -872,6 +886,7 @@ def prepare_run(
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             sg_only=sg_only,
+            sine_gaussian_hrss_prior=sine_gaussian_hrss_prior,
         ),
         encoding="utf-8",
     )
@@ -1004,6 +1019,10 @@ def main() -> int:
             raise ValueError("--waveform-approximant has no meaning with --sg-only")
         if args.sine_gaussian_mode == "coherent-independent":
             args.sine_gaussian_mode = "coherent"
+    if args.sine_gaussian_hrss_prior == "uniform" and args.num_sine_gaussians < 1:
+        raise ValueError(
+            "--sine-gaussian-hrss-prior uniform requires at least one sine-Gaussian"
+        )
 
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
@@ -1058,6 +1077,7 @@ def main() -> int:
                 approximant_suffix=approximant_suffix,
                 detector_suffix=detector_suffix,
                 sg_only=args.sg_only,
+                sine_gaussian_hrss_prior=args.sine_gaussian_hrss_prior,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

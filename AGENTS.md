@@ -20,3 +20,11 @@ GWTC output locations
 - When generating comparison pages between multiple runs for a GWTC event,
   store them under
   `/home/gregorio.carullo/public_html/GWTC_parametric_noise/Comparison_pages/<event>`.
+
+
+PESummary comparison pages
+--------------------------
+
+- Plot all parameters, including parameters that are not shared by every run,
+  unless explicitly instructed otherwise. Do not use
+  `--exclude_unshared_parameters` by default.

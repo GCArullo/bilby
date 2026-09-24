@@ -310,7 +310,11 @@ class GravitationalWaveTransient(Likelihood):
 
         d_inner_h = interferometer.inner_product(signal=signal)
         optimal_snr_squared = interferometer.optimal_snr_squared(signal=signal)
-        complex_matched_filter_snr = d_inner_h / (optimal_snr_squared**0.5)
+        xp = aac.array_namespace(signal)
+        # SG-only detector-local models can have exactly zero signal in an
+        # analysed detector. Its SNR is zero, not 0/0.
+        snr_norm = xp.where(optimal_snr_squared == 0, 1, optimal_snr_squared)**0.5
+        complex_matched_filter_snr = d_inner_h / snr_norm
 
         d_inner_h_array = None
         optimal_snr_squared_array = None

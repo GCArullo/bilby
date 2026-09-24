@@ -120,14 +120,14 @@ priors["a_1"] = bilby.core.prior.Uniform(0, 0.8, name="a_1")
 # priors["a_1"]    = injection_parameters["a_1"]
 
 priors["luminosity_distance"] = injection_parameters["luminosity_distance"]
-priors["mass_1"]              = injection_parameters["mass_1"]
-priors["mass_2"]              = injection_parameters["mass_2"]
-priors["a_2"]                 = injection_parameters["a_2"]
-priors["tilt_1"]              = injection_parameters["tilt_1"]
-priors["tilt_2"]              = injection_parameters["tilt_2"]
-priors["phi_12"]              = injection_parameters["phi_12"]
-priors["phi_jl"]              = injection_parameters["phi_jl"]
-priors["phase"]               = injection_parameters["phase"]
+priors["mass_1"] = injection_parameters["mass_1"]
+priors["mass_2"] = injection_parameters["mass_2"]
+priors["a_2"] = injection_parameters["a_2"]
+priors["tilt_1"] = injection_parameters["tilt_1"]
+priors["tilt_2"] = injection_parameters["tilt_2"]
+priors["phi_12"] = injection_parameters["phi_12"]
+priors["phi_jl"] = injection_parameters["phi_jl"]
+priors["phase"] = injection_parameters["phase"]
 
 # Initialise the likelihood by passing in the interferometer data (ifos) and
 # the waveoform generator, as well the priors.

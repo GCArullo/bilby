@@ -185,9 +185,9 @@ class TestInterferometer(unittest.TestCase):
         )
         self.assertTrue(np.allclose(response, expected))
 
-    def test_detector_local_mode_not_time_shifted(self):
+    def test_detector_local_mode_time_shifted_with_coherent_modes(self):
         self.ifo.antenna_response = mock.MagicMock(return_value=1)
-        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=1)
+        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=0.125)
         self.ifo.strain_data.start_time = 0
         plus = np.ones_like(self.ifo.frequency_array)
         detector_mode = 2 * np.ones_like(self.ifo.frequency_array)
@@ -196,16 +196,38 @@ class TestInterferometer(unittest.TestCase):
             parameters=dict(ra=0, dec=0, geocent_time=0, psi=0),
         )
         expected = (
-            plus
+            (plus + detector_mode)
             * self.ifo.frequency_mask
-            * np.exp(-1j * 2 * np.pi * self.ifo.frequency_array)
-            + detector_mode * self.ifo.frequency_mask
+            * np.exp(-1j * 2 * np.pi * 0.125 * self.ifo.frequency_array)
         )
         self.assertTrue(np.allclose(expected, response))
 
+    def test_detector_local_mode_uses_geocentric_shift_and_calibration(self):
+        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=0.125)
+        self.ifo.calibration_model = mock.MagicMock()
+        self.ifo.calibration_model.get_calibration_factor.return_value = 2 + 0.5j
+        self.ifo.strain_data.start_time = 0
+        frequencies = self.ifo.frequency_array
+        detector_mode = np.ones_like(frequencies)
+        response = self.ifo.get_detector_response(
+            waveform_polarizations={
+                "plus": np.zeros_like(frequencies),
+                "cross": np.zeros_like(frequencies),
+                self.ifo.name: detector_mode,
+            },
+            parameters=dict(ra=0, dec=0, geocent_time=0.5, psi=0),
+        )
+        expected = (
+            detector_mode
+            * self.ifo.frequency_mask
+            * np.exp(-1j * 2 * np.pi * 0.625 * frequencies)
+            * (2 + 0.5j)
+        )
+        np.testing.assert_allclose(response, expected)
+
     def test_foreign_detector_mode_ignored_in_coherent_sum(self):
         self.ifo.antenna_response = mock.MagicMock(return_value=1)
-        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=1)
+        self.ifo.time_delay_from_geocenter = mock.MagicMock(return_value=0.125)
         self.ifo.strain_data.start_time = 0
         plus = np.ones_like(self.ifo.frequency_array)
         this_detector_mode = 2 * np.ones_like(self.ifo.frequency_array)
@@ -219,10 +241,9 @@ class TestInterferometer(unittest.TestCase):
             parameters=dict(ra=0, dec=0, geocent_time=0, psi=0),
         )
         expected = (
-            plus
+            (plus + this_detector_mode)
             * self.ifo.frequency_mask
-            * np.exp(-1j * 2 * np.pi * self.ifo.frequency_array)
-            + this_detector_mode * self.ifo.frequency_mask
+            * np.exp(-1j * 2 * np.pi * 0.125 * self.ifo.frequency_array)
         )
         self.assertTrue(np.allclose(expected, response))
 
@@ -602,8 +623,8 @@ class TestInterferometerEquals(unittest.TestCase):
 class TestInterferometerAntennaPatternAgainstLAL(unittest.TestCase):
     def setUp(self):
         self.name = "name"
-        self.ifo_names = ['H1', 'L1', 'V1', 'K1', 'GEO600', 'ET']
-        self.lal_prefixes = {'H1': 'H1', 'L1': 'L1', 'V1': 'V1', 'K1': 'K1', 'GEO600': 'G1', 'ET': 'E1'}
+        self.ifo_names = ['H1', 'L1', 'V1', 'K1', 'G1', 'ET']
+        self.lal_prefixes = {'H1': 'H1', 'L1': 'L1', 'V1': 'V1', 'K1': 'K1', 'G1': 'G1', 'ET': 'E1'}
         self.polarizations = ['plus', 'cross', 'breathing', 'longitudinal', 'x', 'y']
         self.ifos = bilby.gw.detector.InterferometerList(self.ifo_names)
         self.gpstime = 1305303144

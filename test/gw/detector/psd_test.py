@@ -366,7 +366,7 @@ class TestStudentTNoiseRealisation(unittest.TestCase):
         self.assertGreater(np.mean(low_band_power), np.mean(high_band_power))
         self.assertGreater(np.quantile(low_band_power, 0.995), np.quantile(high_band_power, 0.995))
 
-    @mock.patch.object(bilby.core.utils.random.Generator, "rng")
+    @mock.patch.object(bilby.core.utils.random, "rng", create=True)
     def test_explicit_band_edges_are_extended_over_psd_support(self, rng):
         rng.normal.return_value = np.ones((2, 17))
         rng.chisquare.side_effect = lambda df, size: np.full(size, df)

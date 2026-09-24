@@ -1127,7 +1127,7 @@ class HyperbolicGravitationalWaveTransient(
             )
         return float(logl_reference + np.log(integral))
 
-    def _noise_log_evidence_by_nested_sampling(self, noise_priors):
+    def _noise_log_evidence_by_nested_sampling(self, noise_priors, sampler=None):
         from ...core.sampler import run_sampler
 
         return run_sampler(
@@ -1149,8 +1149,9 @@ class HyperbolicGravitationalWaveTransient(
             ),
             dlogz=self.dlogz_noise,
             print_progress=False,
-            check_point=False,
-            resume=False,
+            check_point=True,
+            resume=True,
+            exit_code=getattr(sampler, "exit_code", 130),
         )
 
     def log_likelihood(self, parameters):
@@ -1204,7 +1205,9 @@ class HyperbolicGravitationalWaveTransient(
                 "sampled noise parameters; falling back to nested sampling."
             )
 
-        noise_result = self._noise_log_evidence_by_nested_sampling(noise_priors)
+        noise_result = self._noise_log_evidence_by_nested_sampling(
+            noise_priors, sampler=sampler
+        )
         return float(noise_result.log_evidence)
 
     def log_likelihood_ratio(self, parameters):

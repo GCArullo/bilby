@@ -206,10 +206,8 @@ class TestPriorDict(unittest.TestCase):
         self.prior_set_from_dict["d"] = 5
         self.prior_set_from_dict["e"] = 7.3
         self.prior_set_from_dict.convert_floats_to_delta_functions()
-        expected_d = bilby.core.prior.DeltaFunction(peak=5)
-        expected_d.name = "d"
-        expected_e = bilby.core.prior.DeltaFunction(peak=7.3)
-        expected_e.name = "e"
+        expected_d = bilby.core.prior.DeltaFunction(peak=5, name="d")
+        expected_e = bilby.core.prior.DeltaFunction(peak=7.3, name="e")
         expected = dict(
             mass=bilby.core.prior.Uniform(
                 name="a", minimum=0, maximum=1, unit="kg", boundary=None

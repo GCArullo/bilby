@@ -439,6 +439,7 @@ def summarize_curve(
 ) -> dict[str, float]:
     def quantile(probability):
         return float(np.interp(probability, cumulative_density, nu_grid))
+
     return dict(
         map=float(nu_grid[np.argmax(posterior_density)]),
         mean=float(np.trapz(nu_grid * posterior_density, nu_grid)),

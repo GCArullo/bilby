@@ -32,9 +32,8 @@ run `make publish` on CIT, or `make publish CIT=false` elsewhere, in
 `Cluster_runs_and_utils/container_creation`; the launcher selects the current
 Git branch from `container_images.json`. The OSDF URL remains readable from
 worldwide IGWN execution sites even though its namespace contains `/cit/`.
-Use
-`--container-image URL` to override it or `--no-container` to use the existing
-node environment.
+Publish and register a new official image before production submissions. Use
+`--no-container` only for local testing.
 
 Generated configs enable file transfer and the worldwide IGWN pool with
 `transfer-files=True`, `osg=True`, and `desired-sites=None`. Do not pass

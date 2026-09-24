@@ -105,9 +105,8 @@ and reusing a name can cause different sites to run different image contents.
 ## Using in Condor jobs
 
 The real-data and injection launchers in the parent directory detect the current
-Git branch and use its URL from `container_images.json` by default. Override it
-with `--container-image URL`, or use the previous node environment with
-`--no-container`.
+Git branch and use its official URL from `container_images.json` by default.
+Use `--no-container` only for local testing.
 
 ### Updating the image used by the runbooks
 
@@ -129,8 +128,7 @@ with the full OSDF URL. For example:
 }
 ```
 
-Use `--container-image URL` instead when the new image is only a one-off
-override and should not become the runbook default.
+Publish and register a new official image before submitting production runs.
 
 Here is a minimal standalone Condor example:
 

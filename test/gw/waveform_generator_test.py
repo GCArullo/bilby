@@ -134,7 +134,6 @@ class TestWaveformGeneratorInstantiationWithoutOptionalParameters(unittest.TestC
         self.assertEqual(self.waveform_generator.duration, 1)
         self.assertEqual(aac.get_namespace(self.waveform_generator.duration), self.xp)
 
-
     def test_sampling_frequency(self):
         self.assertEqual(self.waveform_generator.sampling_frequency, 4096)
         self.assertEqual(aac.get_namespace(self.waveform_generator.sampling_frequency), self.xp)

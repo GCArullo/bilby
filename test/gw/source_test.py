@@ -250,7 +250,10 @@ class TestCBCPlusSineGaussians(unittest.TestCase):
         base_plus = np.ones_like(self.frequency_array, dtype=complex)
         base_cross = 1j * np.ones_like(self.frequency_array, dtype=complex)
 
-        with mock.patch("bilby.gw.source._base_lal_cbc_fd_waveform", return_value=dict(plus=base_plus, cross=base_cross)):
+        with mock.patch(
+            "bilby.gw.source._base_lal_cbc_fd_waveform",
+            return_value=dict(plus=base_plus, cross=base_cross),
+        ):
             h1_parameters = dict(self.sine_gaussian, hrss=2e-22, time_offset=0.005, phase_offset=0.1)
             l1_parameters = dict(self.sine_gaussian, hrss=4e-22, time_offset=-0.002, phase_offset=-0.3)
 
@@ -310,7 +313,10 @@ class TestCBCPlusSineGaussians(unittest.TestCase):
         base_plus = np.ones_like(self.frequency_array, dtype=complex)
         base_cross = 1j * np.ones_like(self.frequency_array, dtype=complex)
 
-        with mock.patch("bilby.gw.source._base_lal_cbc_fd_waveform", return_value=dict(plus=base_plus, cross=base_cross)):
+        with mock.patch(
+            "bilby.gw.source._base_lal_cbc_fd_waveform",
+            return_value=dict(plus=base_plus, cross=base_cross),
+        ):
             parameters = dict(self.sine_gaussian, polarization="linear")
 
             with self.assertRaisesRegex(ValueError, "do not support polarization"):

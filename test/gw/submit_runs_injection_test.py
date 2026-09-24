@@ -4,7 +4,6 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

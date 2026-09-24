@@ -1,0 +1,70 @@
+Bootstrap: docker
+From: ubuntu:26.04
+
+%environment
+    # set up environment for when using the container
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate bilby
+    export LAL_DATA_PATH="/opt/lalsimulation-data${LAL_DATA_PATH:+:${LAL_DATA_PATH}}"
+
+%post
+    # base os
+    apt-get update -y
+    apt-get install -y build-essential wget git git-lfs libgsl-dev swig
+    git lfs install --skip-repo
+
+    # install miniconda
+    wget -4 https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh -b -f -p /opt/conda
+    rm Miniconda3-latest-Linux-x86_64.sh
+
+    # install conda components - add the packages you need here
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate
+    conda config --env --add channels conda-forge
+    conda config --env --remove channels defaults
+    conda config --env --set channel_priority strict
+
+    conda create -y -n bilby python=3.12 numpy pip
+    conda activate bilby
+    conda update --all
+
+    # install Bilby and bilby-pipe from the selected refs
+    pip install "bilby[gw] @ git+https://github.com/GCArullo/bilby.git@{{ BILBY_BRANCH }}"
+    pip install "bilby_pipe @ git+https://git.ligo.org/gregorio.carullo/bilby-pipe-gc.git@{{ BILBY_PIPE_BRANCH }}"
+    pip install bilby_tgr
+
+    # pygsl_lite, a pyseobnr dependency, calls distutils' spawn() with
+    # positional arguments. setuptools 84.0.0 made them keyword-only, so the
+    # wheel build fails with 'spawn() takes 1 positional argument but 3 were
+    # given'. PIP_CONSTRAINT does not reach pip's isolated build environment,
+    # so build pygsl_lite against a pinned setuptools instead and supply its
+    # other build dependencies by hand. pyseobnr then finds it already
+    # installed. Drop this once pygsl_lite stops using the old signature.
+    pip install "setuptools<84" setuptools_scm wheel
+    pip install --no-build-isolation pygsl_lite
+    pip install pyseobnr
+
+    # install PESummary from the selected pesummary_GC ref
+    pip install "pesummary @ git+https://git.ligo.org/gregorio.carullo/pesummary_GC.git@{{ PESUMMARY_REF }}"
+
+    # LALSuite >= 7.25 ships surrogate data separately from the library.
+    # NRSur7dq4 analyses need the waveform surrogate and PESummary's NRSur_fits
+    # needs the remnant surrogate. The cluster copies under
+    # /scratch/lalsimulation exist on CIT nodes only, so carry both files in
+    # the image for jobs that land on OSG sites.
+    mkdir -p /opt/lalsimulation-data
+    GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 \
+        https://git.ligo.org/waveforms/software/lalsuite-waveform-data.git \
+        /tmp/lalsuite-waveform-data
+    cd /tmp/lalsuite-waveform-data
+    git lfs pull --include "waveform_data/NRSur7dq4_v1.0.h5,waveform_data/NRSur7dq4Remnant_v1.0.h5"
+    mv waveform_data/NRSur7dq4_v1.0.h5 \
+        waveform_data/NRSur7dq4Remnant_v1.0.h5 \
+        /opt/lalsimulation-data/
+    cd /
+    rm -rf /tmp/lalsuite-waveform-data
+
+    # cleanup
+    apt-get clean -y
+    pip cache purge

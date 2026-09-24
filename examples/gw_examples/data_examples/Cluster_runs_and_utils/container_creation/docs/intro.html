@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Technical overview of Apptainer, the IGWN Pool, and OSDF in the Bilby container workflow.">
+  <title>Bilby container deployment on IGWN</title>
+  <style>
+    :root {
+      --ink: #132238;
+      --muted: #526176;
+      --paper: #f7f4ee;
+      --surface: #fffdf9;
+      --line: #d8dcd9;
+      --navy: #10243d;
+      --blue: #176b87;
+      --teal: #16877d;
+      --gold: #d99b38;
+      --soft-blue: #e8f3f6;
+      --soft-gold: #fff3dd;
+      --shadow: none;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    a {
+      color: var(--blue);
+      text-underline-offset: 0.16em;
+    }
+
+    a:hover {
+      color: var(--teal);
+    }
+
+    code {
+      padding: 0.12rem 0.35rem;
+      border: 1px solid #d9e1e3;
+      border-radius: 0.32rem;
+      background: #edf3f4;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.86em;
+    }
+
+    .shell {
+      display: block;
+      overflow-x: auto;
+      margin: 1rem 0 0;
+      padding: 1rem 1.1rem;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 0.65rem;
+      color: #eaf6f5;
+      background: var(--navy);
+      white-space: pre;
+    }
+
+    .shell::before {
+      content: "$ ";
+      color: #70d1c6;
+      font-weight: 700;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 2.4rem));
+      margin: 0 auto;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 3rem 0 2.8rem;
+      color: #f8fbff;
+      background: var(--navy);
+    }
+
+    .eyebrow {
+      margin: 0 0 1rem;
+      color: #79d2c7;
+      font-size: 0.82rem;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.15;
+      text-wrap: balance;
+    }
+
+    h1 {
+      max-width: 780px;
+      margin: 0;
+      font-family: inherit;
+      font-size: clamp(2.25rem, 5vw, 3.6rem);
+      font-weight: 650;
+      letter-spacing: -0.025em;
+    }
+
+    .hero-copy {
+      max-width: 700px;
+      margin: 1.5rem 0 0;
+      color: #cbd8e5;
+      font-size: clamp(1rem, 2vw, 1.18rem);
+    }
+
+    .repo-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin-top: 2rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      color: #dce7ef;
+      background: rgba(255, 255, 255, 0.06);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.82rem;
+    }
+
+    .repo-label::before {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: #62c7bc;
+      content: "";
+    }
+
+    main {
+      padding: 4.5rem 0 5rem;
+    }
+
+    section + section {
+      margin-top: 5rem;
+    }
+
+    h2 {
+      margin: 0 0 1rem;
+      font-family: inherit;
+      font-size: clamp(1.7rem, 3.5vw, 2.35rem);
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .mental-model {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      overflow: hidden;
+      margin-top: 2rem;
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      background: var(--line);
+      box-shadow: var(--shadow);
+    }
+
+    .model-step {
+      position: relative;
+      min-height: 14rem;
+      padding: 1.6rem;
+      background: var(--surface);
+    }
+
+    .model-step:not(:last-child)::after {
+      position: absolute;
+      z-index: 2;
+      top: 50%;
+      right: -0.85rem;
+      display: grid;
+      width: 1.7rem;
+      height: 1.7rem;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: var(--blue);
+      background: var(--surface);
+      content: "→";
+      font-weight: 800;
+      transform: translateY(-50%);
+    }
+
+    .step-number {
+      display: inline-grid;
+      width: 2.4rem;
+      height: 2.4rem;
+      margin-bottom: 1.1rem;
+      place-items: center;
+      border-radius: 0.65rem;
+      color: white;
+      background: var(--blue);
+      font-size: 0.82rem;
+      font-weight: 750;
+    }
+
+    .model-step:nth-child(2) .step-number {
+      background: var(--teal);
+    }
+
+    .model-step:nth-child(3) .step-number {
+      color: var(--navy);
+      background: var(--gold);
+    }
+
+    .model-step p {
+      margin: 0.6rem 0 0;
+      color: var(--muted);
+    }
+
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.1rem;
+      margin-top: 2rem;
+    }
+
+    .concept-card {
+      padding: 1.5rem;
+      border: 1px solid var(--line);
+      border-radius: 0.9rem;
+      background: rgba(255, 253, 249, 0.74);
+    }
+
+    .concept-card strong {
+      display: block;
+      margin-bottom: 0.45rem;
+      color: var(--blue);
+      font-size: 0.86rem;
+      letter-spacing: 0.02em;
+    }
+
+    .concept-card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .detail {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 3rem;
+      align-items: start;
+    }
+
+    .detail + .detail {
+      padding-top: 4.5rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .detail-body > p:first-child {
+      margin-top: 0;
+      font-size: 1.12rem;
+    }
+
+    .detail-body p {
+      color: var(--muted);
+    }
+
+    .fact-list {
+      display: grid;
+      gap: 0.75rem;
+      margin: 1.3rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .fact-list li {
+      position: relative;
+      padding-left: 1.5rem;
+      color: var(--ink);
+    }
+
+    .fact-list li::before {
+      position: absolute;
+      top: 0.64rem;
+      left: 0.1rem;
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 50%;
+      background: var(--teal);
+      content: "";
+    }
+
+    .callout {
+      margin-top: 1.4rem;
+      padding: 1.15rem 1.25rem;
+      border-left: 4px solid var(--gold);
+      border-radius: 0 0.75rem 0.75rem 0;
+      background: var(--soft-gold);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+
+    .callout p {
+      margin: 0;
+      color: #5d4b31;
+    }
+
+    .timeline {
+      margin: 2.2rem 0 0;
+      padding: 0;
+      counter-reset: lifecycle;
+      list-style: none;
+    }
+
+    .timeline li {
+      position: relative;
+      min-height: 5.5rem;
+      margin-left: 1.25rem;
+      padding: 0 0 2rem 3.4rem;
+      border-left: 1px solid #bdc9c8;
+      counter-increment: lifecycle;
+    }
+
+    .timeline li:last-child {
+      border-left-color: transparent;
+    }
+
+    .timeline li::before {
+      position: absolute;
+      top: -0.25rem;
+      left: -1.25rem;
+      display: grid;
+      width: 2.45rem;
+      height: 2.45rem;
+      place-items: center;
+      border: 4px solid var(--paper);
+      border-radius: 50%;
+      color: white;
+      background: var(--teal);
+      content: counter(lifecycle, decimal-leading-zero);
+      font-size: 0.74rem;
+      font-weight: 800;
+    }
+
+    .timeline h3 {
+      margin-bottom: 0.25rem;
+    }
+
+    .timeline p {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .comparison {
+      overflow-x: auto;
+      margin-top: 2rem;
+      border: 1px solid var(--line);
+      border-radius: 0.9rem;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th,
+    td {
+      padding: 1rem 1.1rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    th {
+      color: #f5f8fa;
+      background: var(--navy);
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    td:first-child {
+      font-weight: 750;
+    }
+
+    .failure-note {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      padding: 2rem;
+      border: 1px solid #bed7da;
+      border-radius: 1rem;
+      background: var(--soft-blue);
+    }
+
+    .failure-note h2 {
+      margin-bottom: 0.6rem;
+      font-size: 2rem;
+    }
+
+    .failure-note p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .source-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem 2rem;
+      margin: 1.5rem 0 0;
+      padding-left: 1.2rem;
+    }
+
+    .source-list li {
+      padding-left: 0.25rem;
+    }
+
+    footer {
+      padding: 2.5rem 0;
+      color: #aebdca;
+      background: var(--navy);
+      font-size: 0.9rem;
+    }
+
+    footer p {
+      margin: 0;
+    }
+
+    @media (max-width: 800px) {
+      .hero {
+        padding: 4.2rem 0;
+      }
+
+      .mental-model,
+      .concept-grid,
+      .detail,
+      .failure-note,
+      .source-list {
+        grid-template-columns: 1fr;
+      }
+
+      .model-step {
+        min-height: auto;
+      }
+
+      .model-step:not(:last-child)::after {
+        top: auto;
+        right: 50%;
+        bottom: -0.85rem;
+        content: "↓";
+        transform: translateX(50%);
+      }
+
+      .detail {
+        gap: 1rem;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+        font-size: 11pt;
+      }
+
+      .hero {
+        padding: 2rem 0;
+      }
+
+      main {
+        padding: 2rem 0;
+      }
+
+      section + section {
+        margin-top: 2.5rem;
+      }
+
+      .mental-model {
+        box-shadow: none;
+      }
+
+      a {
+        color: inherit;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="page">
+      <p class="eyebrow">Technical overview</p>
+      <h1>Bilby container deployment on IGWN</h1>
+      <p class="hero-copy">
+        The roles of Apptainer, the IGWN Pool, and OSDF in the workflow implemented by this repository.
+      </p>
+      <span class="repo-label">bilby_container</span>
+    </div>
+  </header>
+
+  <main class="page">
+    <section aria-labelledby="model-title">
+      <p class="eyebrow">Overview</p>
+      <h2 id="model-title">Components and responsibilities</h2>
+      <p class="lead">
+        The repository packages the software, publishes the package for distributed access, and uses HTCondor to select an execution resource.
+      </p>
+
+      <div class="mental-model" aria-label="Container workflow from Apptainer through OSDF to the IGWN Pool">
+        <article class="model-step">
+          <span class="step-number">01</span>
+          <h3>Container build</h3>
+          <p>Builds Bilby, Python, libraries, and an Ubuntu user environment into a portable <code>.sif</code> image.</p>
+        </article>
+        <article class="model-step">
+          <span class="step-number">02</span>
+          <h3>Image distribution</h3>
+          <p>Publishes the image under a global URL and serves it through a network of origins and caches.</p>
+        </article>
+        <article class="model-step">
+          <span class="step-number">03</span>
+          <h3>Job execution</h3>
+          <p>HTCondor selects a suitable execution machine from resources contributed by multiple institutions.</p>
+        </article>
+      </div>
+
+      <div class="concept-grid">
+        <article class="concept-card">
+          <strong>Compute environment</strong>
+          <p>Apptainer answers: “Which software and libraries does the job see?”</p>
+        </article>
+        <article class="concept-card">
+          <strong>Data movement</strong>
+          <p>OSDF answers: “How does the image reach a remote execution site efficiently?”</p>
+        </article>
+        <article class="concept-card">
+          <strong>Resource scheduling</strong>
+          <p>The IGWN Pool answers: “Which available machine should execute the job?”</p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-label="Detailed concepts">
+      <article class="detail">
+        <div>
+          <p class="eyebrow">Concept 01</p>
+          <h2>Apptainer</h2>
+        </div>
+        <div class="detail-body">
+          <p>
+            Apptainer is a container platform designed for scientific and high-performance computing. It provides a controlled user-space environment without requiring Bilby and all of its dependencies to be installed separately at every computing site.
+          </p>
+          <ul class="fact-list">
+            <li>A definition file is a recipe; in this repository that recipe is <code>image.def</code>.</li>
+            <li>The normal output is a read-only Singularity Image Format file, or <code>.sif</code>.</li>
+            <li>The process normally keeps the caller’s user identity, which suits shared clusters.</li>
+            <li>The container shares the host’s Linux kernel; it is not a complete virtual machine.</li>
+          </ul>
+          <code class="shell">make publish BILBY_BRANCH=feature/bilby BILBY_PIPE_BRANCH=feature/bilby-pipe</code>
+          <div class="callout">
+            <strong>Distinction from a virtual machine</strong>
+            <p>A VM includes its own kernel. An Apptainer image supplies the user environment but relies on a Linux host kernel.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="detail">
+        <div>
+          <p class="eyebrow">Concept 02</p>
+          <h2>The IGWN Pool</h2>
+        </div>
+        <div class="detail-body">
+          <p>
+            The International Gravitational-Wave Observatory Network Pool is a distributed collection of computing resources. It is presented through HTCondor as a common high-throughput computing pool, even though its machines are hosted at multiple institutions.
+          </p>
+          <ul class="fact-list">
+            <li>An <strong>access point</strong> accepts the job submission.</li>
+            <li>HTCondor matches the job’s requested CPUs, memory, disk, and other requirements to an available resource.</li>
+            <li>An <strong>execution point</strong> runs the job, potentially at a different institution.</li>
+            <li>Input files travel to the execution point and requested outputs return after execution.</li>
+          </ul>
+          <div class="callout">
+            <strong>Distributed resources</strong>
+            <p>The pool is an aggregation of resources. Two jobs from the same workflow may run at different sites, so they cannot assume a site-specific Bilby installation or shared local filesystem.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="detail">
+        <div>
+          <p class="eyebrow">Concept 03</p>
+          <h2>OSDF</h2>
+        </div>
+        <div class="detail-body">
+          <p>
+            The Open Science Data Federation is a distributed data-delivery system. It exposes files through a global namespace and uses geographically distributed caches to avoid repeatedly transferring the same large object from its authoritative source.
+          </p>
+          <ul class="fact-list">
+            <li>An <strong>origin</strong> connects authoritative storage to the federation.</li>
+            <li>A <strong>cache</strong> holds temporary copies closer to consumers.</li>
+            <li>On CIT, a direct copy is attempted first; Pelican is the fallback if the staging filesystem is not writable.</li>
+            <li>Outside CIT, <strong>Pelican</strong> uploads the object using a scoped <strong>SciToken</strong>.</li>
+          </ul>
+          <p>See the <a href="https://computing.docs.ligo.org/guide/htcondor/data/#osdf-staging">OSDF staging guide</a> for the supported upload and job-access workflow.</p>
+          <code class="shell">make publish          # on CIT<br>make publish CIT=false # outside CIT</code>
+          <div class="callout">
+            <strong>Data federation rather than shared storage</strong>
+            <p>The OSDF URL names an object in a federation. A job may receive it from a nearby cache rather than directly from the origin where it was published.</p>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section aria-labelledby="lifecycle-title">
+      <p class="eyebrow">Workflow</p>
+      <h2 id="lifecycle-title">Bilby job lifecycle</h2>
+      <ol class="timeline">
+        <li>
+          <h3>Describe the environment</h3>
+          <p><code>image.def</code> starts from Ubuntu and installs Miniconda, the selected Bilby and bilby-pipe sources, bilby_tgr, and <code>pesummary_GC</code>. Bilby defaults to <code>sine_gaussians_addition</code>, bilby-pipe follows the selected Bilby ref unless overridden with <code>BILBY_PIPE_BRANCH</code>, and PESummary defaults to <code>master</code> unless overridden with <code>PESUMMARY_REF</code>.</p>
+        </li>
+        <li>
+          <h3>Build a SIF image</h3>
+          <p>Apptainer executes the definition and creates one portable image containing the required user-space software.</p>
+        </li>
+        <li>
+          <h3>Give the build a distinct name</h3>
+          <p>The Makefile combines all three package versions with a seconds-resolution UTC timestamp. Branch builds include the first 12 characters of the exact Bilby and bilby-pipe commits, and every build includes the exact <code>pesummary_GC</code> commit, giving <code>bilby-&lt;version&gt;-&lt;commit&gt;-bilby_pipe-&lt;version&gt;-&lt;commit&gt;-pesummary_GC-&lt;version&gt;-&lt;commit&gt;-&lt;timestamp&gt;.sif</code>.</p>
+        </li>
+        <li>
+          <h3>Publish the image</h3>
+          <p>On CIT, the image is copied directly to the user’s local OSDF staging directory. If that fails, or when <code>CIT=false</code> is selected, a scoped SciToken and Pelican publish the same built image remotely. The URL is recorded under the selected Bilby branch in <code>container_images.json</code>.</p>
+        </li>
+        <li>
+          <h3>Submit the job</h3>
+          <p>The launcher detects the current Git branch, reads its OSDF URL from <code>container_images.json</code>, and writes that URL as <code>container_image</code> in the HTCondor description.</p>
+        </li>
+        <li>
+          <h3>Stage, execute, return</h3>
+          <p>HTCondor selects an execution point, obtains the image through OSDF, starts Bilby inside Apptainer, and transfers the declared outputs.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="distinctions-title">
+      <p class="eyebrow">Role separation</p>
+      <h2 id="distinctions-title">Component comparison</h2>
+      <div class="comparison">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">System</th>
+              <th scope="col">Primary role</th>
+              <th scope="col">It does not provide</th>
+              <th scope="col">Repository touchpoint</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Apptainer</td>
+              <td>Portable software environment</td>
+              <td>Compute capacity or remote storage</td>
+              <td><code>image.def</code> and <code>make publish</code></td>
+            </tr>
+            <tr>
+              <td>IGWN Pool</td>
+              <td>Distributed execution resources</td>
+              <td>A fixed software installation at every site</td>
+              <td>HTCondor submit description in the README</td>
+            </tr>
+            <tr>
+              <td>OSDF</td>
+              <td>Federated file distribution and caching</td>
+              <td>CPUs on which to run the analysis</td>
+              <td><code>make publish</code> and <code>osdf:///...</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="failure-note" aria-labelledby="failure-title">
+      <div>
+        <p class="eyebrow">Diagnostic note</p>
+        <h2 id="failure-title"><code>apptainer: No such file or directory</code></h2>
+      </div>
+      <div>
+        <p>
+          Make found the correct build rule, but the shell could not find an <code>apptainer</code> executable. On macOS, installing a command alone is insufficient because Apptainer requires Linux kernel facilities. Build on a suitable Linux host, or run Apptainer inside a Linux VM such as Lima. For an image intended for common x86-64 execution sites, an x86-64 Linux build host is the least surprising choice.
+        </p>
+      </div>
+    </section>
+
+    <section aria-labelledby="sources-title">
+      <p class="eyebrow">References</p>
+      <h2 id="sources-title">Official documentation</h2>
+      <ul class="source-list">
+        <li><a href="https://apptainer.org/docs/user/latest/">Apptainer User Guide</a></li>
+        <li><a href="https://apptainer.org/docs/admin/main/installation.html">Installing Apptainer</a></li>
+        <li><a href="https://computing.docs.ligo.org/guide/htcondor/access/">Accessing the IGWN Computing Grid</a></li>
+        <li><a href="https://computing.docs.ligo.org/guide/data/staging/">IGWN user-curated data staging</a></li>
+        <li><a href="https://osg-htc.org/docs/data/osdf/overview/">Open Science Data Federation overview</a></li>
+        <li><a href="https://docs.osdf.osg-htc.org/pelican-client/">Pelican client and OSDF URLs</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="page">
+      <p>Technical note for the <code>bilby_container</code> repository</p>
+    </div>
+  </footer>
+</body>
+</html>

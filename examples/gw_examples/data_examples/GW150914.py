@@ -38,11 +38,11 @@ ifo_list = bilby.gw.detector.InterferometerList([])
 for det in detectors:
     logger.info("Downloading analysis data for ifo {}".format(det))
     ifo = bilby.gw.detector.get_empty_interferometer(det)
-    data = TimeSeries.fetch_open_data(det, start_time, end_time)
+    data = TimeSeries.fetch_open_data(det, start_time, end_time, cache=True)
     ifo.strain_data.set_from_gwpy_timeseries(data)
 
     logger.info("Downloading psd data for ifo {}".format(det))
-    psd_data = TimeSeries.fetch_open_data(det, psd_start_time, psd_end_time)
+    psd_data = TimeSeries.fetch_open_data(det, psd_start_time, psd_end_time, cache=True)
     psd_alpha = 2 * roll_off / duration
     psd = psd_data.psd(
         fftlength=duration, overlap=0, window=("tukey", psd_alpha), method="median"

@@ -39,6 +39,33 @@ def load_submit_runs_injection_module():
         sys.path.pop(0)
 
 
+def stub_injection_staging(monkeypatch, module, tmp_path):
+    monkeypatch.setattr(
+        module, "resolve_posterior_path", lambda args: tmp_path / "posterior.h5"
+    )
+
+    def stage_bundle(base_dir, args, template_settings, posterior_path, config):
+        detectors = template_settings["detectors"]
+        stage_dir = base_dir / "staged"
+        return dict(
+            staged_label_prefix="test_injection",
+            stage_dir=stage_dir,
+            metadata_path=stage_dir / "metadata.json",
+            data_paths={
+                detector: str(stage_dir / f"{detector}.hdf5") for detector in detectors
+            },
+            psd_paths={
+                detector: str(stage_dir / f"{detector}_psd.dat")
+                for detector in detectors
+            },
+            likelihood_nu=8.0,
+            detector_dependent_noise=False,
+            injection_parameters={},
+        )
+
+    monkeypatch.setattr(module, "stage_injection_bundle", stage_bundle)
+
+
 def test_num_frequency_bands_defaults_to_one():
     module = load_submit_runs_injection_module()
     parser = module.build_parser()
@@ -376,6 +403,7 @@ def test_hyperbolic_accepts_detector_dependent_noise():
 def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_path):
     module = load_submit_runs_injection_module()
     base_dir = tmp_path / "runs"
+    stub_injection_staging(monkeypatch, module, tmp_path)
 
     monkeypatch.setattr(
         sys,
@@ -510,6 +538,7 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
 ):
     module = load_submit_runs_injection_module()
     base_dir = tmp_path / "runs"
+    stub_injection_staging(monkeypatch, module, tmp_path)
 
     monkeypatch.setattr(
         sys,
@@ -653,6 +682,7 @@ def test_main_student_multi_band_writes_single_gaussian_companion(
 ):
     module = load_submit_runs_injection_module()
     base_dir = tmp_path / "runs"
+    stub_injection_staging(monkeypatch, module, tmp_path)
 
     monkeypatch.setattr(
         sys,

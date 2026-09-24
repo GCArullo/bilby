@@ -131,6 +131,7 @@ class TestSampler(unittest.TestCase):
         self.sampler.likelihood.log_likelihood = log_likelihood
         _ = self.sampler.log_likelihood([0])
         self.assertDictEqual(observed["parameters"], expected_dict)
+
     def test_get_random_draw(self):
         self.assertEqual(self.sampler.get_random_draw_from_prior(), np.array([0.5]))
 

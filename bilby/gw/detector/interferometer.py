@@ -401,8 +401,8 @@ class Interferometer(object):
 
         xp = array_module(signal_ifo)
 
-        signal_ifo = signal_ifo * xp.exp(-1j * 2 * np.pi * dt * frequencies)
         signal_ifo = signal_ifo + detector_signal
+        signal_ifo = signal_ifo * xp.exp(-1j * 2 * np.pi * dt * frequencies)
 
         if independent_modes:
             independent_ra = parameters['independent_sine_gaussian_ra']

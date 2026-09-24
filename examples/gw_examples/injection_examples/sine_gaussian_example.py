@@ -14,7 +14,10 @@ seed(123)
 duration = 1
 sampling_frequency = 512
 
-f_min_bp, f_max_bp = 20, (sampling_frequency/2.) * 0.5  # bandpass frequencies for plotting
+f_min_bp, f_max_bp = (
+    20,
+    (sampling_frequency / 2.0) * 0.5,
+)  # bandpass frequencies for plotting
 t_start_plot, t_end_plot = -0.1, 0.1
 
 # Specify the output directory and the name of the simulation.
@@ -116,4 +119,6 @@ result = bilby.core.sampler.run_sampler(
 result.plot_corner()
 
 # Plot the reconstructed waveform posterior in the time and frequency domains
-result.plot_waveform_posterior(interferometers=ifos, start_time=t_start_plot, end_time=t_end_plot)
+result.plot_waveform_posterior(
+    interferometers=ifos, start_time=t_start_plot, end_time=t_end_plot
+)

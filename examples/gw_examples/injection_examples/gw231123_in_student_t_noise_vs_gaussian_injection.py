@@ -36,7 +36,6 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import bilby
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 POSTERIOR_PATH_CANDIDATES = (
     SCRIPT_DIR / "LVK_posterior" / "posterior_samples.h5",
@@ -139,8 +138,7 @@ def resolve_posterior_path() -> Path:
             return posterior_path
     checked_paths = "\n".join(str(path) for path in POSTERIOR_PATH_CANDIDATES)
     raise FileNotFoundError(
-        "Could not locate GW231123 posterior_samples.h5. Checked:\n"
-        f"{checked_paths}"
+        "Could not locate GW231123 posterior_samples.h5. Checked:\n" f"{checked_paths}"
     )
 
 
@@ -159,14 +157,14 @@ def load_maximum_likelihood_injection(posterior_path: Path) -> tuple[dict, float
 def load_psds(posterior_path: Path) -> dict[str, tuple]:
     with h5py.File(posterior_path, "r") as posterior_file:
         return {
-            detector: tuple(
-                posterior_file[f"C00:NRSur7dq4/psds/{detector}"][:].T
-            )
+            detector: tuple(posterior_file[f"C00:NRSur7dq4/psds/{detector}"][:].T)
             for detector in TEMPLATE_SETTINGS["detectors"]
         }
 
 
-def build_waveform_generator(waveform_approximant: str) -> bilby.gw.LALCBCWaveformGenerator:
+def build_waveform_generator(
+    waveform_approximant: str,
+) -> bilby.gw.LALCBCWaveformGenerator:
     return bilby.gw.LALCBCWaveformGenerator(
         duration=TEMPLATE_SETTINGS["duration"],
         sampling_frequency=TEMPLATE_SETTINGS["sampling_frequency"],
@@ -240,7 +238,9 @@ def compute_network_optimal_snr(
     waveform_generator: bilby.gw.LALCBCWaveformGenerator,
     injection_parameters: dict,
 ) -> float:
-    waveform_polarizations = waveform_generator.frequency_domain_strain(injection_parameters)
+    waveform_polarizations = waveform_generator.frequency_domain_strain(
+        injection_parameters
+    )
     optimal_snr_squared = 0.0
     for interferometer in interferometers:
         signal = interferometer.get_detector_response(
@@ -272,8 +272,10 @@ def build_priors(
         )
     else:
         priors["luminosity_distance"] = bilby.core.prior.Uniform(
-            injection_parameters["luminosity_distance"] * (1.0 - distance_prior_fraction),
-            injection_parameters["luminosity_distance"] * (1.0 + distance_prior_fraction),
+            injection_parameters["luminosity_distance"]
+            * (1.0 - distance_prior_fraction),
+            injection_parameters["luminosity_distance"]
+            * (1.0 + distance_prior_fraction),
             name="luminosity_distance",
         )
 
@@ -335,11 +337,7 @@ def gaussian_component_pdf(x: np.ndarray) -> np.ndarray:
 def student_t_component_pdf(x: np.ndarray, nu: float) -> np.ndarray:
     if nu <= 0:
         raise ValueError("nu must be positive")
-    log_norm = (
-        gammaln((nu + 1.0) / 2.0)
-        - gammaln(nu / 2.0)
-        - 0.5 * np.log(nu * np.pi)
-    )
+    log_norm = gammaln((nu + 1.0) / 2.0) - gammaln(nu / 2.0) - 0.5 * np.log(nu * np.pi)
     return np.exp(log_norm - 0.5 * (nu + 1.0) * np.log1p((x**2) / nu))
 
 
@@ -474,9 +472,8 @@ def plot_waveform_reconstructions(
         frequency_mask = interferometer.frequency_mask
         plot_frequencies = interferometer.frequency_array[frequency_mask]
 
-        time_mask = (
-            (interferometer.time_array >= plot_start)
-            & (interferometer.time_array <= plot_end)
+        time_mask = (interferometer.time_array >= plot_start) & (
+            interferometer.time_array <= plot_end
         )
         plot_times = interferometer.time_array[time_mask] - geocent_time
 
@@ -539,8 +536,12 @@ def plot_waveform_reconstructions(
             figsize=(12, 8),
             gridspec_kw=dict(height_ratios=[1.4, 1.0]),
         )
-        axes[0].loglog(plot_frequencies, data_asd, color="#999999", alpha=0.7, label="Data")
-        axes[0].loglog(plot_frequencies, fd_median, color="#1f77b4", label="Median reconstruction")
+        axes[0].loglog(
+            plot_frequencies, data_asd, color="#999999", alpha=0.7, label="Data"
+        )
+        axes[0].loglog(
+            plot_frequencies, fd_median, color="#1f77b4", label="Median reconstruction"
+        )
         axes[0].fill_between(
             plot_frequencies,
             fd_lower,
@@ -562,8 +563,12 @@ def plot_waveform_reconstructions(
         axes[0].set_ylabel(r"ASD [Hz$^{-1/2}$]")
         axes[0].legend(loc="lower left", ncol=2)
 
-        axes[1].plot(plot_times, data_whitened_td, color="#999999", alpha=0.7, label="Data")
-        axes[1].plot(plot_times, td_median, color="#1f77b4", label="Median reconstruction")
+        axes[1].plot(
+            plot_times, data_whitened_td, color="#999999", alpha=0.7, label="Data"
+        )
+        axes[1].plot(
+            plot_times, td_median, color="#1f77b4", label="Median reconstruction"
+        )
         axes[1].fill_between(
             plot_times,
             td_lower,
@@ -584,7 +589,9 @@ def plot_waveform_reconstructions(
         axes[1].set_xlim(plot_times[0], plot_times[-1])
 
         fig.suptitle(f"{result.label}: {interferometer.name}")
-        figure_path = Path(result.outdir) / f"{result.label}_{interferometer.name}_waveform.png"
+        figure_path = (
+            Path(result.outdir) / f"{result.label}_{interferometer.name}_waveform.png"
+        )
         fig.tight_layout()
         fig.savefig(figure_path, dpi=200)
         plt.close(fig)
@@ -768,9 +775,7 @@ def run_inference(
         100.0 * distance_bias_fraction,
     )
     if "nu_median" in summary:
-        bilby.core.utils.logger.info(
-            "Student median nu = %.6f", summary["nu_median"]
-        )
+        bilby.core.utils.logger.info("Student median nu = %.6f", summary["nu_median"])
 
     return result, summary
 
@@ -827,7 +832,9 @@ def write_summary(
         student=student_summary,
     )
     summary_path = outdir / "summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
+    )
     return summary_path
 
 
@@ -858,9 +865,11 @@ def main() -> None:
     bilby.core.utils.check_directory_exists_and_if_not_mkdir(str(outdir))
 
     posterior_path = resolve_posterior_path()
-    base_injection_parameters, maxl_log_likelihood, maxl_index = (
-        load_maximum_likelihood_injection(posterior_path)
-    )
+    (
+        base_injection_parameters,
+        maxl_log_likelihood,
+        maxl_index,
+    ) = load_maximum_likelihood_injection(posterior_path)
     bilby.core.utils.logger.info(
         "Using GW231123 NRSur7dq4 maximum-likelihood sample %d with LVK log-likelihood %.6f from %s",
         maxl_index,
@@ -877,9 +886,7 @@ def main() -> None:
         injection_parameters = build_injection_parameters(
             base_injection_parameters, distance_scale
         )
-        interferometers = build_interferometers(
-            psds, nu_injection=args.nu_injection
-        )
+        interferometers = build_interferometers(psds, nu_injection=args.nu_injection)
         interferometers.inject_signal(
             parameters=injection_parameters,
             waveform_generator=waveform_generator,
@@ -930,13 +937,10 @@ def main() -> None:
             student_summary=student_summary,
         )
 
-        if (
-            not args.fix_distance
-            and is_bias_visible(
+        if not args.fix_distance and is_bias_visible(
             gaussian_summary,
             student_summary,
             required_improvement=args.required_bias_improvement,
-            )
         ):
             bilby.core.utils.logger.info(
                 "Student-t outperformed Gaussian at distance scale %.3f",

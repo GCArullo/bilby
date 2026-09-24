@@ -11,7 +11,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-
 URL = "https://dcc.ligo.org/public/0168/P2000158/004/GW190521_posterior_samples.h5"
 EXPECTED_MD5 = "8af9bce0b55b5ebed7853dbfaa69a2d5"
 ROOT = Path(__file__).resolve().parent

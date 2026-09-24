@@ -10,7 +10,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-
 ADJUSTMENT_ATTR = "gaussian_noise_log_likelihood_normalisation"
 
 
@@ -18,7 +17,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="+", help="Run directories or result HDF5 files")
     parser.add_argument("--apply", action="store_true", help="Modify files in place")
-    parser.add_argument("--force", action="store_true", help="Reapply even if already marked")
+    parser.add_argument(
+        "--force", action="store_true", help="Reapply even if already marked"
+    )
     return parser.parse_args()
 
 
@@ -38,7 +39,10 @@ def run_dir_from_result(path):
 def is_gaussian_run(run_dir):
     config_paths = sorted(run_dir.glob("*_config_complete.ini"))
     if not config_paths:
-        return "gaussian" in run_dir.name and "student" not in run_dir.name.rsplit("_", 1)[-1]
+        return (
+            "gaussian" in run_dir.name
+            and "student" not in run_dir.name.rsplit("_", 1)[-1]
+        )
     for line in config_paths[0].read_text(errors="replace").splitlines():
         if line.startswith("likelihood-type"):
             return "StudentTGravitationalWaveTransient" not in line
@@ -79,7 +83,9 @@ def parse_minimum_frequencies(value):
 def find_data_dump(run_dir):
     candidates = sorted((run_dir / "data").glob("*generation_data_dump.pickle"))
     if not candidates:
-        raise FileNotFoundError(f"No generation data dump found under {run_dir / 'data'}")
+        raise FileNotFoundError(
+            f"No generation data dump found under {run_dir / 'data'}"
+        )
     return candidates[0]
 
 
@@ -122,9 +128,8 @@ def gaussian_normalisation_from_config(config):
             raise FileNotFoundError(psd_path)
         psd_frequencies, psd_values = np.loadtxt(psd_path, unpack=True)
         psd = np.interp(frequencies, psd_frequencies, psd_values)
-        mask = (
-            (frequencies >= float(minimum_frequencies[detector]))
-            & (frequencies <= maximum_frequency)
+        mask = (frequencies >= float(minimum_frequencies[detector])) & (
+            frequencies <= maximum_frequency
         )
         scale2 = psd[mask] * duration / 4.0
         total -= float(np.sum(np.log(2 * np.pi * scale2)))
@@ -167,7 +172,9 @@ def adjust_result(path, apply=False, force=False):
 
         log_noise = read_scalar(file, "log_noise_evidence")
         log_evidence = read_scalar(file, "log_evidence")
-        use_ratio = bool(read_scalar(file, "use_ratio")) if "use_ratio" in file else False
+        use_ratio = (
+            bool(read_scalar(file, "use_ratio")) if "use_ratio" in file else False
+        )
 
         new_noise = log_noise + norm
         new_evidence = log_evidence + norm

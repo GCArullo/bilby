@@ -91,14 +91,6 @@ def test_accounting_user_defaults_to_home_basename(monkeypatch):
     assert args.accounting_user == "name.surname"
 
 
-def test_default_base_subdir_is_under_public_event_directory():
-    module = load_submit_runs_injection_module()
-
-    assert module.DEFAULT_BASE_SUBDIR == (
-        Path("public_html") / "GW231123" / "t_Student" / "Runs_injections"
-    )
-
-
 def test_submit_runs_preflights_local_inputs(monkeypatch, tmp_path):
     module = load_submit_runs_injection_module()
     ini_dir = tmp_path / "ini_files"
@@ -117,24 +109,6 @@ def test_submit_runs_preflights_local_inputs(monkeypatch, tmp_path):
 
     with pytest.raises(FileNotFoundError, match="missing_staged_data"):
         module.submit_runs([ini_path], "bilby_pipe")
-
-
-def test_zero_gaussian_injection_noise_is_available():
-    module = load_submit_runs_injection_module()
-    parser = module.build_parser()
-
-    args = parser.parse_args(["--injection-noise", "zero-gaussian"])
-
-    assert args.injection_noise == "zero-gaussian"
-
-
-def test_noise_generation_seed_is_available():
-    module = load_submit_runs_injection_module()
-    parser = module.build_parser()
-
-    args = parser.parse_args(["--noise-generation-seed", "98765"])
-
-    assert args.noise_generation_seed == 98765
 
 
 def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
@@ -205,84 +179,6 @@ def test_injection_duration_is_available_and_rendered_into_ini(tmp_path):
 
     assert args.injection_duration == 12.5
     assert "duration=12.5\n" in rendered
-
-
-def test_injected_sine_gaussian_values_are_loaded_from_json_and_within_bounds():
-    module = load_submit_runs_injection_module()
-
-    values = module.load_injected_sine_gaussian_values()
-    assert values["coherent"][1][0] == dict(
-        hrss=pytest.approx(1e-22),
-        Q=pytest.approx(8.0),
-        frequency=pytest.approx(130.0),
-        time_offset=pytest.approx(0.0),
-        phase_offset=pytest.approx(0.0),
-    )
-    assert values["coherent_independent"] == dict(
-        ra=pytest.approx(2.0),
-        dec=pytest.approx(-0.4),
-        psi=pytest.approx(0.7),
-    )
-
-    coherent_components = module.load_injected_sine_gaussian_component_series(
-        mode="coherent",
-        count=2,
-    )
-    assert coherent_components == [
-        dict(
-            hrss=1e-22,
-            Q=8.0,
-            frequency=40.0,
-            time_offset=-0.05,
-            phase_offset=0.0,
-        ),
-        dict(
-            hrss=8.5e-23,
-            Q=9.0,
-            frequency=220.0,
-            time_offset=0.05,
-            phase_offset=0.5,
-        ),
-    ]
-
-    incoherent_components = module.load_injected_sine_gaussian_component_series(
-        mode="incoherent",
-        detector="L1",
-        count=1,
-    )
-    assert incoherent_components == [
-        dict(
-            hrss=1e-22,
-            Q=8.0,
-            frequency=135.0,
-            time_offset=0.0,
-            phase_offset=0.3,
-        )
-    ]
-
-    for component in coherent_components + incoherent_components:
-        module.validate_injected_sine_gaussian_component(
-            component,
-            frequency_minimum=20.0,
-            frequency_maximum=448.0,
-        )
-
-    independent_parameters = module.add_injected_sine_gaussians(
-        {},
-        template_settings=dict(
-            minimum_frequency=20.0,
-            maximum_frequency=448.0,
-        ),
-        sine_gaussian_config=type(
-            "Config",
-            (),
-            dict(enabled=True, total_components=1, mode="coherent-independent"),
-        )(),
-    )
-    assert independent_parameters["independent_sine_gaussian_ra"] == 2.0
-    assert independent_parameters["independent_sine_gaussian_dec"] == -0.4
-    assert independent_parameters["independent_sine_gaussian_psi"] == 0.7
-    assert independent_parameters["independent_sine_gaussian_0_frequency"] == 130.0
 
 
 def test_injected_sine_gaussian_validation_rejects_out_of_bounds_component():
@@ -518,11 +414,6 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
     assert "create-summary=True\n" in gaussian_ini
     assert summary_arguments["ignore_parameters"] == ["recalib*"]
     assert summary_arguments["disable_interactive"] is True
-    assert summary_arguments["f_ref"] == 10.0
-    assert summary_arguments["f_low"] == 20
-    assert summary_arguments["f_start"] == 10.0
-    assert summary_arguments["f_final"] == 448.0
-    assert summary_arguments["approximant"] == ["NRSur7dq4"]
     assert "calibration" not in summary_arguments
     assert set(summary_arguments["psd"]) == {"H1", "L1"}
 

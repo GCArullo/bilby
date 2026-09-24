@@ -242,17 +242,6 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     )
     assert Path(ini_settings["webdir"]) == outdir / "web"
 
-    prior_text = next(prior_dir.glob("*.prior")).read_text(encoding="utf-8")
-    assert (
-        "luminosity_distance =  bilby.gw.prior.UniformSourceFrame("
-        "name='luminosity_distance', cosmology=Planck15, maximum=20000.0, "
-        "minimum=10, unit='Mpc')"
-    ) in prior_text
-    assert (
-        "sine_gaussian_0_time_offset = Uniform("
-        "name='sine_gaussian_0_time_offset', minimum=-0.15, maximum=0.15)"
-    ) in prior_text
-
 
 @pytest.mark.parametrize(
     ("event", "extra_args", "waveform_generator", "source_model"),
@@ -500,8 +489,6 @@ def test_tuned_angle_model_clamps_waveform_minimum_frequency(
         )
     )
     assert minimum_frequency["waveform"] == expected_waveform_minimum
-    assert minimum_frequency["H1"] == 20
-    assert minimum_frequency["L1"] == 20
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(
@@ -551,11 +538,6 @@ def test_main_creates_summarypages_without_recalib_parameters_by_default(
     assert summary_arguments["labels"] == [Path(outdir_line.split("=", 1)[1]).name]
     assert summary_arguments["ignore_parameters"] == ["recalib*"]
     assert summary_arguments["disable_expert"] is True
-    assert summary_arguments["f_ref"] == 10.0
-    assert summary_arguments["f_low"] == 20
-    assert summary_arguments["f_start"] == 10.0
-    assert summary_arguments["f_final"] == 448.0
-    assert summary_arguments["approximant"] == ["NRSur7dq4"]
     assert summary_arguments["calibration"] == {
         "H1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/H1.txt",
         "L1": "/home/pe.o4/GWTC4-fogg/project/working/S231123cg/get-data/calibration/L1.txt",

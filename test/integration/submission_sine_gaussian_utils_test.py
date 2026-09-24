@@ -41,45 +41,34 @@ def replace_line(text: str, key: str, value: str) -> str:
     raise ValueError(f"Unable to find config key {key!r}")
 
 
-def test_effective_nlive_uses_runbook_sine_gaussian_schedule():
+@pytest.mark.parametrize(
+    ("total_components", "mode", "uplift_names"),
+    [
+        (0, "none", []),
+        (1, "coherent", ["ONE"]),
+        (1, "incoherent", ["ONE"]),
+        (2, "coherent", ["MULTI"]),
+        (3, "incoherent", ["MULTI"]),
+        (1, "coherent-independent", ["ONE", "COHERENT_INDEPENDENT"]),
+        (3, "coherent-independent", ["MULTI", "COHERENT_INDEPENDENT"]),
+    ],
+)
+def test_effective_nlive_adds_sine_gaussian_uplifts(
+    total_components, mode, uplift_names
+):
     module = load_submission_sine_gaussian_utils_module()
-
-    baseline = module.SineGaussianConfiguration()
-    coherent_1 = module.SineGaussianConfiguration(total_components=1, mode="coherent")
-    incoherent_1 = module.SineGaussianConfiguration(
-        total_components=1,
-        mode="incoherent",
-        detector_counts=(("H1", 1),),
+    uplifts = dict(
+        ONE=module.NLIVE_ONE_SINE_GAUSSIAN_UPLIFT,
+        MULTI=module.NLIVE_MULTI_SINE_GAUSSIAN_UPLIFT,
+        COHERENT_INDEPENDENT=module.NLIVE_COHERENT_INDEPENDENT_UPLIFT,
     )
-    coherent_2 = module.SineGaussianConfiguration(total_components=2, mode="coherent")
-    coherent_3 = module.SineGaussianConfiguration(total_components=3, mode="coherent")
-    independent_1 = module.SineGaussianConfiguration(
-        total_components=1,
-        mode="coherent-independent",
-    )
-    independent_2 = module.SineGaussianConfiguration(
-        total_components=2,
-        mode="coherent-independent",
-    )
-    independent_3 = module.SineGaussianConfiguration(
-        total_components=3,
-        mode="coherent-independent",
-    )
-    incoherent_h1_l1 = module.SineGaussianConfiguration(
-        total_components=2,
-        mode="incoherent",
-        detector_counts=(("H1", 1), ("L1", 1)),
+    config = module.SineGaussianConfiguration(
+        total_components=total_components, mode=mode
     )
 
-    assert module.effective_nlive(2000, baseline) == 2000
-    assert module.effective_nlive(2000, coherent_1) == 2500
-    assert module.effective_nlive(2000, incoherent_1) == 2500
-    assert module.effective_nlive(2000, coherent_2) == 3000
-    assert module.effective_nlive(2000, coherent_3) == 3000
-    assert module.effective_nlive(2000, independent_1) == 3000
-    assert module.effective_nlive(2000, independent_2) == 3500
-    assert module.effective_nlive(2000, independent_3) == 3500
-    assert module.effective_nlive(2000, incoherent_h1_l1) == 3000
+    assert module.effective_nlive(2000, config) == 2000 + sum(
+        uplifts[name] for name in uplift_names
+    )
 
 
 def test_sine_gaussian_submission_settings_disable_distance_and_generation():

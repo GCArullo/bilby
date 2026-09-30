@@ -45,6 +45,16 @@ From: ubuntu:26.04
     pip install --no-build-isolation pygsl_lite
     pip install pyseobnr
 
+    # Pin the Dali branch: the PyPI teobresums release is a different model.
+    git clone https://bitbucket.org/teobresums/teobresums.git /tmp/teobresums
+    cd /tmp/teobresums
+    git checkout 7b9b3fd951f51412bcaeb50965c7a2c77c9b09a8
+    git rev-parse HEAD > /opt/teobresums_commit.txt
+    cd Python
+    pip install --no-build-isolation .
+    cd /
+    rm -rf /tmp/teobresums
+
     # install PESummary from the selected pesummary_GC ref
     pip install "pesummary @ git+https://git.ligo.org/gregorio.carullo/pesummary_GC.git@{{ PESUMMARY_REF }}"
 

@@ -52,6 +52,7 @@ pesummary_commit.txt: temp_image.sif
 	apptainer exec temp_image.sif python -c 'import importlib.metadata as m, json; print(json.loads(m.distribution("pesummary").read_text("direct_url.json"))["vcs_info"]["commit_id"][:12])' > pesummary_commit.txt
 
 validate: temp_image.sif
+	apptainer exec --cleanenv temp_image.sif python validate_dali.py
 	apptainer exec temp_image.sif python -c 'from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator; gwsignal_get_waveform_generator("SEOBNRv5PHM")'
 	apptainer exec --cleanenv temp_image.sif python -c 'from bilby_pipe.plot import _cbc_parameters, _is_sine_gaussian_parameter; independent={"independent_sine_gaussian_0_hrss": 1., "independent_sine_gaussian_ra": 1., "independent_sine_gaussian_parameters": [{}]}; assert all(_is_sine_gaussian_parameter(key) for key in independent); assert _cbc_parameters({"chirp_mass": 30., **independent}) == {"chirp_mass": 30.}'
 	apptainer exec --cleanenv temp_image.sif python -c 'import os; files={"NRSur7dq4_v1.0.h5": 10**7, "NRSur7dq4Remnant_v1.0.h5": 10**8}; bad={name: os.path.getsize("/opt/lalsimulation-data/" + name) for name, minimum in files.items() if os.path.getsize("/opt/lalsimulation-data/" + name) <= minimum}; assert not bad, "git-lfs left pointer or truncated files: {}".format(bad)'

@@ -51,6 +51,29 @@ def test_num_frequency_bands_defaults_to_one():
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
+@pytest.mark.parametrize('eccentric', [False, True])
+@pytest.mark.parametrize('sg_count', [0, 1])
+def test_dali_run_configuration(monkeypatch, tmp_path, eccentric, sg_count):
+    module = load_submit_runs_real_data_module()
+    approximant = 'TEOBResumS_Dali' + ('_Ecc' if eccentric else '')
+    monkeypatch.setattr(sys, 'argv', [
+        str(SCRIPT_PATH), '--event', 'GW231123', '--likelihood', 'gaussian',
+        '--waveform-approximant', approximant, '--num-sine-gaussians', str(sg_count),
+        '--dry-run', '--ini-dir', str(tmp_path / 'ini'),
+        '--prior-dir', str(tmp_path / 'prior'), '--home-dir', str(tmp_path),
+    ])
+    assert module.main() == 0
+    ini_path, = (tmp_path / 'ini').glob('*.ini')
+    prior_path, = (tmp_path / 'prior').glob('*.prior')
+    ini, prior = ini_path.read_text(), prior_path.read_text()
+    assert 'waveform-generator=bilby.gw.waveform_generator.WaveformGenerator' in ini
+    source = 'cbc_plus_sine_gaussians' if sg_count else 'teobresums_dali_binary_black_hole'
+    assert f'frequency-domain-source-model=bilby.gw.source.{source}' in ini
+    assert ('eccentricity = Uniform' in prior) == eccentric
+    assert ('true_anomaly = Uniform' in prior) == eccentric
+    assert ('sine_gaussian_0_hrss' in prior) == bool(sg_count)
+
+
 def test_uniform_hrss_dry_run_keeps_cbc_and_uses_separate_output(monkeypatch, tmp_path):
     module = load_submit_runs_real_data_module()
     monkeypatch.setattr(

@@ -122,6 +122,46 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
   --num-sine-gaussians 1 --sine-gaussian-mode coherent-independent
 ```
 
+## TEOBResumS-Dali: precessing and precessing + eccentric
+
+The official image installs Dali commit
+`7b9b3fd951f51412bcaeb50965c7a2c77c9b09a8`, recorded inside the image at
+`/opt/teobresums_commit.txt`. Rebuild/publish the standard image before submitting.
+Do not substitute the PyPI `teobresums` package for this pinned Dali checkout.
+
+Run both CBC-only and CBC + 1 coherent SG for each variant:
+
+```bash
+for WF in TEOBResumS_Dali TEOBResumS_Dali_Ecc; do
+  python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant "$WF"
+  python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant "$WF" \
+    --num-sine-gaussians 1 --sine-gaussian-mode coherent
+done
+```
+
+`TEOBResumS_Dali` fixes eccentricity to zero. `TEOBResumS_Dali_Ecc` samples
+eccentricity uniformly on [0, 0.5] and **true anomaly** uniformly on [0, 2 pi).
+Both use the precessing CBC spin priors, all positive-m coprecessing modes through
+ell=4 and their inertial-frame counterparts. Spins and eccentricity are defined
+at the template reference frequency, 10 Hz. Dali starts at that frequency using
+twice the orbit-averaged orbital frequency (`ecc_freq=3`, `ecc_ics=2`). The
+likelihood retains the 20–448 Hz band, 8 s duration and 1024 Hz data sampling.
+
+The source converts Bilby spin angles to Cartesian spins **and inclination**,
+uses Dali's merger-time origin, tapers the start with LAL's standard taper and
+transforms both polarizations to the requested frequency grid. Internal waveform
+sampling is at least 4096 Hz; long waveforms are transformed without truncation.
+The SG source calls the same Dali implementation before adding the SG.
+
+The CBC and SG priors, calibration and sampler settings otherwise match this
+runbook: 2000 live points for CBC-only, 2500 with one SG, three parallel chains,
+eight CPUs per chain, `naccept=60`, `maxmcmc=5000`. For the existing waveform
+campaign, pass `--outdir-base` and `--webdir-base` as
+`/home/gregorio.carullo/public_html/GW231123/sine_gaussians/Runs_new_priors`.
+PESummary's unsupported LAL multipole-SNR/spin-evolution diagnostics and
+quasicircular remnant fits are disabled for Dali; Bilby generates the waveform
+plots using the actual source model.
+
 ## Notes
 
 - No manual prior changes are needed; the launcher adds the independent SG sky

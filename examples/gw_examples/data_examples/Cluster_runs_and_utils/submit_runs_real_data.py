@@ -552,6 +552,13 @@ def build_pesummary_arguments(
     detectors: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
+    if template_settings['waveform_approximant'] in {'TEOBResumS_Dali', 'TEOBResumS_Dali_Ecc'}:
+        # PESummary's LAL waveform diagnostics and quasicircular remnant fits
+        # do not implement this Dali source, especially its eccentric branch.
+        for key in ('evolve_spins_forwards', 'evolve_spins_backwards',
+                    'NRSur_fits', 'calculate_multipole_snr'):
+            arguments.pop(key, None)
+        arguments['disable_remnant'] = True
     # pesummary names its outputs '<label>_<label>_<parameter>.html' and
     # '<label>_<result file name>'. Left to bilby_pipe the label is the full
     # merge-result basename, so those names run past the 255 byte file name
@@ -773,6 +780,15 @@ def render_ini(
         sine_gaussian_config,
         replace_line=replace_line,
     )
+    if template_settings['waveform_approximant'] in {'TEOBResumS_Dali', 'TEOBResumS_Dali_Ecc'}:
+        rendered = replace_line(
+            rendered, 'waveform-generator', 'bilby.gw.waveform_generator.WaveformGenerator'
+        )
+        if not sine_gaussian_config.enabled:
+            rendered = replace_line(
+                rendered, 'frequency-domain-source-model',
+                'bilby.gw.source.teobresums_dali_binary_black_hole'
+            )
     if sg_only:
         # Generic priors/generation must not introduce CBC defaults or derived
         # masses, spins, or a cosmological distance into an SG-only result.
@@ -1005,6 +1021,12 @@ def main() -> int:
         )
     else:
         approximant_suffix = ""
+
+    if args.waveform_approximant == 'TEOBResumS_Dali_Ecc':
+        prior_template += (
+            "\neccentricity = Uniform(name='eccentricity', minimum=0, maximum=0.5)\n"
+            "true_anomaly = Uniform(name='true_anomaly', minimum=0, maximum=2 * np.pi, boundary='periodic')\n"
+        )
 
     detector_suffix = (
         "_" + "".join(detectors) + "only"

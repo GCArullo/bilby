@@ -1,0 +1,7 @@
+*.sif
+bilby_version.txt
+bilby_commit.txt
+bilby_pipe_version.txt
+bilby_pipe_commit.txt
+container_image.txt
+test_job/logs/

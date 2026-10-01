@@ -1,0 +1,18 @@
+universe = container
+accounting_group = ligo.dev.o4.cbc.pe.bilby
+output = logs/$(Cluster).$(Process).out
+error = logs/$(Cluster).$(Process).err
+log = logs/$(Cluster).$(Process).log
+container_image = osdf:///igwn/cit/staging/<username>/<generated-image-name>.sif
+executable = /opt/conda/bin/python
+arguments = test.py
+use_oauth_services = scitokens
+
+should_transfer_files = true
+when_to_transfer_output = ON_EXIT_OR_EVICT
+transfer_executable = false
+request_disk = 4GB
+request_memory = 4GB
+request_cpus = 1
+transfer_input_files = test.py
+queue 1

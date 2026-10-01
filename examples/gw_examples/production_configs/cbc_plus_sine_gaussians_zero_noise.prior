@@ -1,0 +1,52 @@
+# CBC parameters
+chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=25.0, maximum=45.0)
+mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.2, maximum=1.0)
+mass_1 = Constraint(name='mass_1', minimum=5, maximum=100)
+mass_2 = Constraint(name='mass_2', minimum=5, maximum=100)
+chi_1 = Uniform(name='chi_1', minimum=-0.99, maximum=0.99)
+chi_2 = Uniform(name='chi_2', minimum=-0.99, maximum=0.99)
+luminosity_distance = bilby.gw.prior.UniformSourceFrame(name='luminosity_distance', minimum=50.0, maximum=500.0, unit='Mpc')
+ra = Uniform(name='ra', minimum=0, maximum=2 * np.pi, boundary='periodic')
+dec = Cosine(name='dec')
+theta_jn = Sine(name='theta_jn')
+psi_mod_pib2 = Uniform(name='psi_mod_pib2', minimum=0, maximum=np.pi, boundary='periodic')
+phase = Uniform(name='phase', minimum=0, maximum=2 * np.pi, boundary='periodic')
+geocent_time = Uniform(name='geocent_time', minimum=1126259642.313, maximum=1126259642.513)
+
+# Coherent sine-Gaussian bursts (use with the coherent injection block).
+# The SG components are ordered by descending hrss to remove the label
+# symmetry between equally parameterized bursts.
+sine_gaussian_0_hrss = LogUniform(name='sine_gaussian_0_hrss', minimum=1e-24, maximum=1e-20)
+sine_gaussian_0_Q = Uniform(name='sine_gaussian_0_Q', minimum=0.1, maximum=30)
+sine_gaussian_0_frequency = Uniform(name='sine_gaussian_0_frequency', minimum=20, maximum=512)
+sine_gaussian_0_time_offset = Uniform(name='sine_gaussian_0_time_offset', minimum=-0.1, maximum=0.1)
+sine_gaussian_0_phase_offset = Uniform(name='sine_gaussian_0_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
+
+sine_gaussian_1_hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform(name='sine_gaussian_1_hrss', minimum=1e-24, maximum=1e-20, upper_bound_name='sine_gaussian_0_hrss')
+sine_gaussian_1_Q = Uniform(name='sine_gaussian_1_Q', minimum=0.1, maximum=30)
+sine_gaussian_1_frequency = Uniform(name='sine_gaussian_1_frequency', minimum=20, maximum=512)
+sine_gaussian_1_time_offset = Uniform(name='sine_gaussian_1_time_offset', minimum=-0.1, maximum=0.1)
+sine_gaussian_1_phase_offset = Uniform(name='sine_gaussian_1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
+
+# Incoherent detector-local bursts (uncomment the detector-specific lines and
+# comment out the coherent ones above when using per-detector injections).
+# sine_gaussian_0_H1_hrss = LogUniform(name='sine_gaussian_0_H1_hrss', minimum=1e-24, maximum=1e-20)
+# sine_gaussian_0_L1_hrss = LogUniform(name='sine_gaussian_0_L1_hrss', minimum=1e-24, maximum=1e-20)
+# sine_gaussian_0_H1_Q = Uniform(name='sine_gaussian_0_H1_Q', minimum=0.1, maximum=30)
+# sine_gaussian_0_L1_Q = Uniform(name='sine_gaussian_0_L1_Q', minimum=0.1, maximum=30)
+# sine_gaussian_0_H1_frequency = Uniform(name='sine_gaussian_0_H1_frequency', minimum=20, maximum=512)
+# sine_gaussian_0_L1_frequency = Uniform(name='sine_gaussian_0_L1_frequency', minimum=20, maximum=512)
+# sine_gaussian_0_H1_time_offset = Uniform(name='sine_gaussian_0_H1_time_offset', minimum=-0.1, maximum=0.1)
+# sine_gaussian_0_L1_time_offset = Uniform(name='sine_gaussian_0_L1_time_offset', minimum=-0.1, maximum=0.1)
+# sine_gaussian_0_H1_phase_offset = Uniform(name='sine_gaussian_0_H1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
+# sine_gaussian_0_L1_phase_offset = Uniform(name='sine_gaussian_0_L1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
+# sine_gaussian_1_H1_hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform(name='sine_gaussian_1_H1_hrss', minimum=1e-24, maximum=1e-20, upper_bound_name='sine_gaussian_0_H1_hrss')
+# sine_gaussian_1_L1_hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform(name='sine_gaussian_1_L1_hrss', minimum=1e-24, maximum=1e-20, upper_bound_name='sine_gaussian_0_L1_hrss')
+# sine_gaussian_1_H1_Q = Uniform(name='sine_gaussian_1_H1_Q', minimum=0.1, maximum=30)
+# sine_gaussian_1_L1_Q = Uniform(name='sine_gaussian_1_L1_Q', minimum=0.1, maximum=30)
+# sine_gaussian_1_H1_frequency = Uniform(name='sine_gaussian_1_H1_frequency', minimum=20, maximum=512)
+# sine_gaussian_1_L1_frequency = Uniform(name='sine_gaussian_1_L1_frequency', minimum=20, maximum=512)
+# sine_gaussian_1_H1_time_offset = Uniform(name='sine_gaussian_1_H1_time_offset', minimum=-0.1, maximum=0.1)
+# sine_gaussian_1_L1_time_offset = Uniform(name='sine_gaussian_1_L1_time_offset', minimum=-0.1, maximum=0.1)
+# sine_gaussian_1_H1_phase_offset = Uniform(name='sine_gaussian_1_H1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')
+# sine_gaussian_1_L1_phase_offset = Uniform(name='sine_gaussian_1_L1_phase_offset', minimum=-np.pi, maximum=np.pi, boundary='periodic')

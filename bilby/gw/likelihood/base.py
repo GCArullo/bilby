@@ -147,6 +147,9 @@ class GravitationalWaveTransient(Likelihood):
                 "optimal_snr" : self.optimal_snr_squared.real ** 0.5
             }
 
+    # Class-level default keeps likelihoods pickled before this flag existed usable.
+    _cbc_plus_sine_gaussians_distance_marginalization = False
+
     def __init__(
             self, interferometers, waveform_generator, time_marginalization=False,
             distance_marginalization=False, phase_marginalization=False, calibration_marginalization=False, priors=None,
@@ -159,9 +162,6 @@ class GravitationalWaveTransient(Likelihood):
         super(GravitationalWaveTransient, self).__init__()
         self.interferometers = InterferometerList(interferometers)
         self.interferometers.set_array_backend(interferometers.array_backend)
-        self._check_cbc_plus_sine_gaussians_distance_marginalization(
-            distance_marginalization
-        )
         self.time_marginalization = time_marginalization
         self.distance_marginalization = distance_marginalization
         self.phase_marginalization = phase_marginalization
@@ -182,6 +182,7 @@ class GravitationalWaveTransient(Likelihood):
         else:
             self.time_reference = "geocent"
             self.reference_ifo = None
+        self._check_cbc_plus_sine_gaussians_distance_marginalization()
 
         if self.time_marginalization:
             self._check_marginalized_prior_is_set(key='geocent_time')
@@ -231,21 +232,83 @@ class GravitationalWaveTransient(Likelihood):
             self._setup_calibration_marginalization(calibration_lookup_table, priors)
             self._marginalized_parameters.append('recalib_index')
 
-    def _check_cbc_plus_sine_gaussians_distance_marginalization(
-        self, distance_marginalization
-    ):
+    def _check_cbc_plus_sine_gaussians_distance_marginalization(self):
         source_model = getattr(
             self.waveform_generator, "frequency_domain_source_model", None
         )
-        if (
-            distance_marginalization
+        self._cbc_plus_sine_gaussians_distance_marginalization = (
+            self.distance_marginalization
             and getattr(source_model, "__name__", None) == "cbc_plus_sine_gaussians"
+        )
+        if self._cbc_plus_sine_gaussians_distance_marginalization and (
+            type(self) is not GravitationalWaveTransient
+            or self.time_marginalization
+            or self.phase_marginalization
+            or self.calibration_marginalization
         ):
             raise ValueError(
                 "distance_marginalization=True is not supported for "
-                "bilby.gw.source.cbc_plus_sine_gaussians. Set "
-                "distance_marginalization=False for CBC+sine-Gaussian analyses."
+                "bilby.gw.source.cbc_plus_sine_gaussians with time, phase or "
+                "calibration marginalization, or with likelihoods other than "
+                "GravitationalWaveTransient."
             )
+
+    def _cbc_plus_sine_gaussians_inner_products(
+        self, waveform_polarizations, interferometers, parameters
+    ):
+        """
+        Inner products for marginalizing the CBC alone over distance.
+
+        The sine-Gaussian response does not scale with luminosity distance,
+        so for :math:`h = h_{\\rm CBC} + h_{\\rm SG}` the log likelihood ratio is
+        :math:`c_0 + {\\rm Re}\\langle h_{\\rm CBC}|d - h_{\\rm SG}\\rangle
+        - \\langle h_{\\rm CBC}|h_{\\rm CBC}\\rangle / 2`, with
+        :math:`c_0 = {\\rm Re}\\langle h_{\\rm SG}|d\\rangle
+        - \\langle h_{\\rm SG}|h_{\\rm SG}\\rangle / 2`.
+
+        Returns
+        =======
+        d_inner_h: complex
+            :math:`\\langle h_{\\rm CBC}|d - h_{\\rm SG}\\rangle`
+        h_inner_h: float
+            :math:`\\langle h_{\\rm CBC}|h_{\\rm CBC}\\rangle`
+        log_l_sine_gaussian: float
+            :math:`c_0`
+        """
+        cbc_polarizations = waveform_polarizations.component_polarizations["cbc"]
+        d_inner_h = 0
+        h_inner_h = 0
+        log_l_sine_gaussian = 0
+        for interferometer in interferometers:
+            signal = self._compute_full_waveform(
+                waveform_polarizations, interferometer, parameters
+            )
+            cbc = self._compute_full_waveform(
+                cbc_polarizations, interferometer, parameters
+            )
+            sine_gaussian = signal - cbc
+            d_inner_h += (
+                interferometer.inner_product(cbc)
+                - interferometer.template_template_inner_product(cbc, sine_gaussian)
+            )
+            h_inner_h += interferometer.optimal_snr_squared(cbc).real
+            log_l_sine_gaussian += (
+                interferometer.inner_product(sine_gaussian).real
+                - interferometer.optimal_snr_squared(sine_gaussian).real / 2
+            )
+        return d_inner_h, h_inner_h, log_l_sine_gaussian
+
+    def _cbc_plus_sine_gaussians_distance_marginalized_likelihood(
+        self, waveform_polarizations, interferometers, parameters
+    ):
+        d_inner_h, h_inner_h, log_l_sine_gaussian = (
+            self._cbc_plus_sine_gaussians_inner_products(
+                waveform_polarizations, interferometers, parameters
+            )
+        )
+        return log_l_sine_gaussian + self.distance_marginalized_likelihood(
+            d_inner_h, h_inner_h, parameters=parameters
+        )
 
     def __repr__(self):
         return self.__class__.__name__ + '(interferometers={},\n\twaveform_generator={},\n\ttime_marginalization={}, ' \
@@ -454,6 +517,11 @@ class GravitationalWaveTransient(Likelihood):
         if waveform_polarizations is None:
             return np.nan_to_num(-np.inf)
 
+        if self._cbc_plus_sine_gaussians_distance_marginalization:
+            return self._cbc_plus_sine_gaussians_distance_marginalized_likelihood(
+                waveform_polarizations, self.interferometers, parameters
+            ).real
+
         if self.time_marginalization and self.jitter_time:
             parameters['geocent_time'] += parameters['time_jitter']
 
@@ -515,6 +583,13 @@ class GravitationalWaveTransient(Likelihood):
             parameters['geocent_time'] += parameters['time_jitter']
 
         for interferometer in self.interferometers:
+            if self._cbc_plus_sine_gaussians_distance_marginalization:
+                parameters['{}_log_likelihood'.format(interferometer.name)] = \
+                    self._cbc_plus_sine_gaussians_distance_marginalized_likelihood(
+                        waveform_polarizations, [interferometer], parameters
+                    )
+                continue
+
             per_detector_snr = self.calculate_snrs(
                 waveform_polarizations=waveform_polarizations,
                 interferometer=interferometer,
@@ -711,9 +786,14 @@ class GravitationalWaveTransient(Likelihood):
             signal_polarizations = \
                 self.waveform_generator.frequency_domain_strain(parameters)
 
-        d_inner_h, h_inner_h = self._calculate_inner_products(
-            signal_polarizations, parameters=parameters
-        )
+        if self._cbc_plus_sine_gaussians_distance_marginalization:
+            d_inner_h, h_inner_h, _ = self._cbc_plus_sine_gaussians_inner_products(
+                signal_polarizations, self.interferometers, parameters
+            )
+        else:
+            d_inner_h, h_inner_h = self._calculate_inner_products(
+                signal_polarizations, parameters=parameters
+            )
 
         d_inner_h_dist = (
             d_inner_h * parameters['luminosity_distance'] / self._distance_array
@@ -734,7 +814,10 @@ class GravitationalWaveTransient(Likelihood):
         new_distance = Interped(
             self._distance_array, distance_post).sample()
 
-        self._rescale_signal(signal_polarizations, new_distance)
+        # Rescaling every mode would also rescale the sine-Gaussians. Nothing
+        # reuses the signal afterwards, as phase marginalization is rejected.
+        if not self._cbc_plus_sine_gaussians_distance_marginalization:
+            self._rescale_signal(signal_polarizations, new_distance)
         return new_distance
 
     def _calculate_inner_products(self, signal_polarizations, parameters):

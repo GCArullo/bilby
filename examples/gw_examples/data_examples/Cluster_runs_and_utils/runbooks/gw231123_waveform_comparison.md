@@ -81,7 +81,9 @@ LALSuite has no standalone SpinTaylor approximant: the SpinTaylor precession
 prescription is an option on IMRPhenomXPHM, selected through
 `PhenomXPrecVersion`. Passing `IMRPhenomXPHM_SpinTaylor` sets
 `waveform-approximant=IMRPhenomXPHM` and
-`waveform-arguments-dict={'PhenomXPrecVersion': 320}`, while keeping the full
+`waveform-arguments-dict={'PhenomXPrecVersion': 320, 'PhenomXPFinalSpinMod': 2}`
+and the waveform minimum to 10 Hz (the detector minimum remains 20 Hz),
+matching the specified LVK settings. The launcher keeps the full
 name in labels and directories so the run cannot be confused with a default
 IMRPhenomXPHM one (which uses the MSA prescription, version 223).
 
@@ -90,7 +92,23 @@ python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMR
   --num-sine-gaussians 1 --sine-gaussian-mode coherent
 ```
 
+Gaussian baseline:
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPHM_SpinTaylor
+```
+
+For the `Runs_new_priors` comparison campaign, pass its outdir and webdir bases
+and `--outdir-label LVK` to both commands. This retains the earlier SpinTaylor
+run, which used a 20 Hz waveform minimum and final-spin modifier 4.
+
 ## IMRPhenomXPNR
+
+Gaussian baseline:
+
+```
+python "$REAL" --event GW231123 --likelihood gaussian --waveform-approximant IMRPhenomXPNR
+```
 
 Gaussian + 1 SG (coherent):
 

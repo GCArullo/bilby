@@ -38,6 +38,7 @@ DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
 SPIN_TAYLOR_SUFFIX = "_SpinTaylor"
 SPIN_TAYLOR_PREC_VERSION = 320
+SPIN_TAYLOR_FINAL_SPIN_MOD = 2
 TUNED_ANGLE_MODELS = {"IMRPhenomXPNR"}
 DEFAULT_CONTAINER_IMAGES_FILE = (
     Path(__file__).resolve().parent / "container_creation" / "container_images.json"
@@ -618,7 +619,10 @@ def resolve_spin_taylor_approximant(approximant: str) -> tuple[str, dict | None]
         return approximant, None
     return (
         approximant[: -len(SPIN_TAYLOR_SUFFIX)],
-        {"PhenomXPrecVersion": SPIN_TAYLOR_PREC_VERSION},
+        {
+            "PhenomXPrecVersion": SPIN_TAYLOR_PREC_VERSION,
+            "PhenomXPFinalSpinMod": SPIN_TAYLOR_FINAL_SPIN_MOD,
+        },
     )
 
 
@@ -1003,8 +1007,11 @@ def main() -> int:
         if isinstance(min_freq, dict):
             detector_freqs = [v for k, v in min_freq.items() if k != "waveform"]
             waveform_freq = min(detector_freqs) if detector_freqs else 20.0
-            if lal_approximant in TUNED_ANGLE_MODELS:
-                # PNR tuned angles require f_min <= f_ref.
+            if (
+                lal_approximant in TUNED_ANGLE_MODELS
+                or args.waveform_approximant.endswith(SPIN_TAYLOR_SUFFIX)
+            ):
+                # PNR tuned angles and the LVK SpinTaylor setup start at f_ref.
                 waveform_freq = min(
                     waveform_freq, template_settings["reference_frequency"]
                 )

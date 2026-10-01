@@ -502,13 +502,17 @@ def test_resolve_spin_taylor_approximant_maps_to_prec_version():
     )
     assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM_SpinTaylor") == (
         "IMRPhenomXPHM",
-        {"PhenomXPrecVersion": 320},
+        {"PhenomXPrecVersion": 320, "PhenomXPFinalSpinMod": 2},
     )
 
 
 @pytest.mark.parametrize(
     ("approximant", "expected_waveform_minimum"),
-    [("IMRPhenomXPNR", 10.0), ("IMRPhenomXPHM", 20.0)],
+    [
+        ("IMRPhenomXPNR", 10.0),
+        ("IMRPhenomXPHM", 20.0),
+        ("IMRPhenomXPHM_SpinTaylor", 10.0),
+    ],
 )
 def test_tuned_angle_model_clamps_waveform_minimum_frequency(
     monkeypatch,

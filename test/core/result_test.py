@@ -1059,6 +1059,34 @@ class TestResultWithLalDict(unittest.TestCase):
         )
 
 
+@pytest.mark.parametrize("covariance, expected", [
+    (np.array([[4.]]), 2.),
+    (np.diag([4., 9.]), 6.),
+    (np.array([[4., 1.], [1., 9.]]), np.sqrt(35.)),
+])
+def test_posterior_volume(covariance, expected):
+    dimension = len(covariance)
+    factor = np.linalg.cholesky(covariance)
+    samples = np.concatenate((factor.T, -factor.T)) * np.sqrt((2 * dimension - 1) / 2)
+    keys = [f"x{i}" for i in range(dimension)]
+    result = bilby.core.result.Result(
+        search_parameter_keys=keys,
+        posterior=pd.DataFrame(samples, columns=keys),
+    )
+    assert result.posterior_volume == pytest.approx(expected)
+
+
+def test_posterior_volume_singular_and_insufficient_samples():
+    result = bilby.core.result.Result(
+        search_parameter_keys=["x", "y"],
+        posterior=pd.DataFrame(dict(x=[-1., 0., 1.], y=[-1., 0., 1.])),
+    )
+    assert result.posterior_volume == pytest.approx(0.)
+    result.posterior = result.posterior.iloc[:1]
+    with pytest.raises(ValueError, match="At least two"):
+        result.posterior_volume
+
+
 class TestResultListError(unittest.TestCase):
     def setUp(self):
         np.random.seed(7)
@@ -1168,6 +1196,31 @@ class TestResultListError(unittest.TestCase):
         self.nested_results[0].sampler = "dynesty"
         with self.assertRaises(bilby.result.ResultListError):
             self.nested_results.combine()
+
+    def test_combine_recomputes_information_from_nested_weights(self):
+        from scipy.special import logsumexp
+
+        evidences = [0., np.log(4.)]
+        likelihoods = [[1., 3.], [4., 8.]]
+        weights = [[0.25, 0.75], [0.5, 0.5]]
+        for result, logz, logl, weight in zip(
+                self.nested_results, evidences, likelihoods, weights):
+            result.use_ratio = True
+            result.log_noise_evidence = 0.
+            result.log_evidence = logz
+            result.log_bayes_factor = logz
+            result.information_gain = -100.
+            result.nested_samples = pd.DataFrame(
+                dict(x=[0.25, 0.75], y=[0.25, 0.75],
+                     log_likelihood=logl, weights=weight)
+            )
+        combined = self.nested_results.combine()
+        expected_mean = (np.average(likelihoods[0], weights=weights[0])
+                         + 4 * np.average(likelihoods[1], weights=weights[1])) / 5
+        expected_logz = logsumexp(evidences) - np.log(2)
+        self.assertAlmostEqual(combined.information_gain,
+                               expected_mean - expected_logz)
+        self.assertNotEqual(combined.information_gain, -100.)
 
     def test_combine_inconsistent_priors_length(self):
         self.nested_results[0].priors = bilby.prior.PriorDict(
@@ -1391,6 +1444,8 @@ class TestReweight(unittest.TestCase):
         self.assertLess(min(abs(weights - expected_weights)), 1e-10)
         self.assertLess(abs(new.log_evidence - self.result.log_evidence), 0.05)
         self.assertNotEqual(new.log_evidence, self.result.log_evidence)
+        self.assertTrue(np.isnan(new.information_gain))
+        self.assertTrue(np.isnan(new.log_bayes_factor))
 
 
 @pytest.mark.array_backend

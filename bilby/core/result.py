@@ -456,6 +456,16 @@ def reweight(result, label=None, new_likelihood=None, new_prior=None,
     else:
         result.log_evidence += logsumexp(ln_weights) - np.log(nposterior)
 
+    # The old information gain refers to the original posterior and evidence.
+    result.information_gain = np.nan
+    if new_likelihood is not None:
+        # Its noise normalization need not match the original likelihood.
+        result.log_bayes_factor = np.nan
+    elif np.isfinite(result.log_noise_evidence):
+        result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
+    else:
+        result.log_bayes_factor = np.nan
+
     if new_prior is not None:
         for key, prior in new_prior.items():
             result.priors[key] = prior
@@ -471,6 +481,14 @@ def reweight(result, label=None, new_likelihood=None, new_prior=None,
                 kwargs[key] = value
         data_frame = conversion_function(data_frame, **kwargs)
         result.posterior = data_frame
+
+    if (new_likelihood is None and result.use_ratio is not None
+            and "log_likelihood" in result.posterior and len(result.posterior)
+            and np.all(np.isfinite(result.posterior["log_likelihood"]))):
+        normalizer = (result.log_bayes_factor if result.use_ratio
+                      else result.log_evidence)
+        if np.isfinite(normalizer):
+            result.information_gain = result.posterior["log_likelihood"].mean() - normalizer
 
     if label:
         result.label = label
@@ -1288,20 +1306,48 @@ class Result(object):
 
     @property
     def posterior_volume(self):
-        """ The posterior volume """
-        if self.covariance_matrix.ndim == 0:
-            return np.sqrt(self.covariance_matrix)
-        else:
-            return 1 / np.sqrt(np.abs(np.linalg.det(
-                1 / self.covariance_matrix)))
+        """Return the covariance scale ``sqrt(det(C))`` of sampled parameters.
+
+        This is zero for a singular covariance and is not a credible-region
+        volume. It has no Gaussian normalization and depends on coordinates.
+        """
+        if self.posterior is None or len(self.posterior) < 2:
+            raise ValueError("At least two posterior samples are required")
+        covariance = np.atleast_2d(self.covariance_matrix)
+        if not np.all(np.isfinite(covariance)):
+            raise ValueError("Posterior covariance must be finite")
+        diagonal = np.diag(covariance)
+        if np.any(diagonal < 0):
+            raise ValueError("Posterior covariance has negative variance")
+        if np.any(diagonal == 0):
+            return 0.0
+        scales = np.sqrt(diagonal)
+        correlation = covariance / np.outer(scales, scales)
+        eigenvalues = np.linalg.eigvalsh(correlation)
+        if np.any(eigenvalues < -1e-12):
+            raise ValueError("Posterior covariance is not positive semidefinite")
+        if np.any(eigenvalues <= 0):
+            return 0.0
+        _, logdet = np.linalg.slogdet(correlation)
+        return np.exp(np.log(scales).sum() + logdet / 2)
 
     @staticmethod
     def prior_volume(priors):
-        """ The prior volume, given a set of priors """
+        """Return the product of ranges of the supplied priors.
+
+        For sampled coordinates, pass only ``search_parameter_keys``. This
+        bounding box does not account for constraints, conditional or
+        nonuniform densities, and can be infinite for unbounded priors.
+        """
         return np.prod([priors[k].maximum - priors[k].minimum for k in priors])
 
     def occam_factor(self, priors):
-        """ The Occam factor,
+        """Return the covariance-scale to prior-box quotient.
+
+        This is an Occam-factor approximation only for a locally uniform
+        prior and a narrow, approximately Gaussian posterior. The Gaussian
+        Laplace factor also contains ``(2*pi)**(d/2)``. Bounds, periodicity,
+        multimodality and nonuniform prior density can invalidate it.
 
         See Chapter 28, `Mackay "Information Theory, Inference, and Learning
         Algorithms" <http://www.inference.org.uk/itprnn/book.html>`_ Cambridge
@@ -2312,7 +2358,27 @@ class ResultList(list):
             result.log_noise_evidence = self._combined_log_noise_evidence()
 
         # check which kind of sampler was used: MCMC or Nested Sampling
+        nested_mean = None
         if result._nested_samples is not None:
+            # Use the nested-sample expectation before the samples are dropped.
+            means = []
+            for res in self:
+                samples = res._nested_samples
+                if samples is None or not {"weights", "log_likelihood"} <= set(samples):
+                    break
+                weights = np.asarray(samples["weights"], dtype=float)
+                log_likelihood = np.asarray(samples["log_likelihood"], dtype=float)
+                if (not np.all(np.isfinite(weights) & (weights >= 0))
+                        or not np.all(np.isfinite(log_likelihood))
+                        or weights.sum() <= 0):
+                    break
+                means.append(np.average(log_likelihood, weights=weights))
+            if len(means) == len(self):
+                from scipy.special import logsumexp
+                log_evidences = np.array([res.log_evidence for res in self])
+                if np.all(np.isfinite(log_evidences)):
+                    evidence_weights = np.exp(log_evidences - logsumexp(log_evidences))
+                    nested_mean = np.dot(evidence_weights, means)
             posteriors, result = self._combine_nested_sampled_runs(result)
         elif result.sampler in ["bilby_mcmc", "bilbymcmc"]:
             posteriors, result = self._combine_mcmc_sampled_runs(result)
@@ -2325,6 +2391,22 @@ class ResultList(list):
             result.posterior = combined_posteriors.sample(len(combined_posteriors))
         else:
             result.posterior = combined_posteriors
+
+        result.information_gain = np.nan
+        if all(res.use_ratio is not None and res.use_ratio == result.use_ratio
+               for res in self):
+            normalizer = (result.log_bayes_factor if result.use_ratio
+                          else result.log_evidence)
+            if nested_mean is not None:
+                mean_log_likelihood = nested_mean
+            elif ("log_likelihood" in result.posterior
+                  and len(result.posterior)
+                  and np.all(np.isfinite(result.posterior["log_likelihood"]))):
+                mean_log_likelihood = result.posterior["log_likelihood"].mean()
+            else:
+                mean_log_likelihood = np.nan
+            if np.isfinite(normalizer) and np.isfinite(mean_log_likelihood):
+                result.information_gain = mean_log_likelihood - normalizer
 
         logger.info(f"Combined results have {len(result.posterior)} samples")
 

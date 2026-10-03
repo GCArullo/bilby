@@ -71,6 +71,39 @@ the data. Using this method, :code:`result` is now a
 So, for example, you could call `result.plot_corner()` to generate a corner
 plot. This method will also read in a :code:`h5` file.
 
+Volume and information summaries
+--------------------------------
+
+``result.posterior_volume`` is the covariance scale of the sampled posterior
+coordinates, ``sqrt(det(C))``. It is zero for a singular covariance and needs
+at least two samples. It is not a credible-region volume: its value depends on
+the parameter coordinates, and periodic, bounded or multimodal posteriors may
+be poorly described by one covariance matrix. It omits Gaussian normalization.
+
+``Result.prior_volume(priors)`` multiplies the ranges of the supplied priors.
+To obtain a box for the sampled coordinates, select them explicitly::
+
+   sampled_priors = {key: result.priors[key]
+                     for key in result.search_parameter_keys}
+   box_volume = result.prior_volume(sampled_priors)
+
+Callers seeking a subset, such as physical parameters without calibration,
+must select that subset themselves. The box does not account for constraint
+or conditional priors, nonuniform prior density, or infinite support.
+``result.occam_factor(priors)`` divides the covariance scale by this box.
+For a narrow Gaussian likelihood under a locally uniform prior, the Laplace
+factor also contains ``(2*pi)**(d/2)``; the quotient alone is not an exact
+evidence penalty.
+
+When results are merged, ``information_gain`` is estimated as the posterior
+mean log likelihood minus its matching evidence normalizer. Ratio likelihoods
+use ``log_bayes_factor``; absolute likelihoods use ``log_evidence``. Weighted
+nested-sample expectations are used when every run has valid weights, otherwise
+the merged equal-weight posterior draws are used. The value is unavailable
+when the likelihood convention or required data are missing. Reweighting
+invalidates the previous information value; if the likelihood itself changes,
+its previous noise normalization is also discarded.
+
 Accessing samples directly
 --------------------------
 
@@ -100,4 +133,3 @@ Visualising the results
 Bilby also provides some useful built-in plotting tools. Some examples on how
 to visualise results using these tools (and  how to extend them) are shown in
 one of the tutorials at `visualising_the_results.ipynb  <https://github.com/bilby-dev/bilby/-/blob/master/examples/tutorials/visualising_the_results.ipynb>`_.
-

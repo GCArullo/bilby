@@ -1087,6 +1087,31 @@ def test_posterior_volume_singular_and_insufficient_samples():
         result.posterior_volume
 
 
+@pytest.mark.parametrize("use_ratio, log_evidence, log_bayes_factor, maximum", [
+    (False, -4., np.nan, 1.),
+    (True, np.nan, -4., 1.),
+])
+def test_log_evidence_to_max_likelihood_ratio(
+        use_ratio, log_evidence, log_bayes_factor, maximum):
+    result = bilby.core.result.Result(
+        use_ratio=use_ratio, log_evidence=log_evidence,
+        log_bayes_factor=log_bayes_factor,
+    )
+    assert result.log_evidence_to_max_likelihood_ratio(maximum) == -5.
+    with pytest.raises(ValueError, match="must be finite"):
+        result.log_evidence_to_max_likelihood_ratio(np.nan)
+
+
+def test_laplace_log_occam_factor():
+    hessian = np.array([[4., 1.], [1., 9.]])
+    expected = -np.log(10.) + np.log(2 * np.pi) - np.log(35.) / 2
+    assert bilby.core.result.Result.laplace_log_occam_factor(
+        hessian, -np.log(10.)) == pytest.approx(expected)
+    with pytest.raises(ValueError, match="positive definite"):
+        bilby.core.result.Result.laplace_log_occam_factor(
+            np.array([[1., 2.], [2., 1.]]), 0.)
+
+
 class TestResultListError(unittest.TestCase):
     def setUp(self):
         np.random.seed(7)

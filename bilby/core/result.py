@@ -1356,6 +1356,54 @@ class Result(object):
         """
         return self.posterior_volume / self.prior_volume(priors)
 
+    def log_evidence_to_max_likelihood_ratio(self, max_log_likelihood):
+        """Return the log evidence relative to a supplied log likelihood maximum.
+
+        This is the exact log prior average of ``L/Lmax`` when the supplied
+        maximum is the true global maximum. A sampled maximum gives an upper
+        bound instead. For a single interior quadratic peak with locally
+        constant prior density, it approaches the Laplace log volume factor.
+
+        ``max_log_likelihood`` must use the likelihood convention of the
+        result: a log likelihood ratio if ``use_ratio`` is true, or an
+        absolute log likelihood otherwise. No Hessian is estimated here.
+        """
+        if self.use_ratio is None:
+            raise ValueError("Likelihood convention is unavailable")
+        log_evidence = (self.log_bayes_factor if self.use_ratio
+                        else self.log_evidence)
+        if not np.isfinite(log_evidence) or not np.isfinite(max_log_likelihood):
+            raise ValueError("Evidence and maximum log likelihood must be finite")
+        return log_evidence - max_log_likelihood
+
+    @staticmethod
+    def laplace_log_occam_factor(hessian, log_prior_at_maximum):
+        """Return the quadratic log volume term at an interior likelihood mode.
+
+        ``hessian`` is the positive-definite negative Hessian of the log
+        likelihood in all fitted coordinates. The log prior density must be
+        evaluated at the same mode and in those coordinates. This does not
+        estimate the Hessian or test the validity of the quadratic expansion.
+        """
+        hessian = np.asarray(hessian, dtype=float)
+        if (hessian.ndim != 2 or hessian.shape[0] != hessian.shape[1]
+                or not hessian.size or not np.all(np.isfinite(hessian))
+                or not np.isfinite(log_prior_at_maximum)
+                or not np.allclose(hessian, hessian.T, rtol=1e-8, atol=0)):
+            raise ValueError("Expected a finite symmetric Hessian and log prior")
+        diagonal = np.diag(hessian)
+        if not np.all(diagonal > 0):
+            raise ValueError("Hessian must be positive definite")
+        scales = np.sqrt(diagonal)
+        scaled_hessian = hessian / scales[:, None] / scales[None, :]
+        try:
+            cholesky = np.linalg.cholesky(scaled_hessian)
+        except np.linalg.LinAlgError as error:
+            raise ValueError("Hessian must be positive definite") from error
+        half_log_det = np.log(scales).sum() + np.log(np.diag(cholesky)).sum()
+        return (log_prior_at_maximum
+                + len(hessian) * np.log(2 * np.pi) / 2 - half_log_det)
+
     @property
     def bayesian_model_dimensionality(self):
         """ Characterises how many parameters are effectively constraint by the data

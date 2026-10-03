@@ -95,6 +95,23 @@ For a narrow Gaussian likelihood under a locally uniform prior, the Laplace
 factor also contains ``(2*pi)**(d/2)``; the quotient alone is not an exact
 evidence penalty.
 
+``result.log_evidence_to_max_likelihood_ratio(max_log_likelihood)`` returns
+``log(Z/Lmax)``. For ``use_ratio=True``, pass a maximum log likelihood ratio;
+otherwise pass a maximum absolute log likelihood. This is the exact
+maximum-normalized evidence term if the supplied maximum is global. A maximum
+over saved samples gives an upper bound. Only for a single interior quadratic
+peak and locally constant prior density does this term approach the Laplace
+log volume factor, ``log(pi(theta_max)) + d*log(2*pi)/2 - log(det(H))/2``,
+where ``H`` is the negative log likelihood Hessian. The method does not
+estimate ``H`` or use the posterior covariance.
+
+When the full likelihood Hessian and prior density at an interior maximum
+are available, ``Result.laplace_log_occam_factor(H, log_prior_at_maximum)``
+computes that quadratic log volume factor directly. The Hessian must include
+every fitted parameter and be positive definite. Compare it with the
+maximum-normalized evidence term to assess whether the local quadratic
+approximation describes the run; agreement is not guaranteed.
+
 When results are merged, ``information_gain`` is estimated as the posterior
 mean log likelihood minus its matching evidence normalizer. Ratio likelihoods
 use ``log_bayes_factor``; absolute likelihoods use ``log_evidence``. Weighted

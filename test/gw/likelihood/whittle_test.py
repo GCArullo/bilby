@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 from scipy.integrate import quad
@@ -227,6 +229,26 @@ class TestWhittleGWTransient(unittest.TestCase):
 
         self.assertIn("log_psd_scale", likelihood.noise_parameter_keys)
         self.assertEqual(likelihood.noise_log_evidence(priors=priors), 0.5)
+
+    def test_noise_evidence_uses_main_sampler_checkpoint_exit_code(self):
+        likelihood = bilby.gw.likelihood.WhittleGravitationalWaveTransient(
+            interferometers=self.interferometers,
+            waveform_generator=self.waveform_generator,
+            infer_log_psd_scale=True,
+            noise_evidence_method="nested",
+        )
+        priors = bilby.core.prior.PriorDict(
+            dict(log_psd_scale=bilby.core.prior.Uniform(0.0, 1.0))
+        )
+        sampler = SimpleNamespace(exit_code=77)
+        with patch("bilby.core.sampler.run_sampler") as run_sampler:
+            run_sampler.return_value.log_evidence = 1.5
+            evidence = likelihood.noise_log_evidence(priors=priors, sampler=sampler)
+
+        self.assertEqual(evidence, 1.5)
+        self.assertTrue(run_sampler.call_args.kwargs["check_point"])
+        self.assertTrue(run_sampler.call_args.kwargs["resume"])
+        self.assertEqual(run_sampler.call_args.kwargs["exit_code"], 77)
 
 
 if __name__ == "__main__":

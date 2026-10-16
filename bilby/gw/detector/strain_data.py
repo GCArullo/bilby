@@ -661,6 +661,64 @@ class InterferometerStrainData(object):
         else:
             raise ValueError("Data frequencies do not match frequency_array")
 
+    def set_from_power_spectral_density_student_t(
+            self, power_spectral_density, sampling_frequency, duration,
+            nu, start_time=0, num_frequency_bands=1,
+            frequency_band_edges=None):
+        """ Set the `frequency_domain_strain` using a Student-t noise realization
+
+        Parameters
+        ==========
+        power_spectral_density: bilby.gw.detector.PowerSpectralDensity
+            A PowerSpectralDensity object used to generate the data
+        sampling_frequency: float
+            The sampling frequency (in Hz)
+        duration: float
+            The data duration (in s)
+        nu: float or array-like
+            Student-t degrees of freedom used to generate the noise
+        start_time: float
+            The GPS start-time of the data
+        num_frequency_bands: int
+            Number of contiguous frequency bands for the Student-t noise model.
+        frequency_band_edges: array-like, optional
+            Explicit frequency-band edges defined on the analysis grid.
+        """
+
+        self._times_and_frequencies = CoupledTimeAndFrequencySeries(
+            duration=duration, sampling_frequency=sampling_frequency, start_time=start_time
+        )
+        self._frequency_mask_updated = False
+        if frequency_band_edges is None:
+            analysis_frequencies = self.frequency_array[self.frequency_mask]
+            if len(analysis_frequencies) == 0:
+                raise ValueError(
+                    "No active frequencies available to construct Student-t bands"
+                )
+            frequency_band_edges = np.linspace(
+                analysis_frequencies[0],
+                analysis_frequencies[-1],
+                int(num_frequency_bands) + 1,
+            )
+        logger.debug(
+            "Setting data using Student-t noise realization from provided"
+            " power_spectral_density"
+        )
+        frequency_domain_strain, frequency_array = (
+            power_spectral_density.get_student_t_noise_realisation(
+                self.sampling_frequency,
+                self.duration,
+                nu=nu,
+                num_frequency_bands=num_frequency_bands,
+                frequency_band_edges=frequency_band_edges,
+            )
+        )
+
+        if np.array_equal(frequency_array, self.frequency_array):
+            self._frequency_domain_strain = frequency_domain_strain
+        else:
+            raise ValueError("Data frequencies do not match frequency_array")
+
     def set_from_zero_noise(self, sampling_frequency, duration, start_time=0):
         """ Set the `frequency_domain_strain` to zero noise
 

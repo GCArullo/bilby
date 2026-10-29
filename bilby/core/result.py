@@ -456,6 +456,16 @@ def reweight(result, label=None, new_likelihood=None, new_prior=None,
     else:
         result.log_evidence += logsumexp(ln_weights) - np.log(nposterior)
 
+    # The old information gain refers to the original posterior and evidence.
+    result.information_gain = np.nan
+    if new_likelihood is not None:
+        # Its noise normalization need not match the original likelihood.
+        result.log_bayes_factor = np.nan
+    elif np.isfinite(result.log_noise_evidence):
+        result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
+    else:
+        result.log_bayes_factor = np.nan
+
     if new_prior is not None:
         for key, prior in new_prior.items():
             result.priors[key] = prior
@@ -471,6 +481,14 @@ def reweight(result, label=None, new_likelihood=None, new_prior=None,
                 kwargs[key] = value
         data_frame = conversion_function(data_frame, **kwargs)
         result.posterior = data_frame
+
+    if (new_likelihood is None and result.use_ratio is not None
+            and "log_likelihood" in result.posterior and len(result.posterior)
+            and np.all(np.isfinite(result.posterior["log_likelihood"]))):
+        normalizer = (result.log_bayes_factor if result.use_ratio
+                      else result.log_evidence)
+        if np.isfinite(normalizer):
+            result.information_gain = result.posterior["log_likelihood"].mean() - normalizer
 
     if label:
         result.label = label
@@ -1288,20 +1306,48 @@ class Result(object):
 
     @property
     def posterior_volume(self):
-        """ The posterior volume """
-        if self.covariance_matrix.ndim == 0:
-            return np.sqrt(self.covariance_matrix)
-        else:
-            return 1 / np.sqrt(np.abs(np.linalg.det(
-                1 / self.covariance_matrix)))
+        """Return the covariance scale ``sqrt(det(C))`` of sampled parameters.
+
+        This is zero for a singular covariance and is not a credible-region
+        volume. It has no Gaussian normalization and depends on coordinates.
+        """
+        if self.posterior is None or len(self.posterior) < 2:
+            raise ValueError("At least two posterior samples are required")
+        covariance = np.atleast_2d(self.covariance_matrix)
+        if not np.all(np.isfinite(covariance)):
+            raise ValueError("Posterior covariance must be finite")
+        diagonal = np.diag(covariance)
+        if np.any(diagonal < 0):
+            raise ValueError("Posterior covariance has negative variance")
+        if np.any(diagonal == 0):
+            return 0.0
+        scales = np.sqrt(diagonal)
+        correlation = covariance / np.outer(scales, scales)
+        eigenvalues = np.linalg.eigvalsh(correlation)
+        if np.any(eigenvalues < -1e-12):
+            raise ValueError("Posterior covariance is not positive semidefinite")
+        if np.any(eigenvalues <= 0):
+            return 0.0
+        _, logdet = np.linalg.slogdet(correlation)
+        return np.exp(np.log(scales).sum() + logdet / 2)
 
     @staticmethod
     def prior_volume(priors):
-        """ The prior volume, given a set of priors """
+        """Return the product of ranges of the supplied priors.
+
+        For sampled coordinates, pass only ``search_parameter_keys``. This
+        bounding box does not account for constraints, conditional or
+        nonuniform densities, and can be infinite for unbounded priors.
+        """
         return np.prod([priors[k].maximum - priors[k].minimum for k in priors])
 
     def occam_factor(self, priors):
-        """ The Occam factor,
+        """Return the covariance-scale to prior-box quotient.
+
+        This is an Occam-factor approximation only for a locally uniform
+        prior and a narrow, approximately Gaussian posterior. The Gaussian
+        Laplace factor also contains ``(2*pi)**(d/2)``. Bounds, periodicity,
+        multimodality and nonuniform prior density can invalidate it.
 
         See Chapter 28, `Mackay "Information Theory, Inference, and Learning
         Algorithms" <http://www.inference.org.uk/itprnn/book.html>`_ Cambridge
@@ -1309,6 +1355,54 @@ class Result(object):
 
         """
         return self.posterior_volume / self.prior_volume(priors)
+
+    def log_evidence_to_max_likelihood_ratio(self, max_log_likelihood):
+        """Return the log evidence relative to a supplied log likelihood maximum.
+
+        This is the exact log prior average of ``L/Lmax`` when the supplied
+        maximum is the true global maximum. A sampled maximum gives an upper
+        bound instead. For a single interior quadratic peak with locally
+        constant prior density, it approaches the Laplace log volume factor.
+
+        ``max_log_likelihood`` must use the likelihood convention of the
+        result: a log likelihood ratio if ``use_ratio`` is true, or an
+        absolute log likelihood otherwise. No Hessian is estimated here.
+        """
+        if self.use_ratio is None:
+            raise ValueError("Likelihood convention is unavailable")
+        log_evidence = (self.log_bayes_factor if self.use_ratio
+                        else self.log_evidence)
+        if not np.isfinite(log_evidence) or not np.isfinite(max_log_likelihood):
+            raise ValueError("Evidence and maximum log likelihood must be finite")
+        return log_evidence - max_log_likelihood
+
+    @staticmethod
+    def laplace_log_occam_factor(hessian, log_prior_at_maximum):
+        """Return the quadratic log volume term at an interior likelihood mode.
+
+        ``hessian`` is the positive-definite negative Hessian of the log
+        likelihood in all fitted coordinates. The log prior density must be
+        evaluated at the same mode and in those coordinates. This does not
+        estimate the Hessian or test the validity of the quadratic expansion.
+        """
+        hessian = np.asarray(hessian, dtype=float)
+        if (hessian.ndim != 2 or hessian.shape[0] != hessian.shape[1]
+                or not hessian.size or not np.all(np.isfinite(hessian))
+                or not np.isfinite(log_prior_at_maximum)
+                or not np.allclose(hessian, hessian.T, rtol=1e-8, atol=0)):
+            raise ValueError("Expected a finite symmetric Hessian and log prior")
+        diagonal = np.diag(hessian)
+        if not np.all(diagonal > 0):
+            raise ValueError("Hessian must be positive definite")
+        scales = np.sqrt(diagonal)
+        scaled_hessian = hessian / scales[:, None] / scales[None, :]
+        try:
+            cholesky = np.linalg.cholesky(scaled_hessian)
+        except np.linalg.LinAlgError as error:
+            raise ValueError("Hessian must be positive definite") from error
+        half_log_det = np.log(scales).sum() + np.log(np.diag(cholesky)).sum()
+        return (log_prior_at_maximum
+                + len(hessian) * np.log(2 * np.pi) / 2 - half_log_det)
 
     @property
     def bayesian_model_dimensionality(self):
@@ -2312,7 +2406,27 @@ class ResultList(list):
             result.log_noise_evidence = self._combined_log_noise_evidence()
 
         # check which kind of sampler was used: MCMC or Nested Sampling
+        nested_mean = None
         if result._nested_samples is not None:
+            # Use the nested-sample expectation before the samples are dropped.
+            means = []
+            for res in self:
+                samples = res._nested_samples
+                if samples is None or not {"weights", "log_likelihood"} <= set(samples):
+                    break
+                weights = np.asarray(samples["weights"], dtype=float)
+                log_likelihood = np.asarray(samples["log_likelihood"], dtype=float)
+                if (not np.all(np.isfinite(weights) & (weights >= 0))
+                        or not np.all(np.isfinite(log_likelihood))
+                        or weights.sum() <= 0):
+                    break
+                means.append(np.average(log_likelihood, weights=weights))
+            if len(means) == len(self):
+                from scipy.special import logsumexp
+                log_evidences = np.array([res.log_evidence for res in self])
+                if np.all(np.isfinite(log_evidences)):
+                    evidence_weights = np.exp(log_evidences - logsumexp(log_evidences))
+                    nested_mean = np.dot(evidence_weights, means)
             posteriors, result = self._combine_nested_sampled_runs(result)
         elif result.sampler in ["bilby_mcmc", "bilbymcmc"]:
             posteriors, result = self._combine_mcmc_sampled_runs(result)
@@ -2325,6 +2439,22 @@ class ResultList(list):
             result.posterior = combined_posteriors.sample(len(combined_posteriors))
         else:
             result.posterior = combined_posteriors
+
+        result.information_gain = np.nan
+        if all(res.use_ratio is not None and res.use_ratio == result.use_ratio
+               for res in self):
+            normalizer = (result.log_bayes_factor if result.use_ratio
+                          else result.log_evidence)
+            if nested_mean is not None:
+                mean_log_likelihood = nested_mean
+            elif ("log_likelihood" in result.posterior
+                  and len(result.posterior)
+                  and np.all(np.isfinite(result.posterior["log_likelihood"]))):
+                mean_log_likelihood = result.posterior["log_likelihood"].mean()
+            else:
+                mean_log_likelihood = np.nan
+            if np.isfinite(normalizer) and np.isfinite(mean_log_likelihood):
+                result.information_gain = mean_log_likelihood - normalizer
 
         logger.info(f"Combined results have {len(result.posterior)} samples")
 

@@ -9,6 +9,21 @@ import pytest
 import bilby
 
 
+def test_log_prior_checks_derived_constraints():
+    priors = bilby.core.prior.PriorDict(
+        dictionary=dict(
+            x=bilby.core.prior.Uniform(0, 1),
+            derived=bilby.core.prior.Constraint(0, 0.5),
+        ),
+        conversion_function=lambda sample: dict(sample, derived=sample['x']),
+    )
+    priors._cached_normalizations[('x',)] = 2.0
+    sample = dict(x=np.array([0.25, 0.75]))
+    np.testing.assert_allclose(priors.ln_prob(sample, axis=0, normalized=False), [0, -np.inf])
+    np.testing.assert_allclose(priors.ln_prob(sample, axis=0), [np.log(2), -np.inf])
+    assert np.isneginf(priors.ln_prob(dict(x=0.75), normalized=False))
+
+
 # needs to be defined on module-level for later re-initialization
 class MVNSubclass(bilby.core.prior.MultivariateNormalDist):
     def __init__(self, names, mus, covs, weights):

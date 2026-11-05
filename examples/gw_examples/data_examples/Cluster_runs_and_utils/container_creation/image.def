@@ -47,7 +47,8 @@ From: ubuntu:26.04
     # so build pygsl_lite against a pinned setuptools instead and supply its
     # other build dependencies by hand. pyseobnr then finds it already
     # installed. Drop this once pygsl_lite stops using the old signature.
-    pip install "setuptools<84" setuptools_scm wheel
+    # Schwimmbad 0.3.2 also needs pkg_resources, removed in setuptools 81.
+    pip install "setuptools<81" setuptools_scm wheel
     pip install --no-build-isolation pygsl_lite
     pip install pyseobnr==0.3.7
     # Retain the waveform version used by existing SEOBNRv5PHM analyses.

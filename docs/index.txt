@@ -16,6 +16,7 @@ Welcome to bilby's documentation!
    prior
    likelihood
    samplers
+   parallelisation
    array_api
    dynesty-guide
    bilby-mcmc-guide

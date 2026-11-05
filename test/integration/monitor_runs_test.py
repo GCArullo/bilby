@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = (
@@ -24,7 +26,8 @@ def load_monitor_runs_module():
     return module
 
 
-def test_resubmitted_job_is_matched_by_outdir(monkeypatch, tmp_path, capsys):
+@pytest.mark.parametrize("executable", ["bilby_pipe_analysis", "bilby_parallel_analysis"])
+def test_resubmitted_job_is_matched_by_outdir(monkeypatch, tmp_path, capsys, executable):
     module = load_monitor_runs_module()
     root = tmp_path / "event" / "SEOB"
     run_dir = root / "student_detector_independent_noise_N1"
@@ -39,7 +42,7 @@ def test_resubmitted_job_is_matched_by_outdir(monkeypatch, tmp_path, capsys):
         "JobStatus": 2,
         "Iwd": str(tmp_path),
         "Args": (
-            "bilby_pipe_analysis config.ini "
+            f"{executable} config.ini "
             f"--outdir event/SEOB/{run_dir.name} --label {label}"
         ),
     }
@@ -50,7 +53,7 @@ def test_resubmitted_job_is_matched_by_outdir(monkeypatch, tmp_path, capsys):
         "ExitBySignal": False,
         "Iwd": str(root),
         "Args": (
-            "bilby_pipe_analysis config.ini "
+            f"{executable} config.ini "
             f"--outdir {run_dir.name} --label {label}"
         ),
     }

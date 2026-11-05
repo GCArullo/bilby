@@ -51,6 +51,24 @@ def test_num_frequency_bands_defaults_to_one():
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
+def test_parallel_bilby_dry_run(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT_PATH), "--parallel-bilby", "--mpi-cpus", "4",
+        "--num-sine-gaussians", "1", "--dry-run", "--no-container",
+        "--ini-dir", str(tmp_path / "ini"), "--prior-dir", str(tmp_path / "prior"),
+        "--home-dir", str(tmp_path),
+    ])
+    assert module.main() == 0
+    ini_path, = (tmp_path / "ini").glob("*.ini")
+    ini = ini_path.read_text()
+    assert "_parallel_bilby" in ini_path.name
+    assert "analysis-executable=bilby_parallel_analysis\n" in ini
+    assert "request-cpus=4\n" in ini
+    assert "htcondor-strict-cpu-request=True\n" in ini
+    assert "frequency-domain-source-model=bilby.gw.source.cbc_plus_sine_gaussians\n" in ini
+
+
 @pytest.mark.parametrize('eccentric', [False, True])
 @pytest.mark.parametrize('sg_count', [0, 1])
 def test_dali_run_configuration(monkeypatch, tmp_path, eccentric, sg_count):

@@ -9,6 +9,7 @@ MANIFEST
 *.h5
 *.h5.old
 *.txt
+!parallel_requirements.txt
 *.log
 *.dat
 *.version

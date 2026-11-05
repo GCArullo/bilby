@@ -365,6 +365,17 @@ def run_sampler(
             f"sampler: {get_implemented_samplers()}."
         )
 
+    if pool == "parallel_bilby":
+        from mpi4py import MPI
+
+        # All ranks must agree whether to enter the pool. Only rank zero
+        # may write a cached result or perform its posterior conversion.
+        cached = MPI.COMM_WORLD.bcast(bool(sampler.cached_result), root=0)
+        if cached and MPI.COMM_WORLD.rank != 0:
+            sys.exit(0)
+        if not cached:
+            sampler.cached_result = None
+
     if sampler.cached_result:
         logger.warning("Using cached result")
         result = sampler.cached_result
@@ -373,7 +384,7 @@ def run_sampler(
             likelihood=likelihood,
             conversion_function=conversion_function,
             npool=npool,
-            pool=pool,
+            pool=None if pool == "parallel_bilby" else pool,
         )
     else:
         defer_noise_evidence = _should_defer_noise_evidence(

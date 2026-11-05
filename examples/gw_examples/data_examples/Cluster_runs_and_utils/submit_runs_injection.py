@@ -22,6 +22,8 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+from submission_parallel_utils import add_parallel_arguments, apply_parallel_settings
+
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 
 import h5py
@@ -407,6 +409,7 @@ def build_parser() -> argparse.ArgumentParser:
         default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
+    add_parallel_arguments(parser)
     add_sine_gaussian_arguments(
         parser,
         prefix="injection",
@@ -1630,7 +1633,10 @@ def render_ini(
         sine_gaussian_config,
         replace_line=replace_line,
     )
-    return rendered
+    return apply_parallel_settings(
+        rendered, enabled=getattr(args, "parallel_bilby", False),
+        cpus=getattr(args, "mpi_cpus", 8), replace_line=replace_or_append_line,
+    )
 
 
 def build_run_label(label_prefix: str, hypothesis: str, sine_gaussian_config) -> str:
@@ -1663,6 +1669,8 @@ def write_run_files(
         hypothesis,
         sine_gaussian_config,
     )
+    if getattr(args, "parallel_bilby", False):
+        label += "_parallel_bilby"
     run_num_frequency_bands = (
         args.num_frequency_bands
         if hypothesis == "student"

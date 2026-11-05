@@ -80,6 +80,24 @@ def test_num_frequency_bands_defaults_to_one():
     assert module.hypothesis_list(args) == ["gaussian"]
 
 
+def test_parallel_bilby_injection_config(monkeypatch, tmp_path):
+    module = load_submit_runs_injection_module()
+    stub_injection_staging(monkeypatch, module, tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT_PATH), "--base-dir", str(tmp_path),
+        "--parallel-bilby", "--mpi-cpus", "4",
+        "--num-sine-gaussians", "1", "--dry-run", "--no-container",
+    ])
+    assert module.main() == 0
+    ini_path, = (tmp_path / "ini_files").glob("*.ini")
+    ini = ini_path.read_text()
+    assert "_parallel_bilby" in ini_path.name
+    assert "analysis-executable=bilby_parallel_analysis\n" in ini
+    assert "request-cpus=4\n" in ini
+    assert "htcondor-strict-cpu-request=True\n" in ini
+    assert "frequency-domain-source-model=bilby.gw.source.cbc_plus_sine_gaussians\n" in ini
+
+
 def test_accounting_user_defaults_to_home_basename(monkeypatch):
     monkeypatch.setenv("HOME", "/home/name.surname")
 

@@ -94,6 +94,46 @@ pool should therefore provide a serial fallback:
 		map_function = pool.map if pool is not None else map
 		values = list(map_function(evaluate_sample, samples))
 
+Parallel Bilby's MPI pool
+=========================
+
+Install the optional dependencies with ``pip install '.[gw,parallel]'`` and
+install an MPI runtime providing ``mpiexec``. The ``parallel`` extra pins
+``parallel_bilby`` and Schwimmbad to compatible versions.
+
+Select ``pool="parallel_bilby"`` in ``bilby.run_sampler`` and launch the script
+with ``mpiexec -n 8 python analysis.py``. Each rank must execute the same call.
+The eight ranks comprise one master and seven workers. Bilby initializes the
+likelihood and priors on every rank before workers begin waiting, and closes
+the pool after sampling and posterior conversion. Cached results are handled
+by the master alone.
+
+For Bilby-pipe analyses, use ``bilby_parallel_analysis config.ini`` as the
+analysis executable. It launches ``request-cpus`` MPI ranks on the allocated
+machine, with at least two ranks required. Keep ``sampler=dynesty``: this
+integration uses Parallel Bilby's ``MPIPoolFast`` with Bilby's current Dynesty
+driver, checkpoint format, and posterior conversion. Parallel Bilby 2.0.2's
+standalone analysis driver uses older Dynesty internals and is not used here.
+
+The real-data and injection launchers under
+``examples/gw_examples/data_examples/Cluster_runs_and_utils`` accept
+``--parallel-bilby --mpi-cpus 8``. These options select the analysis executable,
+request exactly eight CPUs per job, and append ``_parallel_bilby`` to run
+labels and output directories. For example:
+
+.. code-block:: bash
+
+    python submit_runs_real_data.py --event GW231123 \
+        --likelihood gaussian --num-sine-gaussians 1 \
+        --parallel-bilby --mpi-cpus 8 --dry-run --no-container
+
+Remove ``--dry-run --no-container`` for container submissions after publishing
+and registering an image for this branch. The container recipe includes MPI
+and the optional dependencies. Build it with
+``make publish BILBY_BRANCH=codex/parallel-bilby BILBY_PIPE_BRANCH=sine_gaussians_addition``
+from ``container_creation`` after pushing the Bilby branch. This is a
+single-machine MPI launch; it does not request multiple cluster nodes.
+
 Using a custom pool
 ===================
 

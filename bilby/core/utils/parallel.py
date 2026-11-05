@@ -93,7 +93,8 @@ def create_pool(
         If a user pool is not provided and this is either :code:`1` or :code:`None`,
         this functions returns :code:`None`.
     pool: pool-like, str, None
-        Either a premade pool object, or the pool kind (:code:`mpi`, :code:`multiprocessing`).
+        Either a premade pool object, or the pool kind (:code:`mpi`,
+        :code:`parallel_bilby`, :code:`multiprocessing`).
         If a pre-made pool is passed, it is returned directly with no checks
         performed.
     parameters: dict, None
@@ -146,11 +147,18 @@ def create_pool(
         parameters = dict()
 
     _pool = None
-    if pool == "mpi":
-        try:
-            from schwimmbad import MPIPool
-        except ImportError:
-            raise ImportError("schwimmbad must be installed to use MPI pool")
+    if pool in ("mpi", "parallel_bilby"):
+        pool_kwargs = dict()
+        if pool == "parallel_bilby":
+            from parallel_bilby.schwimmbad_fast import MPIPoolFast as MPIPool
+
+            # Worker ranks must exit when the master closes the pool.
+            pool_kwargs["persistent_tasks"] = False
+        else:
+            try:
+                from schwimmbad import MPIPool
+            except ImportError:
+                raise ImportError("schwimmbad must be installed to use MPI pool")
 
         initialize_global_variables(
             likelihood=likelihood,
@@ -159,7 +167,7 @@ def create_pool(
             use_ratio=use_ratio,
             parameters=parameters,
         )
-        _pool = MPIPool(use_dill=True)
+        _pool = MPIPool(use_dill=True, **pool_kwargs)
         if _pool.is_master():
             logger.info(f"Created MPI pool with size {_pool.size}")
     elif pool is not None:
@@ -220,7 +228,8 @@ def bilby_pool(
         If a user pool is not provided and this is either :code:`1` or :code:`None`,
         this functions returns :code:`None`.
     pool: pool-like, str, None
-        Either a premade pool object, or the pool kind (:code:`mpi`, :code:`multiprocessing`).
+        Either a premade pool object, or the pool kind (:code:`mpi`,
+        :code:`parallel_bilby`, :code:`multiprocessing`).
         If a pre-made pool is passed, it is returned directly with no checks
         performed.
     parameters: dict, None

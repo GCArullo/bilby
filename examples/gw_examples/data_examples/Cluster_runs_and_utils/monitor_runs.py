@@ -60,7 +60,9 @@ def condor_json(command: list[str]) -> list[dict]:
 
 def analysis_label(ad: dict) -> str | None:
     arguments = ad.get("Args") or ""
-    if "bilby_pipe_analysis" not in arguments:
+    if not any(name in arguments for name in (
+        "bilby_pipe_analysis", "bilby_parallel_analysis",
+    )):
         return None
     match = LABEL_RE.search(arguments)
     return match.group(1) if match else None

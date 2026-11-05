@@ -44,6 +44,7 @@ requires-python = ">=3.11"
 [project.scripts]
 bilby_plot = "cli_bilby.plot_multiple_posteriors:main"
 bilby_result = "cli_bilby.bilby_result:main"
+bilby_parallel_analysis = "cli_bilby.parallel_bilby:main"
 
 [project.urls]
 Documentation = "https://bilby.readthedocs.io"
@@ -135,6 +136,7 @@ all = { file = [
 gw = { file = ["gw_requirements.txt"] }
 jax = { file = ["jax_requirements.txt"] }
 mcmc = { file = ["mcmc_requirements.txt"] }
+parallel = { file = ["parallel_requirements.txt"] }
 
 [tool.setuptools.package-data]
 "bilby.gw" = ["prior_files/*"]

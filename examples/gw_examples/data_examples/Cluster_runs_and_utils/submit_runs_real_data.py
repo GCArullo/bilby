@@ -16,6 +16,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from submission_parallel_utils import add_parallel_arguments, apply_parallel_settings
 from container_creation.submission_container_utils import (
     add_container_arguments,
     environment_variables_for_container,
@@ -353,6 +354,7 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         default_image_file=DEFAULT_CONTAINER_IMAGES_FILE,
     )
     add_sine_gaussian_arguments(parser)
+    add_parallel_arguments(parser)
     parser.add_argument(
         "--sine-gaussian-hrss-prior",
         choices=("loguniform", "uniform"),
@@ -850,6 +852,8 @@ def prepare_run(
     detector_suffix: str = "",
     sg_only: bool = False,
     sine_gaussian_hrss_prior: str = "loguniform",
+    parallel_bilby: bool = False,
+    mpi_cpus: int = 8,
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
@@ -858,6 +862,8 @@ def prepare_run(
         waveform_suffix += "_hrss_uniform"
     if sg_only:
         waveform_suffix = waveform_suffix.replace("_sg_", "_sg_only_", 1)
+    if parallel_bilby:
+        waveform_suffix += "_parallel_bilby"
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -910,27 +916,31 @@ def prepare_run(
         ),
         encoding="utf-8",
     )
+    rendered = render_ini(
+        ini_template,
+        hypothesis=hypothesis,
+        label=label,
+        outdir=run_outdir,
+        webdir=run_webdir,
+        prior_file=prior_path,
+        band_count=run_band_count,
+        detector_dependent_nu=run_detector_dependent_nu,
+        detectors=detectors,
+        working_directory=working_directory,
+        accounting_user=accounting_user,
+        container_image=container_image,
+        require_epnfs=require_epnfs,
+        condor_job_priority=condor_job_priority,
+        maxmcmc=maxmcmc,
+        waveform_arguments=waveform_arguments,
+        template_settings=template_settings,
+        sine_gaussian_config=sine_gaussian_config,
+        sg_only=sg_only,
+    )
     ini_path.write_text(
-        render_ini(
-            ini_template,
-            hypothesis=hypothesis,
-            label=label,
-            outdir=run_outdir,
-            webdir=run_webdir,
-            prior_file=prior_path,
-            band_count=run_band_count,
-            detector_dependent_nu=run_detector_dependent_nu,
-            detectors=detectors,
-            working_directory=working_directory,
-            accounting_user=accounting_user,
-            container_image=container_image,
-            require_epnfs=require_epnfs,
-            condor_job_priority=condor_job_priority,
-            maxmcmc=maxmcmc,
-            waveform_arguments=waveform_arguments,
-            template_settings=template_settings,
-            sine_gaussian_config=sine_gaussian_config,
-            sg_only=sg_only,
+        apply_parallel_settings(
+            rendered, enabled=parallel_bilby, cpus=mpi_cpus,
+            replace_line=replace_or_append_line,
         ),
         encoding="utf-8",
     )
@@ -1107,6 +1117,8 @@ def main() -> int:
                 detector_suffix=detector_suffix,
                 sg_only=args.sg_only,
                 sine_gaussian_hrss_prior=args.sine_gaussian_hrss_prior,
+                parallel_bilby=args.parallel_bilby,
+                mpi_cpus=args.mpi_cpus,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

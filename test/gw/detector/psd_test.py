@@ -1,4 +1,5 @@
 import os
+import pickle
 import unittest
 from unittest import mock
 
@@ -33,6 +34,23 @@ class TestPowerSpectralDensityWithoutFiles(unittest.TestCase):
         self.assertTrue(np.array_equal(self.frequency_array, psd.frequency_array))
         self.assertTrue(np.array_equal(self.asd_array, psd.asd_array))
         self.assertTrue(np.array_equal(self.psd_array, psd.psd_array))
+
+    def test_load_legacy_pickle(self):
+        psd = bilby.gw.detector.PowerSpectralDensity(
+            frequency_array=self.frequency_array, psd_array=self.psd_array
+        )
+        for name in ('psd_array', 'asd_array', 'power_spectral_density_interpolated'):
+            psd.__dict__['_PowerSpectralDensity__' + name] = psd.__dict__.pop('_' + name)
+
+        restored = pickle.loads(pickle.dumps(psd))
+        restored.set_array_backend(np)
+        np.testing.assert_array_equal(restored.psd_array, self.psd_array)
+        np.testing.assert_array_equal(restored.asd_array, self.asd_array)
+        np.testing.assert_array_equal(
+            restored.power_spectral_density_interpolated(self.frequency_array), self.psd_array
+        )
+        current = pickle.loads(pickle.dumps(restored))
+        np.testing.assert_array_equal(current.psd_array, self.psd_array)
 
     def test_setting_asd_array_after_init(self):
         psd = bilby.gw.detector.PowerSpectralDensity(

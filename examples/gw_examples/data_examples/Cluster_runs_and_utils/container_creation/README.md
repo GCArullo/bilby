@@ -50,6 +50,9 @@ and validates the waveform stack before copying the image to its timestamped
 final name. Validation loads the SEOBNRv5PHM gwsignal generator, generates an
 NRSur7dq4 waveform, and evaluates the NRSur7dq4 remnant fit. The image includes
 `pyseobnr`, its GSL/SWIG build dependencies, and both NRSur7dq4 HDF5 data files.
+The default pySEOBNR version is 0.3.7. Jobs reproducing the older 0.3.6
+waveforms can set `PYTHONPATH=/opt/pyseobnr-0.3.6` in their environment.
+The same standard image contains both versions and the MPI runtime.
 The equivalent expanded build command for the defaults is:
 
 ```

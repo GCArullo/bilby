@@ -43,7 +43,10 @@ From: ubuntu:26.04
     # installed. Drop this once pygsl_lite stops using the old signature.
     pip install "setuptools<84" setuptools_scm wheel
     pip install --no-build-isolation pygsl_lite
-    pip install pyseobnr
+    pip install pyseobnr==0.3.7
+    # Retain the waveform version used by existing SEOBNRv5PHM analyses.
+    # Select it with PYTHONPATH=/opt/pyseobnr-0.3.6 in the job environment.
+    pip install --no-deps --target /opt/pyseobnr-0.3.6 pyseobnr==0.3.6
 
     # Pin the Dali branch: the PyPI teobresums release is a different model.
     git clone https://bitbucket.org/teobresums/teobresums.git /tmp/teobresums

@@ -53,6 +53,9 @@ NRSur7dq4 waveform, and evaluates the NRSur7dq4 remnant fit. The image includes
 The default pySEOBNR version is 0.3.7. Jobs reproducing the older 0.3.6
 waveforms can set `PYTHONPATH=/opt/pyseobnr-0.3.6` in their environment.
 The same standard image contains both versions and the MPI runtime.
+NumPy 2.2.6, SciPy 1.14.0 and LALSuite 7.26.15 retain the numerical stack of
+the existing production images. Upstream Bilby release tags supply the package
+version metadata when installing this fork.
 The equivalent expanded build command for the defaults is:
 
 ```

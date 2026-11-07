@@ -69,7 +69,13 @@ def main():
         "-m", "cli_bilby.parallel_bilby", "--worker", *arguments,
         "--sampler-kwargs", repr(kwargs),
     ]
-    raise SystemExit(subprocess.run(command).returncode)
+    code = subprocess.run(command).returncode
+    result_file = Path(args.outdir) / "result" / f"{args.label}_result.{args.result_format}"
+    if code == 0 and (not result_file.is_file() or result_file.stat().st_size == 0):
+        # MPIPoolFast can abort a failed worker with exit code zero.
+        print("MPI exited without a completed result; marking the analysis as failed.", file=sys.stderr)
+        code = 1
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":

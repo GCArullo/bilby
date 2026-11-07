@@ -384,6 +384,21 @@ class TestGWSignalBBH(unittest.TestCase):
             bilby.gw.source.gwsignal_binary_black_hole(
                 self.frequency_array, **raise_error_parameters
             )
+    def test_reference_frequency_waveform_error(self):
+        parameters = dict(self.parameters, **self.waveform_kwargs)
+        message = "Failed to find the time corresponding to requested f_ref."
+        with mock.patch("lalsimulation.gwsignal.GenerateFDWaveform", side_effect=ValueError(message)):
+            self.assertIsNone(bilby.gw.source.gwsignal_binary_black_hole(
+                self.frequency_array, **parameters,
+            ))
+            parameters["catch_waveform_errors"] = False
+            with self.assertRaisesRegex(ValueError, "requested f_ref"):
+                bilby.gw.source.gwsignal_binary_black_hole(self.frequency_array, **parameters)
+        parameters["catch_waveform_errors"] = True
+        with mock.patch("lalsimulation.gwsignal.GenerateFDWaveform", side_effect=ValueError("unexpected error")):
+            with self.assertRaisesRegex(ValueError, "unexpected error"):
+                bilby.gw.source.gwsignal_binary_black_hole(self.frequency_array, **parameters)
+
     # def test_gwsignal_bbh_works_without_waveform_parameters(self):
     #    self.assertIsInstance(
     #        bilby.gw.source.gwsignal_binary_black_hole(

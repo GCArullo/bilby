@@ -324,3 +324,22 @@ python "$INJ" \
   --injection-incoherent-sg-counts H1=1 L1=1 \
   --maxmcmc "$MAXMCMC"
 ```
+
+
+## Recovering failed or held analyses
+
+Inspect the analysis logs and completed result before accepting a successful
+Condor exit. The MPI launcher rejects a zero exit without a nonempty result;
+older images could report success after an MPI worker crashed. With
+`catch-waveform-errors=True`, the known pySEOBNR `requested f_ref` waveform
+failure receives zero likelihood, as do other supported waveform domain errors.
+Unexpected exceptions still stop the analysis. Publish the updated official
+branch image before resubmitting, retain each run's pySEOBNR version and priors,
+and transfer its existing resume file. Do not merge until every required chain
+has a completed result.
+
+For OSDF transfer holds, verify the staged image exists and inspect `NumHolds`
+and the stored `PeriodicRelease` expression. The retry cap counts the job's
+lifetime holds. If it is exhausted after diagnosed transient failures, allow a
+limited number of further retries with the 600-second backoff before releasing
+the affected job. Keep the cap and leave sites with successful jobs available.

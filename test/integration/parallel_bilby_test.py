@@ -98,3 +98,21 @@ def test_parallel_sine_gaussian_analysis(tmp_path, student):
         completed = subprocess.run(command, env=env, cwd=tmp_path, capture_output=True, text=True, timeout=30)
         assert completed.returncode == 77, completed.stdout + completed.stderr
         assert (interrupted_outdir / "result" / "sg_resume.pickle").exists()
+
+
+@pytest.mark.parametrize("placeholder", [False, True])
+def test_parallel_missing_result_is_failure(tmp_path, monkeypatch, placeholder):
+    pytest.importorskip("parallel_bilby.schwimmbad_fast")
+    from cli_bilby import parallel_bilby
+
+    config = tmp_path / "failure.ini"
+    config.write_text(f"label=failure\noutdir={tmp_path}\nrequest-cpus=2\nresult-format=hdf5\n")
+    if placeholder:
+        (tmp_path / "result").mkdir()
+        (tmp_path / "result/failure_result.hdf5").touch()
+    monkeypatch.setattr(sys, "argv", ["bilby_parallel_analysis", str(config)])
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/mpiexec")
+    monkeypatch.setattr(subprocess, "run", lambda command: subprocess.CompletedProcess(command, 0))
+    with pytest.raises(SystemExit) as error:
+        parallel_bilby.main()
+    assert error.value.code == 1

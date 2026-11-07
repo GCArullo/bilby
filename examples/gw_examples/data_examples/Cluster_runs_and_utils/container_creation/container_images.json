@@ -1,5 +1,5 @@
 {
-  "codex/parallel-bilby": "osdf:///igwn/cit/staging/gregorio.carullo/bilby-2.8.0.dev305+g9cdfa2e38-9cdfa2e386a2-bilby_pipe-1.8.2.dev89+g6a96344ce-6a96344ce201-pesummary_GC-1.7.1.dev17+g55104b95d-55104b95dfcd-2026-11-05T18_50_18.sif",
+  "codex/parallel-bilby": "osdf:///igwn/cit/staging/gregorio.carullo/bilby-2.8.0.dev307+g08c1b8bb0-08c1b8bb09d3-bilby_pipe-1.8.2.dev89+g6a96344ce-6a96344ce201-pesummary_GC-1.7.1.dev17+g55104b95d-55104b95dfcd-2026-11-07T09_05_39.sif",
   "hyp": "osdf:///igwn/cit/staging/gregorio.carullo/bilby-0.1.0.dev5775+g375ff5eb2-375ff5eb234d-bilby_pipe-1.8.2.dev102+gfe498a217-fe498a217d1d-pesummary_GC-1.7.1.dev13+gc3fb4702b-c3fb4702b5a3-2026-09-24T07_34_21.sif",
   "sine_gaussians_addition": "osdf:///igwn/cit/staging/gregorio.carullo/bilby-0.1.0.dev5687+g2b67f6f4d-2b67f6f4d20a-bilby_pipe-1.8.2.dev88+g3a96f0b8a-3a96f0b8abe3-pesummary_GC-1.7.1.dev17+g55104b95d-55104b95dfcd-2026-10-26T12_00_43.sif"
 }

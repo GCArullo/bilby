@@ -628,7 +628,7 @@ class PriorDict(dict):
             ratio = self.normalize_constraint_factor(tuple(sample.keys()))
         else:
             ratio = 1
-        if not aac.is_jax_namespace(xp) and xp.all(xp.isfinite(ln_prob)):
+        if not self.constraint_keys:
             return ln_prob
         else:
             if isinstance(ln_prob, float):

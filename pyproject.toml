@@ -40,6 +40,7 @@ requires-python = ">=3.11"
 "bilby.dynesty" = "bilby.core.sampler.dynesty:Dynesty"
 "bilby.emcee" = "bilby.core.sampler.emcee:Emcee"
 "bilby.fake_sampler" = "bilby.core.sampler.fake_sampler:FakeSampler"
+"bilby.sequince-ps" = "bilby.core.sampler.sequince:SequincePersistentSampling"
 
 [project.scripts]
 bilby_plot = "cli_bilby.plot_multiple_posteriors:main"

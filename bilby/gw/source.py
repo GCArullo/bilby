@@ -1058,7 +1058,11 @@ def _base_gwsignal_cbc_fd_waveform(
             ) or "Input domain error" in e.args[
                 0
             ]
-            if EDOM:
+            reference_frequency_error = (
+                isinstance(e, ValueError)
+                and str(e) == "Failed to find the time corresponding to requested f_ref."
+            )
+            if EDOM or reference_frequency_error:
                 failed_parameters = dict(mass_1=mass_1, mass_2=mass_2,
                                          spin_1=(spin_1x, spin_1y, spin_1z),
                                          spin_2=(spin_2x, spin_2y, spin_2z),

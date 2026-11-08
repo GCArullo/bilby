@@ -24,6 +24,34 @@ class FakeJointPriorDist(bilby.core.prior.BaseJointPriorDist):
 setattr(bilby.core.prior, "FakeJointPriorDist", FakeJointPriorDist)
 
 
+def test_ln_prob_applies_derived_constraints_to_finite_samples():
+    def conversion(sample):
+        return dict(sample, cut=sample["x"])
+
+    priors = bilby.core.prior.PriorDict(
+        dict(
+            x=bilby.core.prior.Uniform(0, 1),
+            cut=bilby.core.prior.Constraint(0, 0.5),
+        ),
+        conversion_function=conversion,
+    )
+    with patch.object(priors, "normalize_constraint_factor", return_value=2):
+        for normalized, log_normalization in ((True, np.log(2)), (False, 0)):
+            for samples, expected in (
+                (0.25, log_normalization),
+                (0.75, -np.inf),
+                (np.array([0.25, 0.75]), [log_normalization, -np.inf]),
+                (
+                    np.array([0.25, 0.75, 1.25]),
+                    [log_normalization, -np.inf, -np.inf],
+                ),
+            ):
+                np.testing.assert_allclose(
+                    priors.ln_prob(dict(x=samples), axis=0, normalized=normalized),
+                    expected,
+                )
+
+
 @pytest.mark.array_backend
 @pytest.mark.usefixtures("xp_class")
 class TestPriorDict(unittest.TestCase):

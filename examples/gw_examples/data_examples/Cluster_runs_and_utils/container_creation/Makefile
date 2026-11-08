@@ -1,4 +1,4 @@
-BILBY_BRANCH?=sine_gaussians_addition
+BILBY_BRANCH?=sequince
 BILBY_PIPE_BRANCH?=$(BILBY_BRANCH)
 PESUMMARY_REF?=master
 CIT?=true
@@ -14,6 +14,7 @@ BILBY_PIPE_RELEASE_TAG=$(shell git ls-remote --tags --refs https://git.ligo.org/
 BILBY_COMMIT_SUFFIX=$(if $(BILBY_RELEASE_TAG),,-$(BILBY_COMMIT))
 BILBY_PIPE_COMMIT_SUFFIX=$(if $(BILBY_PIPE_RELEASE_TAG),,-$(BILBY_PIPE_COMMIT))
 TIMESTAMP?=$(shell date -u +"%Y-%m-%dT%H_%M_%S")
+TIMESTAMP:=$(TIMESTAMP)
 export TIMESTAMP
 IMAGE=bilby-$(BILBY_VERSION)$(BILBY_COMMIT_SUFFIX)-bilby_pipe-$(BILBY_PIPE_VERSION)$(BILBY_PIPE_COMMIT_SUFFIX)-pesummary_GC-$(PESUMMARY_VERSION)-$(PESUMMARY_COMMIT)-$(TIMESTAMP).sif
 IMAGE_URL=osdf:///igwn/cit/staging/$(USERNAME)/$(IMAGE)
@@ -52,6 +53,9 @@ pesummary_commit.txt: temp_image.sif
 	apptainer exec temp_image.sif python -c 'import importlib.metadata as m, json; print(json.loads(m.distribution("pesummary").read_text("direct_url.json"))["vcs_info"]["commit_id"][:12])' > pesummary_commit.txt
 
 validate: temp_image.sif
+	apptainer exec --cleanenv temp_image.sif python validate_sequince.py
+	apptainer exec --cleanenv temp_image.sif python -c 'import importlib.metadata as m; assert m.version("pyseobnr") == "0.3.7"'
+	APPTAINERENV_PYTHONPATH=/opt/pyseobnr-0.3.6 apptainer exec --cleanenv temp_image.sif python -c 'import importlib.metadata as m; from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator; assert m.version("pyseobnr") == "0.3.6"; gwsignal_get_waveform_generator("SEOBNRv5PHM")'
 	apptainer exec --cleanenv temp_image.sif python validate_dali.py
 	apptainer exec temp_image.sif python -c 'from lalsimulation.gwsignal.models import gwsignal_get_waveform_generator; gwsignal_get_waveform_generator("SEOBNRv5PHM")'
 	apptainer exec --cleanenv temp_image.sif python -c 'from bilby_pipe.plot import _cbc_parameters, _is_sine_gaussian_parameter; independent={"independent_sine_gaussian_0_hrss": 1., "independent_sine_gaussian_ra": 1., "independent_sine_gaussian_parameters": [{}]}; assert all(_is_sine_gaussian_parameter(key) for key in independent); assert _cbc_parameters({"chirp_mass": 30., **independent}) == {"chirp_mass": 30.}'

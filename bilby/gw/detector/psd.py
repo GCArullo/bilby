@@ -59,6 +59,11 @@ class PowerSpectralDensity(object):
         self.psd_file = psd_file
         self.asd_file = asd_file
 
+    def __setstate__(self, state):
+        """Load pickles written before the private density attributes were renamed."""
+        for name, value in state.items():
+            self.__dict__[name.replace('_PowerSpectralDensity__', '_', 1)] = value
+
     def _update_cache(self, frequency_array):
         psd_array = self.power_spectral_density_interpolated(frequency_array)
         self._cache['psd_array'] = psd_array

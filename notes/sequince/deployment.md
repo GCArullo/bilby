@@ -21,3 +21,17 @@ Original inputs and hashes are recorded under `/home/gregorio.carullo/AI_tmp_fil
 The constrained prior regression failed before the fix. After applying the one-line guard correction, 183 prior tests and 5,774 subtests passed. Remaining validation/publication/submission is tracked in README.md.
 
 Additional checks: legacy interpolated priors, PSD pickles and known SEOB reference-frequency rejections passed 43 surrounding tests; restart adapter regressions passed five cases; nine Pipe checkpoint-transfer tests passed. A pre-existing emcee directory-creation failure was reproduced against unchanged Pipe source. The analytic constrained target at 2,048 particles/40 mutations gave log Z=-2.44888775 versus -2.43140864 analytically; completed-checkpoint resumption matched exactly.
+
+## Published image and launch checkpoint
+
+Image URL: `osdf:///igwn/cit/staging/gregorio.carullo/bilby-2.8.0.dev299+g05d60db68-05d60db689ec-bilby_pipe-1.8.2.dev90+g1d2f4278d-1d2f4278d75d-pesummary_GC-1.7.1.dev17+g55104b95d-55104b95dfcd-2026-11-08T15_54_03.sif`
+
+SHA256: `3b22ebaa2c9766cc71cb614cdcb9bd603e1c99fee3adb8121324d56aeadc0b02`
+
+Verified installed code: Bilby `05d60db689ec2bcdb6f7c805c86519a1eec66d26`; Pipe `1d2f4278d75d1e788a65a62444f9a98197709465`; PESummary `55104b95dfcd12746f849152ace5663d356e5aba`. Runtime checks confirmed Sequince 0.1.0/plugin 0.1.0b1/orng 0.2.1, NumPy 2.2.6, SciPy 1.16.3, LALSuite 7.26.15, and both pySEOBNR versions. Standard make publication and validation exited zero. The consolidated local suite passed 231 tests and 5,774 subtests.
+
+The user clarified that only original serial-Bilby convergence and SEOB sources should be relaunched; all 20 selected source paths are under `Runs_new_priors`, with no parallel-Bilby source. Existing serial and parallel jobs must continue. Three replicas per configuration use 16 CPUs, at least 32 GB memory and 64 GB disk, plus distinct seeds.
+
+All 20 original-image reference checks completed successfully. The 20 new job sets are prepared under `/home/gregorio.carullo/public_html/GW231123/sine_gaussians/Runs_sequince_20261108`; no jobs have been submitted yet. The emitted-job audit flagged redundant external NRSur data transfers, already bundled in the image. A surrogate-only repair is staged locally at `/private/tmp/sequince_repair_transfers.py`; it must be copied to the remote temporary-work directory and executed before rerunning emitted-job and physics checks. The audit remains strict.
+
+CIT authentication stopped before the repair could be transferred; the existing local `~/.ssh/citgsi_mux` socket disappeared and a new connection returned GSSAPI permission denied. The user has been asked to renew it. Resume by staging the updated prepare/repair scripts into `/home/gregorio.carullo/AI_tmp_files/sequince_20261108`, executing the repair, and rerunning `sequince_prepare_validate.sh`. Only after `prepare_validate.exit=0` and `validation.json`/`prepared_audit.exit` pass should `sequince_submit_runs.py` submit the 20 DAGs. The submission script records receipts atomically and checks for existing matching DAGs.

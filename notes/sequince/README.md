@@ -6,9 +6,9 @@ Requested branch: `sequince`, isolated from current Bilby and Pipe checkouts.
 - [x] Inventory ongoing CIT analyses and preserve scientific inputs.
 - [x] Reproduce and fix finite-log-prior constraint bypass; prior tests pass.
 - [x] Validate Pipe checkpoint transfer and constrained analytic sampling, including interrupted and completed-checkpoint restarts.
-- [ ] Publish both branches and the standard branch image.
+- [x] Publish both branches and the standard branch image.
 - [ ] Validate original likelihoods/priors against the new image.
-- [ ] Relaunch unique convergence and SEOB configurations in separate directories.
+- [ ] Relaunch the 20 original serial-Bilby convergence and SEOB configurations in separate directories (60 replicas prepared; none submitted).
 - [ ] Verify all submitted replicas start and checkpoint.
 
 See [deployment.md](deployment.md) for settings, scope, provenance and checks.

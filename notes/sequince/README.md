@@ -9,7 +9,7 @@ Requested branch: `sequince`, isolated from current Bilby and Pipe checkouts.
 - [x] Publish both branches and the standard branch image.
 - [x] Validate original likelihoods/priors against the new image; one small SciPy numerical difference is documented separately from strict matching.
 - [x] Relaunch the 20 original serial-Bilby convergence and SEOB configurations in separate directories: 20 DAGs and 60 independent analyses submitted.
-- [x] Confirm all 60 analysis queue entries and inspect initial scheduling/hold status. At the final local snapshot, all 60 were idle and none held; startup/checkpoints await available resources.
+- [x] Confirm all 60 analysis queue entries and inspect initial scheduling/hold status. Latest startup review: 3 running, 57 idle, none held; runtime checkpoints are not yet confirmed.
 
 See [deployment.md](deployment.md) for settings, scope, provenance and checks.
 

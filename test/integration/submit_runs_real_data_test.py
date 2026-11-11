@@ -260,6 +260,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             "1",
             "--sine-gaussian-mode",
             "coherent",
+            "--outdir-label",
+            "long_label_" * 8,
             "--dry-run",
             "--ini-dir",
             str(ini_dir),
@@ -302,9 +304,11 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
     )
     assert Path(ini_settings["webdir"]) == outdir / "web"
+    assert len(outdir.name) > 48
     assert "calculate_multipole_snr" not in ast.literal_eval(
         ini_settings["summarypages-arguments"]
     )
+    assert len(ast.literal_eval(ini_settings["summarypages-arguments"])["labels"][0]) <= 48
 
 
 @pytest.mark.parametrize(
@@ -373,6 +377,12 @@ def test_main_selects_direct_generator_only_for_standard_seob(
     ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
     assert f"waveform-generator={waveform_generator}\n" in ini_text
     assert f"frequency-domain-source-model={source_model}\n" in ini_text
+    if "SEOBNRv5PHM" in extra_args:
+        summary_line = next(
+            line for line in ini_text.splitlines()
+            if line.startswith("summarypages-arguments=")
+        )
+        assert "NRSur_fits" not in ast.literal_eval(summary_line.split("=", 1)[1])
     environment_line = next(
         line for line in ini_text.splitlines()
         if line.startswith("environment-variables=")

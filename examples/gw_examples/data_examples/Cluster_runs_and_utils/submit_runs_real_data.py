@@ -553,6 +553,8 @@ def build_pesummary_arguments(
     detectors: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
+    if template_settings["waveform_approximant"] == "SEOBNRv5PHM":
+        arguments.pop("NRSur_fits", None)
     if template_settings['waveform_approximant'] in {'TEOBResumS_Dali', 'TEOBResumS_Dali_Ecc'}:
         # PESummary's LAL waveform diagnostics and quasicircular remnant fits
         # do not implement this Dali source, especially its eccentric branch.
@@ -560,11 +562,8 @@ def build_pesummary_arguments(
                     'NRSur_fits', 'calculate_multipole_snr'):
             arguments.pop(key, None)
         arguments['disable_remnant'] = True
-    # pesummary names its outputs '<label>_<label>_<parameter>.html' and
-    # '<label>_<result file name>'. Left to bilby_pipe the label is the full
-    # merge-result basename, so those names run past the 255 byte file name
-    # limit and the results page aborts with OSError errno 36. Name the page
-    # after the run directory instead.
+    # PESummary combines the page label with the result filename. Use the
+    # short run label passed below to avoid the 255-byte filename limit.
     arguments["labels"] = [page_label]
     f_low = minimum_frequency_for_pesummary(template_settings["minimum_frequency"])
     f_ref = template_settings["reference_frequency"]
@@ -700,7 +699,7 @@ def render_ini(
     )
     summarypages_arguments = build_pesummary_arguments(
         template_settings,
-        page_label=Path(outdir).name,
+        page_label=Path(outdir).name[:48],
         detectors=detectors,
     )
     if sine_gaussian_config.enabled:

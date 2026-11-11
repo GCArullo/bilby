@@ -302,6 +302,9 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
     )
     assert Path(ini_settings["webdir"]) == outdir / "web"
+    assert "calculate_multipole_snr" not in ast.literal_eval(
+        ini_settings["summarypages-arguments"]
+    )
 
 
 @pytest.mark.parametrize(

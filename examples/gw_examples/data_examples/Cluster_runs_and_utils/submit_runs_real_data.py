@@ -698,16 +698,17 @@ def render_ini(
             )
         ),
     )
+    summarypages_arguments = build_pesummary_arguments(
+        template_settings,
+        page_label=Path(outdir).name,
+        detectors=detectors,
+    )
+    if sine_gaussian_config.enabled:
+        summarypages_arguments.pop("calculate_multipole_snr", None)
     rendered = replace_line(
         rendered,
         "summarypages-arguments",
-        repr(
-            build_pesummary_arguments(
-                template_settings,
-                page_label=Path(outdir).name,
-                detectors=detectors,
-            )
-        ),
+        repr(summarypages_arguments),
     )
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(

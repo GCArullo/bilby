@@ -314,7 +314,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
     assert Path(ini_settings["webdir"]) == Path(ini_settings["outdir"]) / "web"
 
 
-def test_render_ini_writes_maxmcmc_override(tmp_path):
+@pytest.mark.parametrize("sample", [None, "acceptance-walk", "act-walk", "rwalk", "unif"])
+def test_render_ini_writes_sampler_controls(tmp_path, sample):
     module = load_submit_runs_injection_module()
     parser = module.build_parser()
 
@@ -333,6 +334,7 @@ def test_render_ini_writes_maxmcmc_override(tmp_path):
             "create-summary=False",
             "environment-variables={}",
             "summarypages-arguments=None",
+            "calibration-prior-boundary=reflective",
             "data-dict=None",
             "data-format=gwf",
             "calibration-model=CubicSpline",
@@ -355,6 +357,9 @@ def test_render_ini_writes_maxmcmc_override(tmp_path):
         waveform_approximant="NRSur7dq4",
         sampler_kwargs={"nlive": 1, "maxmcmc": 5000},
     )
+
+    if sample is not None:
+        template_settings["sampler_kwargs"]["sample"] = sample
 
     rendered = module.render_ini(
         ini_template,
@@ -384,6 +389,8 @@ def test_render_ini_writes_maxmcmc_override(tmp_path):
     )
     sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
     assert sampler_kwargs["maxmcmc"] == 10000
+    boundary = "reflective" if sample == "unif" else "None"
+    assert f"calibration-prior-boundary={boundary}\n" in rendered
 
 
 def test_main_creates_summarypages_without_recalib_parameters_by_default(

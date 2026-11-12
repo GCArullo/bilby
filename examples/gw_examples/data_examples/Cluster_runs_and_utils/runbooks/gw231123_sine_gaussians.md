@@ -43,6 +43,13 @@ Generated configs enable file transfer and the worldwide IGWN pool with
 `--require-epnfs` for worldwide execution; that option deliberately restricts
 jobs to CIT nodes exposing EPNFS.
 
+For `acceptance-walk`, `act-walk` (including the default), and `rwalk`, both
+launchers write `calibration-prior-boundary=None` into generated configs.
+Correlated differential-evolution proposals with reflective boundaries do not
+preserve detailed balance. Rejection at the unit-cube boundary preserves the
+physical calibration priors; periodic angular boundaries remain enabled. Use a
+standard image containing the acceptance-walk correction in `88f321fd` or later.
+
 Immediately before calling `bilby_pipe`, the launchers verify that every local
 frame/data file, PSD, calibration envelope, and additional transfer path in the
 rendered config exists. Remote URLs are not treated as local paths.

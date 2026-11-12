@@ -729,6 +729,14 @@ def render_ini(
         int(sampler_kwargs["nlive"]),
         sine_gaussian_config,
     )
+    if sampler_kwargs.get("sample", "act-walk") in {
+        "acceptance-walk",
+        "act-walk",
+        "rwalk",
+    }:
+        rendered = replace_or_append_line(
+            rendered, "calibration-prior-boundary", "None"
+        )
     if maxmcmc is not None:
         sampler_kwargs["maxmcmc"] = maxmcmc
     rendered = replace_line(rendered, "sampler-kwargs", repr(sampler_kwargs))

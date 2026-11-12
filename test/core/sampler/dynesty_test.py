@@ -12,7 +12,7 @@ import numpy as np
 import parameterized
 from attr import define
 from scipy.stats import gamma, ks_1samp, uniform, powerlaw
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from bilby.core.sampler import dynesty_utils
 
@@ -271,6 +271,29 @@ class TestDynesty(unittest.TestCase):
         """
         self.init_sampler(sample=sample, bound=bound)
 
+    def test_plot_current_state_uses_log_evidence_for_run_plot(self):
+        fig = MagicMock()
+        self.sampler.check_point_plot = True
+        self.sampler.sampler = MagicMock()
+        self.sampler.sampler.results = {"samples_u": np.zeros((2, 2))}
+        with (
+            patch("dynesty.plotting.traceplot", return_value=(fig, None)),
+            patch("dynesty.plotting.runplot", return_value=(fig, None)) as runplot,
+            patch(
+                "dynesty.utils.results_substitute",
+                return_value=self.sampler.sampler.results,
+            ),
+            patch(
+                "bilby.core.sampler.dynesty.dynesty_stats_plot",
+                return_value=(fig, None),
+            ),
+            patch("matplotlib.pyplot.savefig"),
+        ):
+            self.sampler.plot_current_state()
+        runplot.assert_called_once_with(
+            self.sampler.sampler.results, logplot=True, use_math_text=False
+        )
+
     def test_plotting_exception_does_not_swallow_interruption(self):
         # Emulate error reported in https://github.com/bilby-dev/bilby/issues/758
         error = SystemError(
@@ -320,6 +343,30 @@ class ProposalsTest(unittest.TestCase):
     def test_boundaries_returns_none_outside_bound(self):
         inputs = np.array([0.1, 1.1, -1.3])
         self.assertIsNone(dynesty_utils.apply_boundaries_(inputs, None, None))
+
+    def test_acceptance_walk_retains_seed_when_no_proposal_is_accepted(self):
+        seed = np.array([0.2, 0.4])
+        loglikelihood = Mock(return_value=0.0)
+        args = Dummy(
+            u=seed.copy(), axes=np.eye(2),
+            live_points=np.array([[0.1, 0.1], [0.8, 0.8]]),
+            kwargs=dict(walks=3, periodic=None, reflective=None,
+                        proposals=["diff"], ncdim=2),
+            prior_transform=lambda u: 2 * u,
+            loglikelihood=loglikelihood,
+        )
+        with patch.dict(dynesty_utils.proposal_funcs,
+                        diff=lambda **kwargs: np.array([1.2, 0.4])):
+            result = dynesty_utils.EnsembleWalkSampler.sample(args)
+        np.testing.assert_array_equal(result.u, seed)
+        np.testing.assert_array_equal(result.v, 2 * seed)
+        self.assertEqual(result.logl, 0.0)
+        self.assertEqual(result.ncalls, 1)
+        self.assertEqual(loglikelihood.call_count, 1)
+        self.assertEqual(result.tuning_info["accept"], 0)
+        self.assertEqual(len(result.evaluation_history), 1)
+        np.testing.assert_array_equal(result.evaluation_history[0].u, seed)
+        np.testing.assert_array_equal(result.evaluation_history[0].v, 2 * seed)
 
     def test_propose_volumetric(self):
         proposal_func = dynesty_utils.proposal_funcs["volumetric"]
@@ -405,6 +452,17 @@ class ProposalsTest(unittest.TestCase):
         self.assertDictEqual(
             specific, dict(volumetric=dict(axes=args.axes, scale=args.scale))
         )
+
+    def test_get_proposal_kwargs_diff_excludes_seed(self):
+        seed = np.array([0.2, 0.4])
+        donors = np.array([[0.3, 0.7], [0.8, 0.9]])
+        args = Dummy(
+            u=seed, axes=np.eye(2),
+            live_points=np.vstack([seed, donors]),
+            kwargs=dict(walks=3, proposals=["diff"], ncdim=2),
+        )
+        _, _, specific = dynesty_utils._get_proposal_kwargs(args)
+        np.testing.assert_array_equal(specific["diff"]["live"], donors)
 
     def test_proposal_functions_run_new(self):
         args = Dummy(u=np.ones(4) / 2, axes=np.ones((2, 2)))

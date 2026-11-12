@@ -136,6 +136,53 @@ def get_sampler_class(sampler):
     return IMPLEMENTED_SAMPLERS[sampler.lower()].load()
 
 
+def _should_defer_noise_evidence(likelihood, priors):
+    defer_noise_evidence = getattr(likelihood, "defer_noise_evidence", None)
+    if defer_noise_evidence is not None:
+        return bool(defer_noise_evidence)
+    return likelihood.has_parameter_dependent_noise_likelihood(
+        sampled_parameters=priors.non_fixed_keys
+    )
+
+
+def _set_result_noise_evidence_pending(result, pending):
+    meta_data = (getattr(result, "meta_data", None) or dict()).copy()
+    if pending:
+        meta_data["noise_evidence_pending"] = True
+    else:
+        meta_data.pop("noise_evidence_pending", None)
+    result.meta_data = meta_data
+
+
+def _prepare_result_for_deferred_noise_evidence(result, sampler):
+    _set_result_noise_evidence_pending(result=result, pending=True)
+    result.log_noise_evidence = float("nan")
+    if sampler.use_ratio:
+        result.log_bayes_factor = result.log_evidence
+        result.log_evidence = float("nan")
+    else:
+        result.log_bayes_factor = float("nan")
+
+
+def _set_result_evidence(result, likelihood, priors, sampler, npool):
+    result.log_noise_evidence = likelihood.noise_log_evidence(
+        priors=priors,
+        sampler=sampler,
+        result=result,
+        npool=npool,
+    )
+    if sampler.use_ratio:
+        if (
+            getattr(result, "log_bayes_factor", None) is None
+            or result.log_bayes_factor != result.log_bayes_factor
+        ):
+            result.log_bayes_factor = result.log_evidence
+        result.log_evidence = result.log_bayes_factor + result.log_noise_evidence
+    else:
+        result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
+    _set_result_noise_evidence_pending(result=result, pending=False)
+
+
 if command_line_args.sampler_help:
     sampler = command_line_args.sampler_help
     if sampler in IMPLEMENTED_SAMPLERS:
@@ -172,6 +219,8 @@ def run_sampler(
     gzip=False,
     result_class=None,
     npool=1,
+    railing_bins=100,
+    railing_tolerance=2.0,
     pool=None,
     **kwargs,
 ):
@@ -206,6 +255,12 @@ def run_sampler(
         using simulated data). Appended to the result object and saved.
     plot: bool
         If true, generate a corner plot and, if applicable diagnostic plots
+    railing_bins: int
+        Number of bins to use in the posterior railing check run during
+        postprocessing when ``plot=True``.
+    railing_tolerance: float
+        Percentage threshold used in the posterior railing check run during
+        postprocessing when ``plot=True``.
     conversion_function: function, optional
         Function to apply to posterior to generate additional parameters.
         This function should take one positional argument, a dictionary or
@@ -234,6 +289,8 @@ def run_sampler(
     npool: int
         An integer specifying the available CPUs to create pool objects for
         parallelization.
+    pool: pool-like, optional
+        An existing pool to use for sampling and posterior conversion.
     **kwargs:
         All kwargs are passed directly to the samplers `run` function
 
@@ -319,6 +376,10 @@ def run_sampler(
             pool=pool,
         )
     else:
+        defer_noise_evidence = _should_defer_noise_evidence(
+            likelihood=likelihood,
+            priors=priors,
+        )
         # Run the sampler
         with bilby_pool(
             likelihood,
@@ -343,6 +404,19 @@ def run_sampler(
                 start_time=start_time,
                 end_time=end_time,
             )
+            if defer_noise_evidence:
+                _prepare_result_for_deferred_noise_evidence(
+                    result=result,
+                    sampler=sampler,
+                )
+            else:
+                _set_result_evidence(
+                    result=result,
+                    likelihood=likelihood,
+                    priors=priors,
+                    sampler=sampler,
+                    npool=npool,
+                )
 
             # Initial save of the sampler in case of failure in samples_to_posterior
             if save:
@@ -361,7 +435,26 @@ def run_sampler(
         result.save_to_file(overwrite=True, extension=save, gzip=gzip, outdir=outdir)
 
     if plot:
+        try:
+            result.check_railing(
+                bins=railing_bins,
+                tolerance=railing_tolerance,
+            )
+        except Exception as error:
+            logger.warning(f"Prior railing check failed with error: {error}")
         result.plot_corner()
+    if not sampler.cached_result and defer_noise_evidence:
+        _set_result_evidence(
+            result=result,
+            likelihood=likelihood,
+            priors=priors,
+            sampler=sampler,
+            npool=npool,
+        )
+        if save:
+            result.save_to_file(
+                overwrite=True, extension=save, gzip=gzip, outdir=outdir
+            )
     logger.info(f"Summary of results:\n{result}")
     return result
 
@@ -414,14 +507,6 @@ def finalize_result(result, likelihood, use_ratio, start_time=None, end_time=Non
     logger.info(f"Sampling time: {result.sampling_time}")
     # Convert sampling time into seconds
     result.sampling_time = result.sampling_time.total_seconds()
-
-    if use_ratio:
-        result.log_noise_evidence = likelihood.noise_log_likelihood()
-        result.log_bayes_factor = result.log_evidence
-        result.log_evidence = result.log_bayes_factor + result.log_noise_evidence
-    else:
-        result.log_noise_evidence = likelihood.noise_log_likelihood()
-        result.log_bayes_factor = result.log_evidence - result.log_noise_evidence
 
     return result
 

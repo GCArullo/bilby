@@ -212,15 +212,17 @@ class EnsembleWalkSampler(BaseEnsembleSampler):
 
         if naccept == 0:
             logger.debug(
-                "Unable to find a new point using walk: returning a random point. "
+                "Unable to find a new point using walk: retaining the initial point. "
                 "If this warning occurs often, increase naccept."
             )
-            # Technically we can find out the likelihood value
-            # stored somewhere
-            # But I'm currently recomputing it
-            current_u = common_kwargs["rstate"].uniform(0, 1, len(current_u))
+            # Rejected walks must retain their seed to preserve the constrained
+            # prior. Redrawing only failed walks biases state-dependent failures.
             current_v = args.prior_transform(current_u)
             logl = args.loglikelihood(current_v)
+            ncall += 1
+            evaluation_history.append(
+                SamplerHistoryItem(u=current_u, v=current_v, logl=logl)
+            )
 
         sampling_info = {
             "accept": naccept,
@@ -753,7 +755,7 @@ def _get_proposal_kwargs(args):
             )
         live = np.unique(live, axis=0)
         matches = np.where(np.equal(current_u, live).all(axis=1))[0]
-        np.delete(live, matches, 0)
+        live = np.delete(live, matches, 0)
 
     if isinstance(proposals, (list, set, tuple)):
         proposals = rstate.choice(proposals, int(walks))

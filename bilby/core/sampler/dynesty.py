@@ -910,7 +910,7 @@ class Dynesty(NestedSampler):
             )
             _generate_checkpoint_plot(
                 lambda: dyplot.runplot(
-                    self.sampler.results, logplot=False, use_math_text=False
+                    self.sampler.results, logplot=True, use_math_text=False
                 ),
                 suffix="run",
                 description="run",

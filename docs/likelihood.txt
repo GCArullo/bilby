@@ -210,6 +210,40 @@ We provide this general-purpose class as part of bilby :code:`bilby.core.likelih
 
 An example using this likelihood can be found `on this page <https://github.com/bilby-dev/bilby/blob/main/examples/other_examples/linear_regression_unknown_noise.py>`_.
 
+Distance marginalization with CBC and sine-Gaussians
+---------------------------------------------------
+
+:code:`GravitationalWaveTransient` supports distance marginalization for
+:code:`bilby.gw.source.cbc_plus_sine_gaussians`. The detector response is
+:math:`h(D)=a h_c+h_s`, where :math:`a=D_0/D`, :math:`h_c` is the CBC response
+at reference distance :math:`D_0`, and :math:`h_s` is the SG response. Expanding
+the Gaussian log likelihood ratio gives
+
+.. math::
+
+   \ln\Lambda(D)=\mathrm{Re}\langle h_s|d\rangle
+   -\tfrac12\langle h_s|h_s\rangle
+   +a\,\mathrm{Re}\langle h_c|d-h_s\rangle
+   -\tfrac12 a^2\langle h_c|h_c\rangle.
+
+The first two terms are independent of distance. The last two are integrated
+over the distance prior using the CBC distance lookup, with direct quadrature
+on its distance grid outside the lookup domain. Conditional distance draws
+use the same CBC response and SG-subtracted data. The SG amplitude is held
+fixed throughout this calculation.
+
+Coherent SGs, independently localized SGs and detector-local SGs are supported.
+Time, phase and calibration marginalization cannot be combined with CBC+SG
+distance marginalization; calibration parameters can be explicitly sampled.
+Student-t likelihoods are not supported by this Gaussian integral.
+
+The example
+:code:`examples/gw_examples/injection_examples/cbc_sine_gaussian_distance_marginalization.py`
+compares matched injections with sampled and marginalized distance against
+independent low-dimensional quadrature. This validates the integral and
+distance reconstruction; high-dimensional analyses still need independent
+sampling-convergence checks.
+
 Common likelihood functions
 ---------------------------
 

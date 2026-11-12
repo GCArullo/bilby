@@ -1,0 +1,249 @@
+{
+  "coherent": {
+    "1": [
+      {
+        "hrss": 1e-22,
+        "Q": 8.0,
+        "frequency": 130.0,
+        "time_offset": 0.0,
+        "phase_offset": 0.0
+      }
+    ],
+    "2": [
+      {
+        "hrss": 1e-22,
+        "Q": 8.0,
+        "frequency": 40.0,
+        "time_offset": -0.05,
+        "phase_offset": 0.0
+      },
+      {
+        "hrss": 8.5e-23,
+        "Q": 9.0,
+        "frequency": 220.0,
+        "time_offset": 0.05,
+        "phase_offset": 0.5
+      }
+    ],
+    "3": [
+      {
+        "hrss": 1e-22,
+        "Q": 8.0,
+        "frequency": 40.0,
+        "time_offset": -0.05,
+        "phase_offset": 0.0
+      },
+      {
+        "hrss": 8.5e-23,
+        "Q": 9.0,
+        "frequency": 130.0,
+        "time_offset": 0.0,
+        "phase_offset": 0.5
+      },
+      {
+        "hrss": 7.225e-23,
+        "Q": 10.0,
+        "frequency": 220.0,
+        "time_offset": 0.05,
+        "phase_offset": 1.0
+      }
+    ],
+    "4": [
+      {
+        "hrss": 1e-22,
+        "Q": 8.0,
+        "frequency": 40.0,
+        "time_offset": -0.05,
+        "phase_offset": 0.0
+      },
+      {
+        "hrss": 8.5e-23,
+        "Q": 9.0,
+        "frequency": 100.0,
+        "time_offset": -0.016666666666666666,
+        "phase_offset": 0.5
+      },
+      {
+        "hrss": 7.225e-23,
+        "Q": 10.0,
+        "frequency": 160.0,
+        "time_offset": 0.016666666666666666,
+        "phase_offset": 1.0
+      },
+      {
+        "hrss": 6.14125e-23,
+        "Q": 8.0,
+        "frequency": 220.0,
+        "time_offset": 0.05,
+        "phase_offset": 1.5
+      }
+    ]
+  },
+  "coherent-independent": {
+    "ra": 2.0,
+    "dec": -0.4,
+    "psi": 0.7
+  },
+  "incoherent": {
+    "H1": {
+      "1": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 130.0,
+          "time_offset": 0.0,
+          "phase_offset": 0.0
+        }
+      ],
+      "2": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 40.0,
+          "time_offset": -0.05,
+          "phase_offset": 0.0
+        },
+        {
+          "hrss": 8.5e-23,
+          "Q": 9.0,
+          "frequency": 220.0,
+          "time_offset": 0.05,
+          "phase_offset": 0.5
+        }
+      ],
+      "3": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 40.0,
+          "time_offset": -0.05,
+          "phase_offset": 0.0
+        },
+        {
+          "hrss": 8.5e-23,
+          "Q": 9.0,
+          "frequency": 130.0,
+          "time_offset": 0.0,
+          "phase_offset": 0.5
+        },
+        {
+          "hrss": 7.225e-23,
+          "Q": 10.0,
+          "frequency": 220.0,
+          "time_offset": 0.05,
+          "phase_offset": 1.0
+        }
+      ],
+      "4": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 40.0,
+          "time_offset": -0.05,
+          "phase_offset": 0.0
+        },
+        {
+          "hrss": 8.5e-23,
+          "Q": 9.0,
+          "frequency": 100.0,
+          "time_offset": -0.016666666666666666,
+          "phase_offset": 0.5
+        },
+        {
+          "hrss": 7.225e-23,
+          "Q": 10.0,
+          "frequency": 160.0,
+          "time_offset": 0.016666666666666666,
+          "phase_offset": 1.0
+        },
+        {
+          "hrss": 6.14125e-23,
+          "Q": 8.0,
+          "frequency": 220.0,
+          "time_offset": 0.05,
+          "phase_offset": 1.5
+        }
+      ]
+    },
+    "L1": {
+      "1": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 135.0,
+          "time_offset": 0.0,
+          "phase_offset": 0.3
+        }
+      ],
+      "2": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 45.0,
+          "time_offset": -0.05,
+          "phase_offset": 0.3
+        },
+        {
+          "hrss": 8.5e-23,
+          "Q": 9.0,
+          "frequency": 225.0,
+          "time_offset": 0.05,
+          "phase_offset": 0.8
+        }
+      ],
+      "3": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 45.0,
+          "time_offset": -0.05,
+          "phase_offset": 0.3
+        },
+        {
+          "hrss": 8.5e-23,
+          "Q": 9.0,
+          "frequency": 135.0,
+          "time_offset": 0.0,
+          "phase_offset": 0.8
+        },
+        {
+          "hrss": 7.225e-23,
+          "Q": 10.0,
+          "frequency": 225.0,
+          "time_offset": 0.05,
+          "phase_offset": 1.3
+        }
+      ],
+      "4": [
+        {
+          "hrss": 1e-22,
+          "Q": 8.0,
+          "frequency": 45.0,
+          "time_offset": -0.05,
+          "phase_offset": 0.3
+        },
+        {
+          "hrss": 8.5e-23,
+          "Q": 9.0,
+          "frequency": 105.0,
+          "time_offset": -0.016666666666666666,
+          "phase_offset": 0.8
+        },
+        {
+          "hrss": 7.225e-23,
+          "Q": 10.0,
+          "frequency": 165.0,
+          "time_offset": 0.016666666666666666,
+          "phase_offset": 1.3
+        },
+        {
+          "hrss": 6.14125e-23,
+          "Q": 8.0,
+          "frequency": 225.0,
+          "time_offset": 0.05,
+          "phase_offset": 1.8
+        }
+      ]
+    }
+  }
+}

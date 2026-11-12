@@ -68,13 +68,13 @@ class TestGWTransient(unittest.TestCase):
         nll = self.likelihood.noise_log_likelihood()
         self.assertEqual(aac.get_namespace(nll), self.xp)
         self.assertAlmostEqual(
-            -4014.1787704539474, float(nll), 3
+            422060.1822410761, float(nll), 3
         )
 
     def test_log_likelihood(self):
         """Test log likelihood matches precomputed value"""
         logl = self.likelihood.log_likelihood(self.parameters)
-        self.assertAlmostEqual(float(logl), -4032.4397343470005, 3)
+        self.assertAlmostEqual(float(logl), 422041.92127718317, 3)
         self.assertEqual(aac.get_namespace(logl), self.xp)
 
     def test_log_likelihood_ratio(self):

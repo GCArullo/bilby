@@ -571,6 +571,22 @@ class TestSavingNumpyRandomGenerator(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+def test_hdf5_roundtrip_sine_gaussian_injection_components(tmp_path):
+    components = [dict(hrss=(index + 1) * 1e-23, frequency=100 + index)
+                  for index in range(12)]
+    data = dict(injection_parameters=dict(
+        sine_gaussian_parameters=components,
+        incoherent_sine_gaussian_parameters=dict(H1=components[:2]),
+        independent_sine_gaussian_parameters=components[2:4],
+    ))
+    filename = tmp_path / "sg_injection.hdf5"
+    with h5py.File(filename, "w") as output:
+        utils.recursively_save_dict_contents_to_group(output, "/", data)
+    with h5py.File(filename, "r") as source:
+        loaded = utils.recursively_load_dict_contents_from_group(source, "/")
+    assert loaded == data
+
+
 class TestSavingLalDict(unittest.TestCase):
 
     @pytest.fixture(autouse=True)

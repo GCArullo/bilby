@@ -241,7 +241,10 @@ def test_student_likelihood_keeps_gaussian_companion_for_multiple_frequency_band
     assert module.hypothesis_list(args) == ["student", "gaussian"]
 
 
-def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_path):
+@pytest.mark.parametrize("distance_marginalization", [False, True])
+def test_main_allows_gaussian_default_band_count_with_dry_run(
+    monkeypatch, tmp_path, distance_marginalization
+):
     monkeypatch.delenv("LAL_DATA_PATH", raising=False)
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
@@ -269,7 +272,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(prior_dir),
             "--home-dir",
             str(tmp_path),
-        ],
+        ] + (["--distance-marginalization"] if distance_marginalization else []),
     )
 
     assert module.main() == 0
@@ -282,7 +285,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "frequency-domain-source-model="
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
-    assert "distance-marginalization=False\n" in ini_text
+    assert f"distance-marginalization={distance_marginalization}\n" in ini_text
+    if distance_marginalization:
+        assert "_distmarg" in ini_paths[0].name
+        assert "distance-marginalization-lookup-table=None\n" in ini_text
     assert (
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"

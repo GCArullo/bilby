@@ -370,6 +370,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--distance-marginalization",
+        action="store_true",
+        help="Marginalize CBC distance for Gaussian runs, including CBC+sine-Gaussians.",
+    )
+    parser.add_argument(
         "--test-injection",
         action="store_true",
         help=(
@@ -1629,6 +1634,7 @@ def render_ini(
         rendered,
         sine_gaussian_config,
         replace_line=replace_line,
+        distance_marginalization=args.distance_marginalization,
     )
     return rendered
 
@@ -1663,6 +1669,8 @@ def write_run_files(
         hypothesis,
         sine_gaussian_config,
     )
+    if args.distance_marginalization:
+        label += "_distmarg"
     run_num_frequency_bands = (
         args.num_frequency_bands
         if hypothesis == "student"

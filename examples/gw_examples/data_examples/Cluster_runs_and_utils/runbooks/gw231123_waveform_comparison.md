@@ -180,6 +180,24 @@ PESummary's unsupported LAL multipole-SNR/spin-evolution diagnostics and
 quasicircular remnant fits are disabled for Dali; Bilby generates the waveform
 plots using the actual source model.
 
+## Distance marginalization
+
+Add `--distance-marginalization` to a Gaussian CBC or CBC+SG command above,
+or to `submit_runs_injection.py`. Generated labels include `_distmarg`, and
+the distance lookup is generated using the selected distance prior.
+
+The likelihood marginalizes the CBC distance while holding the independently
+specified SG amplitudes fixed. Coherent, independently localized and
+detector-local SGs use the same CBC/SG split. Time, phase and calibration
+marginalization must remain disabled for CBC+SG. Explicitly sampled calibration
+parameters are supported. Student-t and SG-only runs do not support this option.
+
+The reproducible small injection comparison is
+`examples/gw_examples/injection_examples/cbc_sine_gaussian_distance_marginalization.py`.
+It compares sampled and marginalized distance with an independent numerical
+reference. Full GW231123 runs still require checks of chain agreement and
+weak/strong SG mode coverage.
+
 ## Notes
 
 - No manual prior changes are needed; the launcher adds the independent SG sky
@@ -195,6 +213,5 @@ plots using the actual source model.
   gwsignal's `GenerateFDWaveform`. The launcher retains the generic
   `WaveformGenerator` in this case because `GWSignalWaveformGenerator` would
   bypass the composite source model and omit the sine-Gaussian signal.
-- If distance marginalisation is ever enabled, the lookup table
-  (`distance-marginalization-lookup-table`) must be regenerated for the new
-  approximant — the NRSur7dq4 table in the template cannot be reused.
+- Distance lookup tables depend on the distance prior and phase-marginalization
+  setting. Changing the waveform approximant alone does not invalidate them.

@@ -239,6 +239,11 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--distance-marginalization",
+        action="store_true",
+        help="Marginalize CBC distance for Gaussian runs, including CBC+sine-Gaussians.",
+    )
+    parser.add_argument(
         "--detector-dependent-nu",
         action="store_true",
         help="Generate detector-specific Student-t nu parameters.",
@@ -555,13 +560,20 @@ def build_pesummary_arguments(
     arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
     if template_settings["waveform_approximant"] == "SEOBNRv5PHM":
         arguments.pop("NRSur_fits", None)
-    if template_settings['waveform_approximant'] in {'TEOBResumS_Dali', 'TEOBResumS_Dali_Ecc'}:
+    if template_settings["waveform_approximant"] in {
+        "TEOBResumS_Dali",
+        "TEOBResumS_Dali_Ecc",
+    }:
         # PESummary's LAL waveform diagnostics and quasicircular remnant fits
         # do not implement this Dali source, especially its eccentric branch.
-        for key in ('evolve_spins_forwards', 'evolve_spins_backwards',
-                    'NRSur_fits', 'calculate_multipole_snr'):
+        for key in (
+            "evolve_spins_forwards",
+            "evolve_spins_backwards",
+            "NRSur_fits",
+            "calculate_multipole_snr",
+        ):
             arguments.pop(key, None)
-        arguments['disable_remnant'] = True
+        arguments["disable_remnant"] = True
     # PESummary combines the page label with the result filename. Use the
     # short run label passed below to avoid the 255-byte filename limit.
     arguments["labels"] = [page_label]
@@ -646,7 +658,10 @@ def render_ini(
     condor_job_priority: int | None = None,
     waveform_arguments: dict | None = None,
     sg_only: bool = False,
+    distance_marginalization: bool = False,
 ) -> str:
+    if sg_only and distance_marginalization:
+        raise ValueError("SG-only runs have no CBC distance to marginalize")
     replacements = {
         "__LABEL__": label,
         "__OUTDIR__": outdir,
@@ -783,15 +798,22 @@ def render_ini(
         rendered,
         sine_gaussian_config,
         replace_line=replace_line,
+        distance_marginalization=distance_marginalization,
     )
-    if template_settings['waveform_approximant'] in {'TEOBResumS_Dali', 'TEOBResumS_Dali_Ecc'}:
+    if template_settings["waveform_approximant"] in {
+        "TEOBResumS_Dali",
+        "TEOBResumS_Dali_Ecc",
+    }:
         rendered = replace_line(
-            rendered, 'waveform-generator', 'bilby.gw.waveform_generator.WaveformGenerator'
+            rendered,
+            "waveform-generator",
+            "bilby.gw.waveform_generator.WaveformGenerator",
         )
         if not sine_gaussian_config.enabled:
             rendered = replace_line(
-                rendered, 'frequency-domain-source-model',
-                'bilby.gw.source.teobresums_dali_binary_black_hole'
+                rendered,
+                "frequency-domain-source-model",
+                "bilby.gw.source.teobresums_dali_binary_black_hole",
             )
     if sg_only:
         # Generic priors/generation must not introduce CBC defaults or derived
@@ -850,6 +872,7 @@ def prepare_run(
     detector_suffix: str = "",
     sg_only: bool = False,
     sine_gaussian_hrss_prior: str = "loguniform",
+    distance_marginalization: bool = False,
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
@@ -858,6 +881,8 @@ def prepare_run(
         waveform_suffix += "_hrss_uniform"
     if sg_only:
         waveform_suffix = waveform_suffix.replace("_sg_", "_sg_only_", 1)
+    if distance_marginalization:
+        waveform_suffix += "_distmarg"
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -931,6 +956,7 @@ def prepare_run(
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             sg_only=sg_only,
+            distance_marginalization=distance_marginalization,
         ),
         encoding="utf-8",
     )
@@ -1029,7 +1055,7 @@ def main() -> int:
     else:
         approximant_suffix = ""
 
-    if args.waveform_approximant == 'TEOBResumS_Dali_Ecc':
+    if args.waveform_approximant == "TEOBResumS_Dali_Ecc":
         prior_template += (
             "\neccentricity = Uniform(name='eccentricity', minimum=0, maximum=0.5)\n"
             "true_anomaly = Uniform(name='true_anomaly', minimum=0, maximum=2 * np.pi, boundary='periodic')\n"
@@ -1107,6 +1133,7 @@ def main() -> int:
                 detector_suffix=detector_suffix,
                 sg_only=args.sg_only,
                 sine_gaussian_hrss_prior=args.sine_gaussian_hrss_prior,
+                distance_marginalization=args.distance_marginalization,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

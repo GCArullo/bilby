@@ -71,8 +71,7 @@ def test_effective_nlive_adds_sine_gaussian_uplifts(
     )
 
 
-@pytest.mark.parametrize("distance_marginalization,lookup", [(False, "old.npz"), (True, "old.npz"), (True, None)])
-def test_sine_gaussian_submission_settings(distance_marginalization, lookup):
+def test_sine_gaussian_submission_settings_disable_distance_and_generation():
     module = load_submission_sine_gaussian_utils_module()
     config = module.SineGaussianConfiguration(total_components=1, mode="coherent")
     ini_text = "\n".join(
@@ -81,17 +80,13 @@ def test_sine_gaussian_submission_settings(distance_marginalization, lookup):
             "conversion-function=None",
             "generation-function=bilby.gw.conversion.generate_all_bbh_parameters",
             "distance-marginalization=True",
-            "likelihood-type=bilby.gw.likelihood.GravitationalWaveTransient",
         ]
     ) + "\n"
-    if lookup is not None:
-        ini_text += f"distance-marginalization-lookup-table={lookup}\n"
 
     rendered = module.apply_sine_gaussian_waveform_settings(
         ini_text,
         config,
         replace_line=replace_line,
-        distance_marginalization=distance_marginalization,
     )
 
     assert (
@@ -106,9 +101,7 @@ def test_sine_gaussian_submission_settings(distance_marginalization, lookup):
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in rendered
-    assert f"distance-marginalization={distance_marginalization}\n" in rendered
-    if distance_marginalization:
-        assert "distance-marginalization-lookup-table=None\n" in rendered
+    assert "distance-marginalization=False\n" in rendered
 
 
 def test_sine_gaussian_distance_validation_rejects_enabled_marginalization():
@@ -117,7 +110,7 @@ def test_sine_gaussian_distance_validation_rejects_enabled_marginalization():
 
     with pytest.raises(
         ValueError,
-        match="requires GravitationalWaveTransient",
+        match="require distance-marginalization=False",
     ):
         module.validate_sine_gaussian_distance_marginalization(
             "distance-marginalization=True\n",

@@ -138,7 +138,6 @@ def test_render_ini_frequency_domain_injection_uses_native_fd_loader(monkeypatch
             nlive=10,
             naccept=3,
             frequency_domain_injection=True,
-            distance_marginalization=False,
         ),
     )()
     template_settings = dict(

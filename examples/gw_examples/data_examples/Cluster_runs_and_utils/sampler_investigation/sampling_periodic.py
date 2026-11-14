@@ -28,11 +28,13 @@ class Transform:
 
     def __call__(self, unit):
         unit = np.asarray(unit)
+        assert unit.shape == (2,)
         if not np.all(np.isfinite(unit)) or np.any(unit < -1e-12) or np.any(unit > 1 + 1e-12):
             self.invalid.append(unit.tolist())
             raise InvalidUnitPoint("Native sampler passed an unwrapped coordinate to the prior transform")
-        physical_unit = np.mod(np.clip(unit, 0, 1) + self.origin, 1.)
-        return np.array([self.prior.rescale(physical_unit[0])])
+        bounded = np.clip(unit, 0, 1)
+        physical_unit = np.mod(bounded[0] + self.origin, 1.)
+        return np.array([self.prior.rescale(physical_unit), bounded[1]])
 
 
 class Target:
@@ -44,6 +46,8 @@ class Target:
         self.seconds = 0.
 
     def __call__(self, values):
+        # Any second coordinate is an independent Uniform(0, 1) auxiliary.
+        # Its integral is exactly one; only the physical angle enters L.
         start = time.monotonic()
         value = float(self.likelihood.log_likelihood_ratio(dict(self.parameters, **{self.angle: values[0]})))
         self.calls += 1
@@ -105,14 +109,14 @@ def nested(target, transform, package, sampler, outdir, seed):
     if sampler == "bilby":
         assert package.__version__ == "3.1.0"
         from bilby.core.sampler.dynesty_utils import EnsembleWalkSampler
-        sample = EnsembleWalkSampler(ndim=1, ncdim=1, periodic=[0], reflective=None,
+        sample = EnsembleWalkSampler(ndim=2, ncdim=2, periodic=[0], reflective=None,
             nonbounded=None, proposals=["diff"], walks=100, naccept=60, maxmcmc=50000)
         bound = "none"
     else:
         sample = sampler
         bound = "multi"
     try:
-        run = package.NestedSampler(target, transform, 1, nlive=200, sample=sample,
+        run = package.NestedSampler(target, transform, 2, nlive=200, sample=sample,
             bound=bound, periodic=[0], rstate=np.random.default_rng(seed),
             first_update=dict(min_ncall=0, min_eff=100), queue_size=1)
         run.run_nested(dlogz=.1, print_progress=False,
@@ -130,8 +134,9 @@ def nested(target, transform, package, sampler, outdir, seed):
     prior = transform.prior
     physical_unit = (result.samples[:, 0] - prior.minimum) / (prior.maximum - prior.minimum)
     circular = weights @ np.exp(2j * np.pi * physical_unit)
-    np.savez_compressed(outdir / "native_history.npz", samples=result.samples,
-        samples_u=result.samples_u, physical_unit=physical_unit, weights=weights,
+    np.savez_compressed(outdir / "native_history.npz", samples=result.samples[:, :1],
+        samples_u=result.samples_u[:, :1], auxiliary_samples=result.samples[:, 1],
+        auxiliary_samples_u=result.samples_u[:, 1], physical_unit=physical_unit, weights=weights,
         logl=result.logl, logwt=result.logwt, logz=result.logz, logzerr=result.logzerr,
         ncall=result.ncall)
     write(outdir / "summary.json", dict(mode="nested", status="completed",
@@ -139,6 +144,8 @@ def nested(target, transform, package, sampler, outdir, seed):
         circular_cos=float(circular.real), circular_sin=float(circular.imag),
         true_calls=target.calls, native_calls=int(np.sum(result.ncall)),
         likelihood_seconds=target.seconds, effective_weight_count=float(1 / np.sum(weights ** 2)),
+        physical_dimensions=1, sampling_dimensions=2,
+        auxiliary="Independent bounded Uniform(0,1), omitted from physical summaries; likelihood independent",
         interpretation="One-angle conditional integral; compare with quadrature and independent seeds"))
 
 
@@ -167,6 +174,9 @@ def main():
         native_version=package.__version__, sampler=args.sampler, mode=args.mode,
         native_package_source_sha256=sha(package.__file__), nlive=200, dlogz=.1,
         scope="Single periodic coordinate varied; all other event parameters fixed")
+    if args.mode != "reference":
+        provenance.update(physical_dimensions=1, sampling_dimensions=2,
+            auxiliary="Independent bounded Uniform(0,1); likelihood independent; normalized integral=1")
     provenance["native_source_sha256"] = {
         name: sha(Path(package.__file__).parent / name)
         for name in ["dynesty.py", "internal_samplers.py", "utils.py", "bounding.py"]}
@@ -184,7 +194,7 @@ def main():
         nested(target, transform, package, args.sampler, args.outdir, args.seed)
     else:
         u = ((parameters[args.angle] - prior.minimum) / (prior.maximum - prior.minimum) - origin) % 1
-        replay = target(transform([u]))
+        replay = target(transform([u, .5]))
         np.testing.assert_allclose(replay, provenance["baseline_log_likelihood_ratio"], atol=1e-8, rtol=0)
         write(args.outdir / "preflight.json", dict(passed=True, coordinate_replay=replay,
             native_version=package.__version__, target_calls=target.calls,

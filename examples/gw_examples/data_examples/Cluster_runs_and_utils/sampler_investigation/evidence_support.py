@@ -35,7 +35,8 @@ def main():
     keys = [key for key, prior in priors.items() if not getattr(prior, 'is_fixed', True)
             and not isinstance(prior, bilby.core.prior.Constraint)]
     assert len(keys) == 60 and 'luminosity_distance' in keys and 'sine_gaussian_0_hrss' in keys
-    fixed = {key: float(prior.peak) for key, prior in priors.items() if getattr(prior, 'is_fixed', False)}
+    fixed = {key: float(prior.peak) for key, prior in priors.items()
+             if getattr(prior, 'is_fixed', False) and not isinstance(prior, bilby.core.prior.Constraint)}
     baseline = provenance['target']['baseline']['parameters']
     point = {key: baseline[key] for key in keys}
     point.update(fixed)

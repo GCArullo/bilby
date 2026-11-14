@@ -33,6 +33,9 @@ def main():
     assert abs(before['reweight']['result']['information_bookkeeping_residual']) > 1e-5
     assert abs(after['reweight']['result']['information_bookkeeping_residual']) < 1e-12
     assert max(abs(report['quantile_differences']['luminosity_distance'])) > 0
+    assert before['quantile_integer_probe']['status'] == 'api_failure'
+    assert after['quantile_integer_probe']['status'] == 'completed'
+    assert after['quantile_integer_probe']['result']['max_residual'] < 1e-9
     merged_old = old.merge_runs([result, result], print_progress=False)
     merged_new = new.merge_runs([new.Results(result.asdict()), new.Results(result.asdict())], print_progress=False)
     assert abs(merged_old.logz[-1] - merged_new.logz[-1]) < 1e-12

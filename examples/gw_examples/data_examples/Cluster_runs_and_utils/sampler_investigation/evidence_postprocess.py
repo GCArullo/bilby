@@ -141,6 +141,17 @@ def compare_chain(result, names, new, seed, repetitions):
         output['resample_equal_actual_weights'] = checked(resampling)
         output['resample_equal_integer_probe'] = checked(lambda: resampling(integer=True))
 
+        def integer_quantiles():
+            column = result.samples[:, names.index('luminosity_distance')]
+            column = column[np.linspace(0, len(column) - 1, 100, dtype=int)]
+            values = module.quantile(column, [.05, .5, .95], np.ones(len(column), dtype=int))
+            expected = np.quantile(column, [.05, .5, .95], method='hazen')
+            return dict(quantiles=values, numpy_uniform_hazen=expected,
+                        max_residual=float(np.max(np.abs(values - expected))),
+                        weighting='unit integer API probe on event values; not adopted posterior weights')
+
+        output['quantile_integer_probe'] = checked(integer_quantiles)
+
         def support_shift():
             # Known-fraction regression built from the actual event trajectory.
             # This deliberately imposed fraction is not an estimate for the event.

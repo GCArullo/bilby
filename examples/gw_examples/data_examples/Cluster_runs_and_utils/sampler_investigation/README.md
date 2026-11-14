@@ -27,7 +27,13 @@ and its noise offset separately. Passing preflight is not convergence evidence.
 
 `sampling_periodic.py` varies one actual event angle at a time, holding the
 other parameters fixed. Independent refined quadrature supplies the conditional
-reference. Default and seam-centered coordinates compare Bilby's wrapped walk
+reference. Nested controls also sample an independent bounded Uniform(0,1)
+auxiliary coordinate, which does not enter the likelihood. Its normalized
+integral is one, so the physical angular marginal and quadrature reference are
+unchanged. This avoids the all-periodic-only edge case of a one-dimensional
+native sampler; all methods use the same two-dimensional sampling space.
+The auxiliary is saved separately and excluded from physical summaries.
+Default and seam-centered coordinates compare Bilby's wrapped walk
 and native Dynesty3.1/3.2 uniform/slice algorithms. The3.2 wheel is hash-pinned
 and loaded under an isolated namespace. Invalid native unit coordinates are
 reported as failures rather than silently repaired. These are conditional

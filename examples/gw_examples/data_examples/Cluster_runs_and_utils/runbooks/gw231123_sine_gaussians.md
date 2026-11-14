@@ -32,6 +32,9 @@ run `make publish` on CIT, or `make publish CIT=false` elsewhere, in
 `Cluster_runs_and_utils/container_creation`; the launcher selects the current
 Git branch from `container_images.json`. The OSDF URL remains readable from
 worldwide IGWN execution sites even though its namespace contains `/cit/`.
+On CIT, run `htgettoken -a vault.ligo.org -i igwn` before submitting and
+complete browser approval if prompted. The saved refresh token lets HTCondor
+renew the credential used to fetch the container from OSDF.
 Publish and register a new official image before production submissions. Use
 `--no-container` only for local testing.
 

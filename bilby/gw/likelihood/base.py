@@ -306,9 +306,21 @@ class GravitationalWaveTransient(Likelihood):
                 waveform_polarizations, interferometers, parameters
             )
         )
-        return log_l_sine_gaussian + self.distance_marginalized_likelihood(
+        log_l_distance = self.distance_marginalized_likelihood(
             d_inner_h, h_inner_h, parameters=parameters
         )
+        if not np.isfinite(log_l_distance):
+            # The CBC can vanish at a detector null while the SG remains
+            # measurable. Strong SG subtraction can also leave an overlap
+            # outside the CBC lookup grid. Neither case has zero likelihood.
+            scaling = parameters['luminosity_distance'] / self._distance_array
+            weights = self.distance_prior_array * self._delta_distance
+            weights[[0, -1]] *= 0.5
+            log_l_distance = logsumexp(
+                d_inner_h.real * scaling - h_inner_h * scaling**2 / 2,
+                b=weights,
+            ) - np.log(np.sum(weights))
+        return log_l_sine_gaussian + log_l_distance
 
     def __repr__(self):
         return self.__class__.__name__ + '(interferometers={},\n\twaveform_generator={},\n\ttime_marginalization={}, ' \
@@ -584,10 +596,11 @@ class GravitationalWaveTransient(Likelihood):
 
         for interferometer in self.interferometers:
             if self._cbc_plus_sine_gaussians_distance_marginalization:
-                parameters['{}_log_likelihood'.format(interferometer.name)] = \
+                parameters['{}_log_likelihood'.format(interferometer.name)] = (
                     self._cbc_plus_sine_gaussians_distance_marginalized_likelihood(
                         waveform_polarizations, [interferometer], parameters
                     )
+                )
                 continue
 
             per_detector_snr = self.calculate_snrs(
@@ -1032,7 +1045,8 @@ class GravitationalWaveTransient(Likelihood):
             lookup_table = self.load_lookup_table(
                 self.cached_lookup_table_filename)
         if isinstance(lookup_table, dict):
-            if self._test_cached_lookup_table(lookup_table):
+            match, _ = self._test_cached_lookup_table(lookup_table)
+            if match:
                 self._dist_margd_loglikelihood_array = lookup_table[
                     'lookup_table']
             else:

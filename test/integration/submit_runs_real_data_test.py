@@ -47,7 +47,68 @@ def test_num_frequency_bands_defaults_to_one():
     assert args.num_frequency_bands is None
     assert args.maxmcmc is None
     assert args.require_epnfs is False
+    assert args.sine_gaussian_hrss_prior == "loguniform"
     assert module.hypothesis_list(args) == ["gaussian"]
+
+
+@pytest.mark.parametrize('eccentric', [False, True])
+@pytest.mark.parametrize('sg_count', [0, 1])
+def test_dali_run_configuration(monkeypatch, tmp_path, eccentric, sg_count):
+    module = load_submit_runs_real_data_module()
+    approximant = 'TEOBResumS_Dali' + ('_Ecc' if eccentric else '')
+    monkeypatch.setattr(sys, 'argv', [
+        str(SCRIPT_PATH), '--event', 'GW231123', '--likelihood', 'gaussian',
+        '--waveform-approximant', approximant, '--num-sine-gaussians', str(sg_count),
+        '--dry-run', '--ini-dir', str(tmp_path / 'ini'),
+        '--prior-dir', str(tmp_path / 'prior'), '--home-dir', str(tmp_path),
+    ])
+    assert module.main() == 0
+    ini_path, = (tmp_path / 'ini').glob('*.ini')
+    prior_path, = (tmp_path / 'prior').glob('*.prior')
+    ini, prior = ini_path.read_text(), prior_path.read_text()
+    assert 'waveform-generator=bilby.gw.waveform_generator.WaveformGenerator' in ini
+    source = 'cbc_plus_sine_gaussians' if sg_count else 'teobresums_dali_binary_black_hole'
+    assert f'frequency-domain-source-model=bilby.gw.source.{source}' in ini
+    assert ('eccentricity = Uniform' in prior) == eccentric
+    assert ('true_anomaly = Uniform' in prior) == eccentric
+    assert ('sine_gaussian_0_hrss' in prior) == bool(sg_count)
+
+
+def test_uniform_hrss_dry_run_keeps_cbc_and_uses_separate_output(monkeypatch, tmp_path):
+    module = load_submit_runs_real_data_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT_PATH), "--event", "GW231123", "--likelihood", "gaussian",
+            "--num-sine-gaussians", "2", "--sine-gaussian-mode", "coherent",
+            "--sine-gaussian-hrss-prior", "uniform", "--dry-run",
+            "--ini-dir", str(tmp_path / "ini"),
+            "--prior-dir", str(tmp_path / "prior"),
+            "--home-dir", str(tmp_path),
+        ],
+    )
+
+    assert module.main() == 0
+    ini_path, = (tmp_path / "ini").glob("*.ini")
+    prior_path, = (tmp_path / "prior").glob("*.prior")
+    ini = ini_path.read_text()
+    prior = prior_path.read_text()
+    assert "_sg_coherent_2_hrss_uniform" in ini_path.name
+    assert "_sg_coherent_2_hrss_uniform" in prior_path.name
+    assert "bilby.gw.source.cbc_plus_sine_gaussians" in ini
+    assert "chirp_mass" in prior
+    assert "sine_gaussian_0_hrss = Uniform(" in prior
+    assert "sine_gaussian_1_hrss = bilby.gw.prior.ConditionalUpperBoundedUniform(" in prior
+    from bilby.gw.prior import BBHPriorDict
+
+    priors = BBHPriorDict(filename=str(prior_path))
+    samples = priors.sample_subset(
+        keys=["sine_gaussian_0_hrss", "sine_gaussian_1_hrss"], size=100
+    )
+    assert all(
+        samples["sine_gaussian_1_hrss"] <= samples["sine_gaussian_0_hrss"]
+    )
 
 
 @pytest.mark.parametrize("mode", ["coherent", "coherent-independent", "incoherent"])
@@ -180,7 +241,10 @@ def test_student_likelihood_keeps_gaussian_companion_for_multiple_frequency_band
     assert module.hypothesis_list(args) == ["student", "gaussian"]
 
 
-def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_path):
+@pytest.mark.parametrize("distance_marginalization", [False, True])
+def test_main_allows_gaussian_default_band_count_with_dry_run(
+    monkeypatch, tmp_path, distance_marginalization
+):
     monkeypatch.delenv("LAL_DATA_PATH", raising=False)
     module = load_submit_runs_real_data_module()
     ini_dir = tmp_path / "ini"
@@ -199,6 +263,8 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             "1",
             "--sine-gaussian-mode",
             "coherent",
+            "--outdir-label",
+            "long_label_" * 8,
             "--dry-run",
             "--ini-dir",
             str(ini_dir),
@@ -206,7 +272,7 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
             str(prior_dir),
             "--home-dir",
             str(tmp_path),
-        ],
+        ] + (["--distance-marginalization"] if distance_marginalization else []),
     )
 
     assert module.main() == 0
@@ -219,7 +285,10 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         "frequency-domain-source-model="
         "bilby.gw.source.cbc_plus_sine_gaussians\n"
     ) in ini_text
-    assert "distance-marginalization=False\n" in ini_text
+    assert f"distance-marginalization={distance_marginalization}\n" in ini_text
+    if distance_marginalization:
+        assert "_distmarg" in ini_paths[0].name
+        assert "distance-marginalization-lookup-table=None\n" in ini_text
     assert (
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
@@ -241,6 +310,11 @@ def test_main_allows_gaussian_default_band_count_with_dry_run(monkeypatch, tmp_p
         tmp_path / "public_html" / "GW231123" / "t_Student" / "Runs"
     )
     assert Path(ini_settings["webdir"]) == outdir / "web"
+    assert len(outdir.name) > 48
+    assert "calculate_multipole_snr" not in ast.literal_eval(
+        ini_settings["summarypages-arguments"]
+    )
+    assert len(ast.literal_eval(ini_settings["summarypages-arguments"])["labels"][0]) <= 48
 
 
 @pytest.mark.parametrize(
@@ -309,6 +383,12 @@ def test_main_selects_direct_generator_only_for_standard_seob(
     ini_text = next(ini_dir.glob("*.ini")).read_text(encoding="utf-8")
     assert f"waveform-generator={waveform_generator}\n" in ini_text
     assert f"frequency-domain-source-model={source_model}\n" in ini_text
+    if "SEOBNRv5PHM" in extra_args:
+        summary_line = next(
+            line for line in ini_text.splitlines()
+            if line.startswith("summarypages-arguments=")
+        )
+        assert "NRSur_fits" not in ast.literal_eval(summary_line.split("=", 1)[1])
     environment_line = next(
         line for line in ini_text.splitlines()
         if line.startswith("environment-variables=")
@@ -441,13 +521,17 @@ def test_resolve_spin_taylor_approximant_maps_to_prec_version():
     )
     assert module.resolve_spin_taylor_approximant("IMRPhenomXPHM_SpinTaylor") == (
         "IMRPhenomXPHM",
-        {"PhenomXPrecVersion": 320},
+        {"PhenomXPrecVersion": 320, "PhenomXPFinalSpinMod": 2},
     )
 
 
 @pytest.mark.parametrize(
     ("approximant", "expected_waveform_minimum"),
-    [("IMRPhenomXPNR", 10.0), ("IMRPhenomXPHM", 20.0)],
+    [
+        ("IMRPhenomXPNR", 10.0),
+        ("IMRPhenomXPHM", 20.0),
+        ("IMRPhenomXPHM_SpinTaylor", 10.0),
+    ],
 )
 def test_tuned_angle_model_clamps_waveform_minimum_frequency(
     monkeypatch,

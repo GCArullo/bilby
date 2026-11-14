@@ -192,6 +192,79 @@ def lal_binary_black_hole(
 _GWSIGNAL_ONLY_APPROXIMANTS = {"SEOBNRv5PHM", "SEOBNRv5HM"}
 
 
+def teobresums_dali_binary_black_hole(
+        frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
+        phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, eccentricity=0.0,
+        true_anomaly=np.pi, **kwargs):
+    """TEOBResumS-Dali precessing BBH, with optional eccentricity.
+
+    Spins, eccentricity and true anomaly are specified at ``reference_frequency``
+    (twice the orbit-averaged orbital frequency). Generation starts there; the
+    likelihood cutoff is independently set by ``minimum_frequency``. The default
+    modes include all positive-m coprecessing modes through ell=4 and their
+    precessing inertial-frame counterparts. Dali sets merger time to zero.
+    """
+    import EOBRun_module
+    import lal
+    import lalsimulation
+
+    reference_frequency = float(kwargs.get('reference_frequency', 10.0))
+    minimum_frequency = float(kwargs.get('minimum_frequency', 20.0))
+    maximum_frequency = float(kwargs.get('maximum_frequency', frequency_array[-1]))
+    if reference_frequency > minimum_frequency:
+        raise ValueError('Dali reference_frequency must not exceed minimum_frequency')
+    delta_frequency = frequency_array[1] - frequency_array[0]
+    if frequency_array[0] != 0 or not np.allclose(np.diff(frequency_array), delta_frequency):
+        raise ValueError('Dali requires a uniform frequency array starting at zero')
+    # Resolve the higher modes in time before retaining only the requested band.
+    sampling_frequency = max(4096.0, 2 * frequency_array[-1])
+    sample_count = int(round(sampling_frequency / delta_frequency))
+    sampling_frequency = sample_count * delta_frequency
+    iota, s1x, s1y, s1z, s2x, s2y, s2z = bilby_to_lalsimulation_spins(
+        theta_jn, phi_jl, tilt_1, tilt_2, phi_12, a_1, a_2,
+        mass_1 * utils.solar_mass, mass_2 * utils.solar_mass,
+        reference_frequency, phase)
+    modes = kwargs.get('mode_array')
+    mode_indices = list(range(9)) if modes is None else sorted({
+        int(ell * (ell - 1) // 2 + abs(m) - 2) for ell, m in modes if m != 0
+    })
+    parameters = dict(
+        M=mass_1 + mass_2, q=mass_1 / mass_2,
+        chi1=s1z, chi2=s2z, chi1x=s1x, chi1y=s1y, chi1z=s1z,
+        chi2x=s2x, chi2y=s2y, chi2z=s2z, LambdaAl2=0.0, LambdaBl2=0.0,
+        distance=luminosity_distance, inclination=iota, coalescence_angle=phase,
+        ecc=eccentricity, anomaly=true_anomaly, ecc_freq=3, ecc_ics=2,
+        initial_frequency=reference_frequency, domain=0, arg_out='no',
+        use_geometric_units='no', interp_uniform_grid='yes',
+        srate_interp=sampling_frequency, use_mode_lm=mode_indices,
+        use_mode_lm_inertial=mode_indices, spin_flx='EOB', spin_interp_domain=0,
+        time_shift_TD='yes', lal_tetrad_conventions='yes',
+        output_hpc='no', output_multipoles='no', output_dynamics='no',
+    )
+    try:
+        time, plus, cross = EOBRun_module.EOBRunPy(parameters)
+        if len(time) < 2 or not all(np.isfinite(h).all() for h in (time, plus, cross)):
+            raise ValueError('Dali returned an empty or non-finite waveform')
+    except (RuntimeError, ValueError):
+        if kwargs.get('catch_waveform_errors', False):
+            return None
+        raise
+    # A longer FFT preserves the full inspiral; decimation evaluates the exact
+    # requested frequency grid without truncating waveforms longer than 1/df.
+    multiple = max(1, int(np.ceil(len(time) / sample_count)))
+    time_shift = np.exp(-2j * np.pi * frequency_array * time[0])
+    mask = (frequency_array >= minimum_frequency) & (frequency_array <= maximum_frequency)
+    polarizations = {}
+    for name, strain in [('plus', plus), ('cross', cross)]:
+        tapered = lal.CreateREAL8Vector(len(strain))
+        tapered.data[:] = strain
+        lalsimulation.SimInspiralREAL8WaveTaper(
+            tapered, lalsimulation.SIM_INSPIRAL_TAPER_START)
+        spectrum = np.fft.rfft(tapered.data, n=multiple * sample_count)
+        polarizations[name] = spectrum[::multiple][:len(frequency_array)] / sampling_frequency * time_shift * mask
+    return polarizations
+
+
 class _WaveformPolarizations(dict):
     def __init__(self, *args, component_polarizations=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -201,7 +274,7 @@ class _WaveformPolarizations(dict):
 def cbc_plus_sine_gaussians(
         frequency_array, mass_1, mass_2, luminosity_distance, a_1, tilt_1,
         phi_12, a_2, tilt_2, phi_jl, theta_jn, phase, lambda_1=0.0,
-        lambda_2=0.0, eccentricity=0.0, sine_gaussian_parameters=None,
+        lambda_2=0.0, eccentricity=0.0, true_anomaly=np.pi, sine_gaussian_parameters=None,
         incoherent_sine_gaussian_parameters=None,
         independent_sine_gaussian_parameters=None,
         independent_sine_gaussian_ra=None, independent_sine_gaussian_dec=None,
@@ -291,6 +364,9 @@ def cbc_plus_sine_gaussians(
         if waveform_kwargs['waveform_approximant'] in _GWSIGNAL_ONLY_APPROXIMANTS
         else _base_lal_cbc_fd_waveform
     )
+    if waveform_kwargs['waveform_approximant'] in {'TEOBResumS_Dali', 'TEOBResumS_Dali_Ecc'}:
+        base_waveform_func = teobresums_dali_binary_black_hole
+        waveform_kwargs['true_anomaly'] = true_anomaly
     base_waveform = base_waveform_func(
         frequency_array=frequency_array,
         mass_1=mass_1,

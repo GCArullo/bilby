@@ -261,9 +261,23 @@ def validate_sine_gaussian_distance_marginalization(
     if not config.enabled:
         return
     value = _ini_setting(ini_text, "distance-marginalization")
-    if value is None or parse_template_value(value) is not False:
+    if value is not None and parse_template_value(value) is False:
+        return
+    likelihood = _ini_setting(ini_text, "likelihood-type") or ""
+    unsupported = any(
+        parse_template_value(
+            _ini_setting(ini_text, f"{name}-marginalization") or "False"
+        )
+        for name in ("time", "phase", "calibration")
+    )
+    if (
+        value is None
+        or likelihood.split(".")[-1] != "GravitationalWaveTransient"
+        or unsupported
+    ):
         raise ValueError(
-            "CBC+sine-Gaussian configs require distance-marginalization=False"
+            "CBC+sine-Gaussian distance marginalization requires "
+            "GravitationalWaveTransient without time, phase or calibration marginalization"
         )
 
 
@@ -474,11 +488,13 @@ def build_sine_gaussian_prior_block(
     *,
     minimum_frequency,
     maximum_frequency,
+    hrss_prior: str = "loguniform",
 ):
     return _build_sine_gaussian_prior_block(
         config,
         minimum_frequency=minimum_frequency,
         maximum_frequency=maximum_frequency,
+        hrss_prior=hrss_prior,
     )
 
 
@@ -491,7 +507,23 @@ def apply_sine_gaussian_waveform_settings(
     config: SineGaussianConfiguration,
     *,
     replace_line,
+    distance_marginalization: bool = False,
 ) -> str:
+    if distance_marginalization:
+        likelihood = _ini_setting(ini_text, "likelihood-type") or ""
+        if likelihood.split(".")[-1] != "GravitationalWaveTransient":
+            raise ValueError(
+                "--distance-marginalization requires --likelihood gaussian"
+            )
+        ini_text = replace_line(ini_text, "distance-marginalization", "True")
+        if _ini_setting(ini_text, "distance-marginalization-lookup-table") is None:
+            ini_text = (
+                ini_text.rstrip() + "\ndistance-marginalization-lookup-table=None\n"
+            )
+        else:
+            ini_text = replace_line(
+                ini_text, "distance-marginalization-lookup-table", "None"
+            )
     if not config.enabled:
         return ini_text
 
@@ -510,7 +542,9 @@ def apply_sine_gaussian_waveform_settings(
         "generation-function",
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters",
     )
-    updated = replace_line(updated, "distance-marginalization", "False")
+    updated = replace_line(
+        updated, "distance-marginalization", str(distance_marginalization)
+    )
     validate_sine_gaussian_distance_marginalization(updated, config)
     return updated
 
@@ -619,6 +653,7 @@ def _build_sine_gaussian_prior_block(
     *,
     minimum_frequency,
     maximum_frequency,
+    hrss_prior: str,
 ) -> str:
     if not config.enabled:
         return ""
@@ -631,6 +666,8 @@ def _build_sine_gaussian_prior_block(
             "Invalid sine-Gaussian frequency prior bounds: "
             f"{frequency_minimum} >= {frequency_maximum}"
         )
+    if hrss_prior not in {"loguniform", "uniform"}:
+        raise ValueError(f"Unknown sine-Gaussian hrss prior: {hrss_prior}")
 
     lines = []
     if config.mode == "coherent":
@@ -643,6 +680,7 @@ def _build_sine_gaussian_prior_block(
                     ),
                     frequency_minimum=frequency_minimum,
                     frequency_maximum=frequency_maximum,
+                    hrss_prior=hrss_prior,
                 )
             )
     elif config.mode == "coherent-independent":
@@ -669,6 +707,7 @@ def _build_sine_gaussian_prior_block(
                     ),
                     frequency_minimum=frequency_minimum,
                     frequency_maximum=frequency_maximum,
+                    hrss_prior=hrss_prior,
                 )
             )
     else:
@@ -683,6 +722,7 @@ def _build_sine_gaussian_prior_block(
                         upper_bound_name=previous_hrss_name,
                         frequency_minimum=frequency_minimum,
                         frequency_maximum=frequency_maximum,
+                        hrss_prior=hrss_prior,
                     )
                 )
                 previous_hrss_name = f"{prefix}hrss"
@@ -697,15 +737,22 @@ def _sine_gaussian_prior_lines(
     upper_bound_name: str | None,
     frequency_minimum: float,
     frequency_maximum: float,
+    hrss_prior: str,
 ) -> list[str]:
     if upper_bound_name is None:
+        prior_class = "Uniform" if hrss_prior == "uniform" else "LogUniform"
         hrss_line = (
-            f"{prefix}hrss = LogUniform(name='{prefix}hrss', "
+            f"{prefix}hrss = {prior_class}(name='{prefix}hrss', "
             f"minimum={SINE_GAUSSIAN_HRSS_BOUNDS[0]}, maximum={SINE_GAUSSIAN_HRSS_BOUNDS[1]})"
         )
     else:
+        prior_class = (
+            "ConditionalUpperBoundedUniform"
+            if hrss_prior == "uniform"
+            else "ConditionalUpperBoundedLogUniform"
+        )
         hrss_line = (
-            f"{prefix}hrss = bilby.gw.prior.ConditionalUpperBoundedLogUniform("
+            f"{prefix}hrss = bilby.gw.prior.{prior_class}("
             f"name='{prefix}hrss', minimum={SINE_GAUSSIAN_HRSS_BOUNDS[0]}, "
             f"maximum={SINE_GAUSSIAN_HRSS_BOUNDS[1]}, "
             f"upper_bound_name='{upper_bound_name}')"

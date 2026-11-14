@@ -38,6 +38,7 @@ DEFAULT_DETECTORS = ("H1", "L1")
 DEFAULT_EVENT = "GW231123"
 SPIN_TAYLOR_SUFFIX = "_SpinTaylor"
 SPIN_TAYLOR_PREC_VERSION = 320
+SPIN_TAYLOR_FINAL_SPIN_MOD = 2
 TUNED_ANGLE_MODELS = {"IMRPhenomXPNR"}
 DEFAULT_CONTAINER_IMAGES_FILE = (
     Path(__file__).resolve().parent / "container_creation" / "container_images.json"
@@ -238,6 +239,11 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--distance-marginalization",
+        action="store_true",
+        help="Marginalize CBC distance for Gaussian runs, including CBC+sine-Gaussians.",
+    )
+    parser.add_argument(
         "--detector-dependent-nu",
         action="store_true",
         help="Generate detector-specific Student-t nu parameters.",
@@ -353,6 +359,15 @@ def build_argument_parser(script_dir: Path) -> argparse.ArgumentParser:
     )
     add_sine_gaussian_arguments(parser)
     parser.add_argument(
+        "--sine-gaussian-hrss-prior",
+        choices=("loguniform", "uniform"),
+        default="loguniform",
+        help=(
+            "SG hrss prior: log-uniform (default) or linear uniform. "
+            "Later SGs retain the decreasing-hrss conditional ordering."
+        ),
+    )
+    parser.add_argument(
         "--sg-only",
         action="store_true",
         help=(
@@ -467,6 +482,7 @@ def render_prior(
     template_settings: dict[str, object],
     sine_gaussian_config,
     sg_only: bool = False,
+    sine_gaussian_hrss_prior: str = "loguniform",
 ) -> str:
     nu_prior_block = ""
     if include_nu_priors:
@@ -479,6 +495,7 @@ def render_prior(
         sine_gaussian_config,
         minimum_frequency=template_settings["minimum_frequency"],
         maximum_frequency=template_settings["maximum_frequency"],
+        hrss_prior=sine_gaussian_hrss_prior,
     )
     if sg_only:
         # Keep the reference epoch and sky priors: fixing these would change
@@ -541,11 +558,24 @@ def build_pesummary_arguments(
     detectors: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     arguments = dict(DEFAULT_PESUMMARY_ARGUMENTS)
-    # pesummary names its outputs '<label>_<label>_<parameter>.html' and
-    # '<label>_<result file name>'. Left to bilby_pipe the label is the full
-    # merge-result basename, so those names run past the 255 byte file name
-    # limit and the results page aborts with OSError errno 36. Name the page
-    # after the run directory instead.
+    if template_settings["waveform_approximant"] == "SEOBNRv5PHM":
+        arguments.pop("NRSur_fits", None)
+    if template_settings["waveform_approximant"] in {
+        "TEOBResumS_Dali",
+        "TEOBResumS_Dali_Ecc",
+    }:
+        # PESummary's LAL waveform diagnostics and quasicircular remnant fits
+        # do not implement this Dali source, especially its eccentric branch.
+        for key in (
+            "evolve_spins_forwards",
+            "evolve_spins_backwards",
+            "NRSur_fits",
+            "calculate_multipole_snr",
+        ):
+            arguments.pop(key, None)
+        arguments["disable_remnant"] = True
+    # PESummary combines the page label with the result filename. Use the
+    # short run label passed below to avoid the 255-byte filename limit.
     arguments["labels"] = [page_label]
     f_low = minimum_frequency_for_pesummary(template_settings["minimum_frequency"])
     f_ref = template_settings["reference_frequency"]
@@ -600,7 +630,10 @@ def resolve_spin_taylor_approximant(approximant: str) -> tuple[str, dict | None]
         return approximant, None
     return (
         approximant[: -len(SPIN_TAYLOR_SUFFIX)],
-        {"PhenomXPrecVersion": SPIN_TAYLOR_PREC_VERSION},
+        {
+            "PhenomXPrecVersion": SPIN_TAYLOR_PREC_VERSION,
+            "PhenomXPFinalSpinMod": SPIN_TAYLOR_FINAL_SPIN_MOD,
+        },
     )
 
 
@@ -625,7 +658,10 @@ def render_ini(
     condor_job_priority: int | None = None,
     waveform_arguments: dict | None = None,
     sg_only: bool = False,
+    distance_marginalization: bool = False,
 ) -> str:
+    if sg_only and distance_marginalization:
+        raise ValueError("SG-only runs have no CBC distance to marginalize")
     replacements = {
         "__LABEL__": label,
         "__OUTDIR__": outdir,
@@ -676,16 +712,17 @@ def render_ini(
             )
         ),
     )
+    summarypages_arguments = build_pesummary_arguments(
+        template_settings,
+        page_label=Path(outdir).name[:48],
+        detectors=detectors,
+    )
+    if sine_gaussian_config.enabled:
+        summarypages_arguments.pop("calculate_multipole_snr", None)
     rendered = replace_line(
         rendered,
         "summarypages-arguments",
-        repr(
-            build_pesummary_arguments(
-                template_settings,
-                page_label=Path(outdir).name,
-                detectors=detectors,
-            )
-        ),
+        repr(summarypages_arguments),
     )
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(
@@ -761,7 +798,23 @@ def render_ini(
         rendered,
         sine_gaussian_config,
         replace_line=replace_line,
+        distance_marginalization=distance_marginalization,
     )
+    if template_settings["waveform_approximant"] in {
+        "TEOBResumS_Dali",
+        "TEOBResumS_Dali_Ecc",
+    }:
+        rendered = replace_line(
+            rendered,
+            "waveform-generator",
+            "bilby.gw.waveform_generator.WaveformGenerator",
+        )
+        if not sine_gaussian_config.enabled:
+            rendered = replace_line(
+                rendered,
+                "frequency-domain-source-model",
+                "bilby.gw.source.teobresums_dali_binary_black_hole",
+            )
     if sg_only:
         # Generic priors/generation must not introduce CBC defaults or derived
         # masses, spins, or a cosmological distance into an SG-only result.
@@ -818,12 +871,18 @@ def prepare_run(
     approximant_suffix: str = "",
     detector_suffix: str = "",
     sg_only: bool = False,
+    sine_gaussian_hrss_prior: str = "loguniform",
+    distance_marginalization: bool = False,
 ) -> Path:
     waveform_suffix = (
         sine_gaussian_config.label_suffix + approximant_suffix + detector_suffix
     )
+    if sine_gaussian_hrss_prior == "uniform" and sine_gaussian_config.enabled:
+        waveform_suffix += "_hrss_uniform"
     if sg_only:
         waveform_suffix = waveform_suffix.replace("_sg_", "_sg_only_", 1)
+    if distance_marginalization:
+        waveform_suffix += "_distmarg"
     if hypothesis == "student":
         run_band_count = band_count
         mode_suffix = "_detector_dependent_nu" if detector_dependent_nu else ""
@@ -872,6 +931,7 @@ def prepare_run(
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             sg_only=sg_only,
+            sine_gaussian_hrss_prior=sine_gaussian_hrss_prior,
         ),
         encoding="utf-8",
     )
@@ -896,6 +956,7 @@ def prepare_run(
             template_settings=template_settings,
             sine_gaussian_config=sine_gaussian_config,
             sg_only=sg_only,
+            distance_marginalization=distance_marginalization,
         ),
         encoding="utf-8",
     )
@@ -972,8 +1033,11 @@ def main() -> int:
         if isinstance(min_freq, dict):
             detector_freqs = [v for k, v in min_freq.items() if k != "waveform"]
             waveform_freq = min(detector_freqs) if detector_freqs else 20.0
-            if lal_approximant in TUNED_ANGLE_MODELS:
-                # PNR tuned angles require f_min <= f_ref.
+            if (
+                lal_approximant in TUNED_ANGLE_MODELS
+                or args.waveform_approximant.endswith(SPIN_TAYLOR_SUFFIX)
+            ):
+                # PNR tuned angles and the LVK SpinTaylor setup start at f_ref.
                 waveform_freq = min(
                     waveform_freq, template_settings["reference_frequency"]
                 )
@@ -991,6 +1055,12 @@ def main() -> int:
     else:
         approximant_suffix = ""
 
+    if args.waveform_approximant == "TEOBResumS_Dali_Ecc":
+        prior_template += (
+            "\neccentricity = Uniform(name='eccentricity', minimum=0, maximum=0.5)\n"
+            "true_anomaly = Uniform(name='true_anomaly', minimum=0, maximum=2 * np.pi, boundary='periodic')\n"
+        )
+
     detector_suffix = (
         "_" + "".join(detectors) + "only"
         if tuple(detectors) != defaults.detectors
@@ -1004,6 +1074,10 @@ def main() -> int:
             raise ValueError("--waveform-approximant has no meaning with --sg-only")
         if args.sine_gaussian_mode == "coherent-independent":
             args.sine_gaussian_mode = "coherent"
+    if args.sine_gaussian_hrss_prior == "uniform" and args.num_sine_gaussians < 1:
+        raise ValueError(
+            "--sine-gaussian-hrss-prior uniform requires at least one sine-Gaussian"
+        )
 
     sine_gaussian_configs = resolve_sine_gaussian_configurations(
         num_sine_gaussians=args.num_sine_gaussians,
@@ -1058,6 +1132,8 @@ def main() -> int:
                 approximant_suffix=approximant_suffix,
                 detector_suffix=detector_suffix,
                 sg_only=args.sg_only,
+                sine_gaussian_hrss_prior=args.sine_gaussian_hrss_prior,
+                distance_marginalization=args.distance_marginalization,
             )
             if not args.dry_run:
                 submit_run(ini_path, submit_directory=submit_directory)

@@ -71,7 +71,8 @@ def test_effective_nlive_adds_sine_gaussian_uplifts(
     )
 
 
-def test_sine_gaussian_submission_settings_disable_distance_and_generation():
+@pytest.mark.parametrize("distance_marginalization,lookup", [(False, "old.npz"), (True, "old.npz"), (True, None)])
+def test_sine_gaussian_submission_settings(distance_marginalization, lookup):
     module = load_submission_sine_gaussian_utils_module()
     config = module.SineGaussianConfiguration(total_components=1, mode="coherent")
     ini_text = "\n".join(
@@ -80,13 +81,17 @@ def test_sine_gaussian_submission_settings_disable_distance_and_generation():
             "conversion-function=None",
             "generation-function=bilby.gw.conversion.generate_all_bbh_parameters",
             "distance-marginalization=True",
+            "likelihood-type=bilby.gw.likelihood.GravitationalWaveTransient",
         ]
     ) + "\n"
+    if lookup is not None:
+        ini_text += f"distance-marginalization-lookup-table={lookup}\n"
 
     rendered = module.apply_sine_gaussian_waveform_settings(
         ini_text,
         config,
         replace_line=replace_line,
+        distance_marginalization=distance_marginalization,
     )
 
     assert (
@@ -101,7 +106,9 @@ def test_sine_gaussian_submission_settings_disable_distance_and_generation():
         "generation-function="
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters\n"
     ) in rendered
-    assert "distance-marginalization=False\n" in rendered
+    assert f"distance-marginalization={distance_marginalization}\n" in rendered
+    if distance_marginalization:
+        assert "distance-marginalization-lookup-table=None\n" in rendered
 
 
 def test_sine_gaussian_distance_validation_rejects_enabled_marginalization():
@@ -110,7 +117,7 @@ def test_sine_gaussian_distance_validation_rejects_enabled_marginalization():
 
     with pytest.raises(
         ValueError,
-        match="require distance-marginalization=False",
+        match="requires GravitationalWaveTransient",
     ):
         module.validate_sine_gaussian_distance_marginalization(
             "distance-marginalization=True\n",
@@ -198,3 +205,38 @@ def test_independently_localized_coherent_configuration_and_priors():
     assert "independent_sine_gaussian_dec = Cosine(" in prior
     assert "independent_sine_gaussian_psi = Uniform(" in prior
     assert "independent_sine_gaussian_0_hrss = LogUniform(" in prior
+
+
+@pytest.mark.parametrize(
+    ("mode", "detector_counts", "first", "second"),
+    [
+        ("coherent", (), "sine_gaussian_0_", "sine_gaussian_1_"),
+        (
+            "coherent-independent", (),
+            "independent_sine_gaussian_0_", "independent_sine_gaussian_1_",
+        ),
+        (
+            "incoherent", (("H1", 2),),
+            "sine_gaussian_0_H1_", "sine_gaussian_1_H1_",
+        ),
+    ],
+)
+def test_uniform_hrss_priors_preserve_component_ordering(
+    mode, detector_counts, first, second
+):
+    module = load_submission_sine_gaussian_utils_module()
+    config = module.SineGaussianConfiguration(
+        total_components=2, mode=mode, detector_counts=detector_counts
+    )
+
+    prior = module.build_sine_gaussian_prior_block(
+        config, minimum_frequency=20, maximum_frequency=448, hrss_prior="uniform"
+    )
+
+    assert f"{first}hrss = Uniform(name='{first}hrss'," in prior
+    assert (
+        f"{second}hrss = bilby.gw.prior.ConditionalUpperBoundedUniform("
+        f"name='{second}hrss', minimum=1e-24, maximum=1e-20, "
+        f"upper_bound_name='{first}hrss')"
+    ) in prior
+    assert "LogUniform" not in prior

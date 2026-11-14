@@ -62,3 +62,33 @@ def test_resubmitted_job_is_matched_by_outdir(monkeypatch, tmp_path, capsys):
     assert "RUNNING" in output
     assert "FAILED" not in output
     assert module.active_roots([queued]) == [root]
+
+
+def test_removed_job_is_not_reported_as_failed(tmp_path, capsys):
+    module = load_monitor_runs_module()
+    root = tmp_path / "event"
+    run_dir = root / "hyperbolic_detector_independent_noise_N50"
+    label = "event_analysis_H1L1_par0"
+    submit_dir = run_dir / "submit"
+    submit_dir.mkdir(parents=True)
+    (submit_dir / f"{label}.submit").touch()
+
+    removed = {
+        "ClusterId": 12501677,
+        "ProcId": 0,
+        "JobStatus": 3,
+        "ExitCode": 143,
+        "ExitBySignal": False,
+        "RemoveReason": "DAG removed by user",
+        "Iwd": str(root),
+        "Args": (
+            "bilby_pipe_analysis config.ini "
+            f"--outdir {run_dir.name} --label {label}"
+        ),
+    }
+    module.print_snapshot(root, [], [removed], colour=False)
+
+    output = capsys.readouterr().out
+    assert "REMOVED" in output
+    assert "DAG removed by user" in output
+    assert "FAILED" not in output

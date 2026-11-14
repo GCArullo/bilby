@@ -537,6 +537,11 @@ def encode_for_hdf5(key, item):
             output = item
         elif np.issubdtype(item_array.dtype, np.number):
             output = np.array(item)
+        elif all(isinstance(value, dict) for value in item):
+            output = dict(
+                __list__=True,
+                content={str(index): value for index, value in enumerate(item)},
+            )
         elif issubclass(item_array.dtype.type, str) or None in item:
             output = list()
             for value in item:
@@ -601,6 +606,9 @@ def decode_hdf5_dict(output):
         output = decode_numpy_seed_sequence(output)
     elif "__lal_dict__" in output:
         output = decode_lal_dict(output)
+    elif "__list__" in output:
+        content = output["content"]
+        output = [content[str(index)] for index in range(len(content))]
     return output
 
 

@@ -207,7 +207,10 @@ def print_snapshot(
             failed = ad and (
                 ad.get("ExitBySignal") or ad.get("ExitCode") not in (None, 0)
             )
-            if failed:
+            if ad and ad.get("JobStatus") == 3:
+                state = "REMOVED"
+                detail = ad.get("RemoveReason") or "removed from queue"
+            elif failed:
                 state = "FAILED"
                 detail = fatal_error(run_dir, label, ad)
             elif ad:
@@ -219,7 +222,7 @@ def print_snapshot(
         rows.append((run_dir.name, job, state, detail))
 
     counts = Counter(row[2] for row in rows)
-    summary_order = ("RUNNING", "IDLE", "HELD", "FAILED", "DONE", "WAITING")
+    summary_order = ("RUNNING", "IDLE", "HELD", "FAILED", "REMOVED", "DONE", "WAITING")
     summary = "  ".join(
         f"{name.lower()} {counts[name]}" for name in summary_order if counts[name]
     )

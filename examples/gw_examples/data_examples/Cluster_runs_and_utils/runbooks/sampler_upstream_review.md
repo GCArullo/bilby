@@ -1,5 +1,12 @@
 # Distance investigation: sampler changes awaiting review
 
+On14 November2026 Gregorio subsequently authorized the representative per-issue
+campaign described in `../sampler_investigation/README.md`. Those explicitly
+listed experiments are permitted in addition to DAG13633524. Production
+adoption and merging into the paper branch remain blocked pending upstream
+developer review and Gregorio's authorization. The earlier restriction below
+continues to apply to other launches.
+
 The `sg_cbc_distance_marginalization` branch contains the distance-likelihood
 work and the experimental sampler changes created for that investigation:
 the two code fixes from 88f321fd (zero-acceptance seed retention and donor

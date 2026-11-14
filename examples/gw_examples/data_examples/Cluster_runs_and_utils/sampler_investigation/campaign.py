@@ -14,6 +14,10 @@ def main():
     parser.add_argument('--native-results', nargs=3, required=True)
     args = parser.parse_args()
     settings = json.loads(args.settings.read_text())
+    if settings['container_local'].startswith('/osdf/'):
+        parser.error('container_local must use an image on the shared filesystem; '
+                     '/osdf paths are not guaranteed on worker nodes. Use the '
+                     'existing immutable image copy under /home/gregorio.carullo.')
     root = args.root.resolve()
     manifest_path = root / 'campaign_manifest.json'
     assert not manifest_path.exists(), 'Existing campaign: inspect its submission state instead of rebuilding'
@@ -37,10 +41,10 @@ initialdir = {root}
 executable = /usr/bin/singularity
 arguments = {arguments}
 request_cpus = {cpus}
-request_memory = {memory}
+request_memory = {memory}MB
 request_disk = 8GB
 should_transfer_files = NO
-requirements = (TARGET.HAS_SINGULARITY =?= True) && (TARGET.FileSystemDomain == MY.FileSystemDomain) && (TARGET.Machine =!= "node759.cluster.ldas.cit")
+requirements = (TARGET.HAS_SINGULARITY =?= True) && (TARGET.EPNFS =?= True) && (TARGET.FileSystemDomain == MY.FileSystemDomain) && (TARGET.Machine =!= "node759.cluster.ldas.cit")
 output = logs/{name}_$(Process).out
 error = logs/{name}_$(Process).err
 log = logs/{name}.log

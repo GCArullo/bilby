@@ -44,3 +44,10 @@ checks the comparison machinery against a deterministic completed trajectory.
 The campaign manifest and workbook record running, completed, failed and
 not-applicable cases separately. Missing results remain pending. Dynamic-only
 and unused-sampler issues must not be described as validated by these tests.
+
+For CIT deployment, `container_local` must point to the same immutable image
+on the shared `/home/gregorio.carullo` filesystem. A submit-node `/osdf` path
+is not guaranteed to exist on workers and is rejected. Submissions require
+both the matching filesystem domain and `EPNFS=True`, since the domain alone
+can include nodes without the needed shared home paths. Memory requests include
+explicit `MB` units.

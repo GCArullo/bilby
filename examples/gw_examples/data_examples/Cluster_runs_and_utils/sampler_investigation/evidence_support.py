@@ -58,7 +58,8 @@ def main():
     constraints = {key: dict(minimum=prior.minimum, maximum=prior.maximum)
                    for key, prior in priors.items() if isinstance(prior, bilby.core.prior.Constraint)}
     sampler = bilby.core.sampler.get_sampler_class('dynesty')
-    initialization_source = inspect.getsource(sampler.run_sampler)
+    # run_sampler is decorated; inspect the class to retain its original body.
+    initialization_source = inspect.getsource(sampler)
     prior_initialization_source = inspect.getsource(sampler.get_initial_points_from_prior)
     report = dict(status='running', provenance=provenance, worker_sha256=sha(__file__),
                   keys=keys, fixed_keys=list(fixed), constraints=constraints,

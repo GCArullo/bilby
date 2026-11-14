@@ -1595,6 +1595,14 @@ def render_ini(
     sampler_kwargs = dict(template_settings["sampler_kwargs"])
     sampler_kwargs["nlive"] = effective_nlive(args.nlive, sine_gaussian_config)
     sampler_kwargs["naccept"] = args.naccept
+    if sampler_kwargs.get("sample", "act-walk") in {
+        "acceptance-walk",
+        "act-walk",
+        "rwalk",
+    }:
+        rendered = replace_or_append_line(
+            rendered, "calibration-prior-boundary", "None"
+        )
     if getattr(args, "maxmcmc", None) is not None:
         sampler_kwargs["maxmcmc"] = args.maxmcmc
     rendered = replace_line(

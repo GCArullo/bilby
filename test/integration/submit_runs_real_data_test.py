@@ -397,7 +397,8 @@ def test_main_selects_direct_generator_only_for_standard_seob(
     assert environment_variables["LAL_DATA_PATH"] == "/scratch/lalsimulation"
 
 
-def test_render_ini_writes_maxmcmc_override():
+@pytest.mark.parametrize("sample", [None, "acceptance-walk", "act-walk", "rwalk", "unif"])
+def test_render_ini_writes_sampler_controls(sample):
     module = load_submit_runs_real_data_module()
     ini_template = "\n".join(
         [
@@ -406,6 +407,7 @@ def test_render_ini_writes_maxmcmc_override():
             "create-summary=False",
             "environment-variables={}",
             "summarypages-arguments=None",
+            "calibration-prior-boundary=reflective",
             "sampler-kwargs={'nlive': 2000, 'maxmcmc': 5000}",
             "likelihood-type=old",
             "extra-likelihood-kwargs=old",
@@ -423,6 +425,9 @@ def test_render_ini_writes_maxmcmc_override():
         psd_dict=None,
         sampler_kwargs={"nlive": 2000, "maxmcmc": 5000},
     )
+
+    if sample is not None:
+        template_settings["sampler_kwargs"]["sample"] = sample
 
     rendered = module.render_ini(
         ini_template,
@@ -452,6 +457,8 @@ def test_render_ini_writes_maxmcmc_override():
     )
     sampler_kwargs = ast.literal_eval(sampler_line.split("=", 1)[1])
     assert sampler_kwargs["maxmcmc"] == 10000
+    boundary = "reflective" if sample == "unif" else "None"
+    assert f"calibration-prior-boundary={boundary}\n" in rendered
 
 
 def test_render_ini_substitutes_placeholders_in_generated_lines():

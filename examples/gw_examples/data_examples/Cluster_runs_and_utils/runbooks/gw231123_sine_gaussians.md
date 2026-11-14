@@ -1,5 +1,9 @@
 # GW231123 Sine-Gaussian Runs
 
+This distance-investigation branch contains experimental sampler settings.
+Normal paper runs use `sine_gaussians_addition`. Additional launches from this
+branch are suspended pending authorization; see [the sampler review gate](sampler_upstream_review.md).
+
 Injected SG values for the injection commands are read from `runbooks/injected_sine_gaussian_values.json`.
 
 The three supported SG modes are:

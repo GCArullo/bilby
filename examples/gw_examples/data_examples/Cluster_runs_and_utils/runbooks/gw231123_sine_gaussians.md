@@ -150,6 +150,39 @@ GW231123 NRsur + 2 SG in L1 (incoherent):
 python "$REAL" --event GW231123 --likelihood gaussian --num-sine-gaussians 2 --sine-gaussian-mode incoherent --incoherent-detectors L1 --maxmcmc "$MAXMCMC"
 ```
 
+## Completed GW231123 L1 incoherent SG convergence check (2026-11-13)
+
+The original `gaussian_sg_incoherent_L1x1` run and its independent
+`gaussian_sg_incoherent_L1x1_extra` run each supplied three finished
+`par0`–`par2` chains. Both used the same data, prior, model, `nlive=2500`,
+and `maxmcmc=5000`. The extra run set `sampling-seed=20261101`; the original
+used the default seed. The extra run's merged log Bayes factor against noise
+is 179.81578144826926.
+
+A separate six-chain result was produced with `bilby_result --merge` using the
+six `*_par?_result.hdf5` inputs and the original Bilby container
+(`bilby=0.1.0.dev5608+ga8b49d109`). It contains 113,997 posterior samples;
+log evidence is 713945.4011870716, and log Bayes factor against noise is
+179.82323072466534. This is the official L1-only incoherent-SG result used in
+the GW231123 manuscript table, Figure 7 and the Bayes-factor/posterior atlas.
+The official Bilby merged result was published on CIT on 15 November 2026:
+
+```
+/home/gregorio.carullo/public_html/GW231123/sine_gaussians/Runs_new_priors/gaussian_sg_incoherent_L1x1_6chains/result/GW231123_t_Student_gaussian_sg_incoherent_L1x1_6chains_result.hdf5
+```
+
+The published file is byte-identical to the original six-chain merge, with
+verified SHA-256
+`83962a78fbda1569ddbe4c3f1ac4dbc171fa3b862e5a526c04bdd22335d72cfd`.
+The per-chain high-amplitude SG fractions (defined by
+`log10(sine_gaussian_0_L1_hrss) > -22.9`) are 3.1%, 52.4%, 3.0%, 32.9%, 2.4%,
+and 14.5% for original par0–2 and extra par0–2, respectively. These mode
+weights have not converged, so the paper explicitly flags the convergence
+limitation. The nine-panel appendix comparison is
+`Figures/Results/Fig 14_convergence_incoherent_L1x1_6chains.pdf` in the
+manuscript repository; the bottom row shows the original three-chain merge,
+the extra three-chain merge, and the official six-chain merge.
+
 ## SG-only runs (no CBC)
 
 Add `--sg-only` to a real-data SG command, for example:

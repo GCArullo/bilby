@@ -60,7 +60,7 @@ exclude = [
   "test",
   "*__init__.py"
 ]
-ignore = ["E129", "W503", "W504", "E203", "E402"]
+ignore = ["E129", "W503", "W504", "E203", "E402", "E221", "E222"]
 max-line-length = 120
 
 [tool.isort]
@@ -98,7 +98,8 @@ addopts = [
   "--ignore=test/integration/example_test.py",
   "--ignore=test/integration/sample_from_the_prior_test.py",
   "--ignore=test/gw/plot_test.py",
-  "--ignore=test/integration/sampler_run_test.py"
+  "--ignore=test/integration/sampler_run_test.py",
+  "--ignore=examples/gw_examples/data_examples/Student_t_test.py"
 ]
 doctest_optionflags = ["ELLIPSIS", "NORMALIZE_WHITESPACE"]
 

@@ -159,6 +159,9 @@ class GravitationalWaveTransient(Likelihood):
         super(GravitationalWaveTransient, self).__init__()
         self.interferometers = InterferometerList(interferometers)
         self.interferometers.set_array_backend(interferometers.array_backend)
+        self._check_cbc_plus_sine_gaussians_distance_marginalization(
+            distance_marginalization
+        )
         self.time_marginalization = time_marginalization
         self.distance_marginalization = distance_marginalization
         self.phase_marginalization = phase_marginalization
@@ -228,6 +231,22 @@ class GravitationalWaveTransient(Likelihood):
             self._setup_calibration_marginalization(calibration_lookup_table, priors)
             self._marginalized_parameters.append('recalib_index')
 
+    def _check_cbc_plus_sine_gaussians_distance_marginalization(
+        self, distance_marginalization
+    ):
+        source_model = getattr(
+            self.waveform_generator, "frequency_domain_source_model", None
+        )
+        if (
+            distance_marginalization
+            and getattr(source_model, "__name__", None) == "cbc_plus_sine_gaussians"
+        ):
+            raise ValueError(
+                "distance_marginalization=True is not supported for "
+                "bilby.gw.source.cbc_plus_sine_gaussians. Set "
+                "distance_marginalization=False for CBC+sine-Gaussian analyses."
+            )
+
     def __repr__(self):
         return self.__class__.__name__ + '(interferometers={},\n\twaveform_generator={},\n\ttime_marginalization={}, ' \
                                          'distance_marginalization={}, phase_marginalization={}, ' \
@@ -291,7 +310,11 @@ class GravitationalWaveTransient(Likelihood):
 
         d_inner_h = interferometer.inner_product(signal=signal)
         optimal_snr_squared = interferometer.optimal_snr_squared(signal=signal)
-        complex_matched_filter_snr = d_inner_h / (optimal_snr_squared**0.5)
+        xp = aac.array_namespace(signal)
+        # SG-only detector-local models can have exactly zero signal in an
+        # analysed detector. Its SNR is zero, not 0/0.
+        snr_norm = xp.where(optimal_snr_squared == 0, 1, optimal_snr_squared)**0.5
+        complex_matched_filter_snr = d_inner_h / snr_norm
 
         d_inner_h_array = None
         optimal_snr_squared_array = None
@@ -403,6 +426,13 @@ class GravitationalWaveTransient(Likelihood):
         log_l = 0
         for interferometer in self.interferometers:
             mask = interferometer.frequency_mask
+            scale2 = (
+                interferometer.power_spectral_density_array[mask]
+                * self.waveform_generator.duration
+                / 4.0
+            )
+            xp = aac.array_namespace(scale2)
+            log_l -= xp.sum(xp.log(2 * np.pi * scale2))
             log_l -= abs(noise_weighted_inner_product(
                 interferometer.frequency_domain_strain[mask],
                 interferometer.frequency_domain_strain[mask],

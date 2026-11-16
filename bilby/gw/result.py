@@ -6,11 +6,41 @@ import numpy as np
 
 from ..core.result import Result as CoreResult
 from ..core.utils import (
-    infft, logger, check_directory_exists_and_if_not_mkdir,
+    logger, check_directory_exists_and_if_not_mkdir,
     latex_plot_format, safe_file_dump, safe_save_figure,
 )
-from .utils import plot_spline_pos, spline_angle_xform, asd_from_freq_series
-from .detector import get_empty_interferometer, Interferometer
+from .utils import (
+    plot_spline_pos, spline_angle_xform, asd_from_freq_series,
+    zenith_azimuth_to_ra_dec,
+)
+from .detector import get_empty_interferometer, Interferometer, InterferometerList
+
+
+def _serialize_cosmology_for_meta_data(cosmology):
+    try:
+        from astropy import cosmology as cosmo
+    except ImportError:
+        return cosmology
+
+    cosmology_types = tuple(
+        getattr(cosmo, name)
+        for name in ("Cosmology", "FLRW")
+        if hasattr(cosmo, name)
+    )
+    if cosmology_types and isinstance(cosmology, cosmology_types):
+        return cosmology.name or repr(cosmology)
+    return cosmology
+
+
+def _get_cosmology_from_meta_data(cosmology):
+    if isinstance(cosmology, str):
+        from .cosmology import get_cosmology
+
+        try:
+            return get_cosmology(cosmology)
+        except AttributeError:
+            return cosmology
+    return cosmology
 
 
 class CompactBinaryCoalescenceResult(CoreResult):
@@ -22,14 +52,22 @@ class CompactBinaryCoalescenceResult(CoreResult):
 
         if "meta_data" not in kwargs:
             kwargs["meta_data"] = dict()
-        if "global_meta_data" not in kwargs:
+        if "global_meta_data" not in kwargs["meta_data"]:
             from ..core.utils.meta_data import global_meta_data
 
-            kwargs["meta_data"]["global_meta_data"] = global_meta_data
+            kwargs["meta_data"]["global_meta_data"] = dict(global_meta_data)
+        else:
+            kwargs["meta_data"]["global_meta_data"] = dict(
+                kwargs["meta_data"]["global_meta_data"]
+            )
+        global_meta_data = kwargs["meta_data"]["global_meta_data"]
         # Ensure cosmology is always stored in the meta_data
-        if "cosmology" not in kwargs["meta_data"]["global_meta_data"]:
+        if "cosmology" not in global_meta_data:
             from .cosmology import get_cosmology
-            kwargs["meta_data"]["global_meta_data"]["cosmology"] = get_cosmology()
+            global_meta_data["cosmology"] = get_cosmology()
+        global_meta_data["cosmology"] = _serialize_cosmology_for_meta_data(
+            global_meta_data["cosmology"]
+        )
 
         super(CompactBinaryCoalescenceResult, self).__init__(**kwargs)
 
@@ -108,8 +146,12 @@ class CompactBinaryCoalescenceResult(CoreResult):
     @property
     def waveform_generator_meta_data(self):
         """ Dict of metadata for reconstructing the waveform generator. """
-        return self.__get_from_nested_meta_data(
-            'likelihood', 'waveform_generator_meta_data')
+        try:
+            meta_data = self.__get_from_nested_meta_data(
+                'likelihood', 'waveform_generator_meta_data')
+        except AttributeError:
+            return dict()
+        return dict() if meta_data is None else meta_data
 
     @property
     def reference_frequency(self):
@@ -136,6 +178,24 @@ class CompactBinaryCoalescenceResult(CoreResult):
             'likelihood', 'parameter_conversion')
 
     @property
+    def reference_frame(self):
+        """ Reference frame used for sky-location sampling """
+        try:
+            return self.__get_from_nested_meta_data(
+                'likelihood', 'reference_frame')
+        except AttributeError:
+            return "sky"
+
+    @property
+    def time_reference(self):
+        """ Time reference used for coalescence-time sampling """
+        try:
+            return self.__get_from_nested_meta_data(
+                'likelihood', 'time_reference')
+        except AttributeError:
+            return "geocent"
+
+    @property
     def cosmology(self):
         """The global cosmology used in the analysis.
 
@@ -144,9 +204,10 @@ class CompactBinaryCoalescenceResult(CoreResult):
         .. versionadded:: 2.5.0
         """
         try:
-            return self.__get_from_nested_meta_data(
-                'global_meta_data', 'cosmology'
+            cosmology = self.__get_from_nested_meta_data(
+                "global_meta_data", "cosmology"
             )
+            return _get_cosmology_from_meta_data(cosmology)
         except AttributeError as e:
             logger.warning(
                 "No cosmology found in result. "
@@ -179,6 +240,130 @@ class CompactBinaryCoalescenceResult(CoreResult):
         except AttributeError:
             logger.info("No injection for detector {}".format(detector))
             return None
+
+    def _get_waveform_plot_injection_parameters(self, interferometer):
+        if self.injection_parameters is not None:
+            return self.injection_parameters
+
+        try:
+            injection_properties = self.detector_injection_properties(
+                interferometer.name)
+        except TypeError:
+            return None
+        if isinstance(injection_properties, dict):
+            return injection_properties.get("parameters", None)
+        return None
+
+    @staticmethod
+    def _parse_reference_frame(reference_frame):
+        if reference_frame == "sky":
+            return "sky"
+        elif isinstance(reference_frame, InterferometerList):
+            return reference_frame[:2]
+        elif isinstance(reference_frame, list):
+            return InterferometerList(reference_frame[:2])
+        elif isinstance(reference_frame, str):
+            if len(reference_frame) < 4:
+                raise ValueError(
+                    "Unable to parse reference frame {}".format(reference_frame)
+                )
+            return InterferometerList([reference_frame[:2], reference_frame[2:4]])
+        else:
+            raise ValueError(
+                "Unable to parse reference frame {}".format(reference_frame)
+            )
+
+    def _add_sky_frame_parameters_to_samples(self, samples):
+        samples = samples.copy()
+        if {"ra", "dec", "geocent_time"}.issubset(samples):
+            return samples
+
+        reference_frame = self.reference_frame
+        time_reference = self.time_reference
+        if time_reference is None:
+            time_reference = "geocent"
+        time_reference = str(time_reference)
+        time_key = "{}_time".format(time_reference)
+
+        if reference_frame != "sky":
+            reference_frame = self._parse_reference_frame(reference_frame)
+        if "geocent" not in time_reference:
+            reference_ifo = get_empty_interferometer(time_reference)
+        else:
+            reference_ifo = None
+
+        sky_frame_parameters = []
+        for parameters in samples.to_dict(orient="records"):
+            time = parameters.get(time_key, parameters.get("geocent_time"))
+            if time is None:
+                raise KeyError(
+                    "Unable to determine waveform plot time from {} or "
+                    "geocent_time".format(time_key)
+                )
+
+            if reference_frame != "sky":
+                try:
+                    ra, dec = zenith_azimuth_to_ra_dec(
+                        parameters["zenith"], parameters["azimuth"],
+                        time, reference_frame)
+                except KeyError:
+                    if "ra" in parameters and "dec" in parameters:
+                        ra = parameters["ra"]
+                        dec = parameters["dec"]
+                        logger.warning(
+                            "Cannot convert from zenith/azimuth to ra/dec; "
+                            "falling back to provided ra/dec"
+                        )
+                    else:
+                        raise
+            else:
+                ra = parameters["ra"]
+                dec = parameters["dec"]
+
+            if reference_ifo is None:
+                geocent_time = parameters["geocent_time"]
+            else:
+                geocent_time = time - reference_ifo.time_delay_from_geocenter(
+                    ra=ra, dec=dec, time=time)
+
+            sky_frame_parameters.append(
+                dict(ra=ra, dec=dec, geocent_time=geocent_time)
+            )
+
+        for key in ["ra", "dec", "geocent_time"]:
+            samples[key] = [parameters[key] for parameters in sky_frame_parameters]
+        return samples
+
+    def _get_waveform_plot_samples(self, n_samples=None):
+        if n_samples is None:
+            samples = self.posterior
+        elif n_samples > len(self.posterior):
+            logger.debug(
+                "Requested more waveform samples ({}) than we have "
+                "posterior samples ({})!".format(
+                    n_samples, len(self.posterior)
+                )
+            )
+            samples = self.posterior
+        else:
+            samples = self.posterior.sample(n_samples, replace=False)
+        return self._add_sky_frame_parameters_to_samples(samples)
+
+    def _get_save_data_dictionary(self):
+        dictionary = super()._get_save_data_dictionary()
+        posterior = dictionary.get("posterior")
+        if posterior is None:
+            return dictionary
+
+        try:
+            dictionary["posterior"] = self._add_sky_frame_parameters_to_samples(
+                posterior
+            )
+        except (KeyError, ValueError) as error:
+            logger.info(
+                "Unable to add sky-frame parameters to saved result: {}".format(error)
+            )
+        return dictionary
 
     @latex_plot_format
     def plot_calibration_posterior(self, level=.9, format="png"):
@@ -381,25 +566,14 @@ class CompactBinaryCoalescenceResult(CoreResult):
         logger.info("Generating waveform figure for {}".format(
             interferometer.name))
 
-        if n_samples is None:
-            samples = self.posterior
-        elif n_samples > len(self.posterior):
-            logger.debug(
-                "Requested more waveform samples ({}) than we have "
-                "posterior samples ({})!".format(
-                    n_samples, len(self.posterior)
-                )
-            )
-            samples = self.posterior
-        else:
-            samples = self.posterior.sample(n_samples, replace=False)
+        samples = self._get_waveform_plot_samples(n_samples)
 
         if start_time is None:
             start_time = - 0.4
-        start_time = np.mean(samples.geocent_time) + start_time
+        start_time = np.mean(samples["geocent_time"]) + start_time
         if end_time is None:
             end_time = 0.2
-        end_time = np.mean(samples.geocent_time) + end_time
+        end_time = np.mean(samples["geocent_time"]) + end_time
         if format == "html":
             start_time = - np.inf
             end_time = np.inf
@@ -620,10 +794,10 @@ class CompactBinaryCoalescenceResult(CoreResult):
                 col=1,
             )
         else:
-            lower_limit = np.mean(fd_waveforms, axis=0)[0] / 1e3
+            lower_limit = np.median(fd_waveforms, axis=0)[0] / 1e3
             axs[0].loglog(
                 plot_frequencies,
-                np.mean(fd_waveforms, axis=0), color=WAVEFORM_COLOR, label='Mean reconstructed')
+                np.median(fd_waveforms, axis=0), color=WAVEFORM_COLOR, label='Median reconstructed')
             axs[0].fill_between(
                 plot_frequencies,
                 np.percentile(fd_waveforms, lower_percentile, axis=0),
@@ -632,7 +806,7 @@ class CompactBinaryCoalescenceResult(CoreResult):
                 label=r'{}% credible interval'.format(int(upper_percentile - lower_percentile)),
                 alpha=0.3)
             axs[1].plot(
-                plot_times, np.mean(td_waveforms, axis=0),
+                plot_times, np.median(td_waveforms, axis=0),
                 color=WAVEFORM_COLOR)
             axs[1].fill_between(
                 plot_times, np.percentile(
@@ -641,16 +815,17 @@ class CompactBinaryCoalescenceResult(CoreResult):
                 color=WAVEFORM_COLOR,
                 alpha=0.3)
 
-        if self.injection_parameters is not None:
+        injection_parameters = self._get_waveform_plot_injection_parameters(
+            interferometer)
+        if injection_parameters is not None:
             try:
                 hf_inj = waveform_generator.frequency_domain_strain(
-                    self.injection_parameters)
+                    injection_parameters)
                 hf_inj_det = interferometer.get_detector_response(
-                    hf_inj, self.injection_parameters)
-                ht_inj_det = infft(
-                    hf_inj_det * np.sqrt(2. / interferometer.sampling_frequency) /
-                    interferometer.amplitude_spectral_density_array,
-                    self.sampling_frequency)[time_idxs]
+                    hf_inj, injection_parameters)
+                ht_inj_det = interferometer.get_whitened_time_series_from_whitened_frequency_series(
+                    interferometer.whiten_frequency_series(hf_inj_det)
+                )[time_idxs]
                 if format == "html":
                     fig.add_trace(
                         go.Scatter(

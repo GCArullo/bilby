@@ -1,0 +1,29 @@
+# This file is a template consumed by submit_job.py.
+# The Student-t prior block below is filled in automatically.
+# Since Mchirp = M eta^(3/5) and eta <= 1/4, the total_mass <= 500
+# constraint caps the effective chirp-mass support at 217.638 Msun, despite
+# the nominal chirp_mass maximum below.
+
+chirp_mass = bilby.gw.prior.UniformInComponentsChirpMass(name='chirp_mass', minimum=68.25578738484073, maximum=300, unit='$M_{\{\odot\}}')
+mass_ratio = bilby.gw.prior.UniformInComponentsMassRatio(name='mass_ratio', minimum=0.16666667, maximum=1.0)
+total_mass = Constraint(name='total_mass', minimum=60, maximum=500)
+mass_1 = Constraint(name='mass_1', minimum=1, maximum=500)
+mass_2 = Constraint(name='mass_2', minimum=1, maximum=500)
+a_1 = Uniform(name='a_1', minimum=0, maximum=0.99)
+a_2 = Uniform(name='a_2', minimum=0, maximum=0.99)
+tilt_1 = Sine(name='tilt_1')
+tilt_2 = Sine(name='tilt_2')
+phi_12 = Uniform(name='phi_12', minimum=0, maximum=2 * np.pi, boundary='periodic')
+phi_jl = Uniform(name='phi_jl', minimum=0, maximum=2 * np.pi, boundary='periodic')
+luminosity_distance =  bilby.gw.prior.UniformSourceFrame(name='luminosity_distance', cosmology=Planck15, maximum=20000.0, minimum=10, unit='Mpc')
+theta_jn = Sine(name='theta_jn')
+psi = Uniform(name='psi', minimum=0, maximum=np.pi, boundary='periodic')
+phase = Uniform(name='phase', minimum=0, maximum=2 * np.pi, boundary='periodic')
+__NU_PRIORS__
+
+dec = Cosine(name='dec')
+ra = Uniform(name='ra', minimum=0, maximum=2 * np.pi, boundary='periodic')
+
+#azimuth = Uniform(minimum=0, maximum=6.283185307179586, name=None, latex_label='$\\epsilon$', unit=None, boundary='periodic')
+#zenith  = Sine(minimum=0, maximum=3.141592653589793, name=None, latex_label='$\\kappa$', unit=None, boundary=None)
+#L1_time = Uniform(minimum=1384782888.5342772, maximum=1384782888.734277, name='L1_time', latex_label='$t_L$', unit='$s$', boundary=None)

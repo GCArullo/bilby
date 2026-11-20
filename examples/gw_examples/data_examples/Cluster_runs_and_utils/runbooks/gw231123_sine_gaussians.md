@@ -1,5 +1,9 @@
 # GW231123 Sine-Gaussian Runs
 
+This distance-investigation branch contains experimental sampler settings.
+Normal paper runs use `sine_gaussians_addition`. Additional launches from this
+branch are suspended pending authorization; see [the sampler review gate](sampler_upstream_review.md).
+
 Injected SG values for the injection commands are read from `runbooks/injected_sine_gaussian_values.json`.
 
 The three supported SG modes are:
@@ -42,6 +46,13 @@ Generated configs enable file transfer and the worldwide IGWN pool with
 `transfer-files=True`, `osg=True`, and `desired-sites=None`. Do not pass
 `--require-epnfs` for worldwide execution; that option deliberately restricts
 jobs to CIT nodes exposing EPNFS.
+
+For `acceptance-walk`, `act-walk` (including the default), and `rwalk`, both
+launchers write `calibration-prior-boundary=None` into generated configs.
+Correlated differential-evolution proposals with reflective boundaries do not
+preserve detailed balance. Rejection at the unit-cube boundary preserves the
+physical calibration priors; periodic angular boundaries remain enabled. Use a
+standard image containing the acceptance-walk correction in `88f321fd` or later.
 
 Immediately before calling `bilby_pipe`, the launchers verify that every local
 frame/data file, PSD, calibration envelope, and additional transfer path in the

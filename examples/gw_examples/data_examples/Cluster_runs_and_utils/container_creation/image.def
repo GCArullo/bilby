@@ -75,6 +75,10 @@ From: ubuntu:26.04
     cd /
     rm -rf /tmp/lalsuite-waveform-data
 
+    # The Bilby sampler wrapper uses helpers removed in Dynesty 3.2.
+    # Keep the version used by the CBC+SG distance-marginalization validation.
+    pip install "dynesty==3.1.0"
+
     # cleanup
     apt-get clean -y
     pip cache purge

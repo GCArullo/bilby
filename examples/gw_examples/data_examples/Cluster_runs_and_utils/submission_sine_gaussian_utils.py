@@ -261,9 +261,23 @@ def validate_sine_gaussian_distance_marginalization(
     if not config.enabled:
         return
     value = _ini_setting(ini_text, "distance-marginalization")
-    if value is None or parse_template_value(value) is not False:
+    if value is not None and parse_template_value(value) is False:
+        return
+    likelihood = _ini_setting(ini_text, "likelihood-type") or ""
+    unsupported = any(
+        parse_template_value(
+            _ini_setting(ini_text, f"{name}-marginalization") or "False"
+        )
+        for name in ("time", "phase", "calibration")
+    )
+    if (
+        value is None
+        or likelihood.split(".")[-1] != "GravitationalWaveTransient"
+        or unsupported
+    ):
         raise ValueError(
-            "CBC+sine-Gaussian configs require distance-marginalization=False"
+            "CBC+sine-Gaussian distance marginalization requires "
+            "GravitationalWaveTransient without time, phase or calibration marginalization"
         )
 
 
@@ -493,7 +507,23 @@ def apply_sine_gaussian_waveform_settings(
     config: SineGaussianConfiguration,
     *,
     replace_line,
+    distance_marginalization: bool = False,
 ) -> str:
+    if distance_marginalization:
+        likelihood = _ini_setting(ini_text, "likelihood-type") or ""
+        if likelihood.split(".")[-1] != "GravitationalWaveTransient":
+            raise ValueError(
+                "--distance-marginalization requires --likelihood gaussian"
+            )
+        ini_text = replace_line(ini_text, "distance-marginalization", "True")
+        if _ini_setting(ini_text, "distance-marginalization-lookup-table") is None:
+            ini_text = (
+                ini_text.rstrip() + "\ndistance-marginalization-lookup-table=None\n"
+            )
+        else:
+            ini_text = replace_line(
+                ini_text, "distance-marginalization-lookup-table", "None"
+            )
     if not config.enabled:
         return ini_text
 
@@ -512,7 +542,9 @@ def apply_sine_gaussian_waveform_settings(
         "generation-function",
         "bilby.gw.conversion.generate_all_cbc_plus_sine_gaussian_parameters",
     )
-    updated = replace_line(updated, "distance-marginalization", "False")
+    updated = replace_line(
+        updated, "distance-marginalization", str(distance_marginalization)
+    )
     validate_sine_gaussian_distance_marginalization(updated, config)
     return updated
 
